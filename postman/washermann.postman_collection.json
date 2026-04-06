@@ -1,0 +1,456 @@
+{
+  "info": {
+    "name": "Washermann API",
+    "description": "Washermann Platform API — Phase 1: Auth & Users\n\n## Setup\n1. Set the `baseUrl` variable to your API URL (default: http://localhost:3000/api/v1)\n2. Use **POST /auth/login** or **POST /auth/register** — the collection auto-sets `accessToken` and `refreshToken` variables.\n3. All authenticated requests automatically use the `accessToken` variable.",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Authentication, registration and identity flows",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const res = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                  "  pm.test('Registration successful', () => pm.expect(res.success).to.be.true);",
+                  "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"phone\": \"+2348012345678\",\n  \"password\": \"StrongP@ssw0rd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "Register a new user (self-signup). Automatically sets accessToken and refreshToken collection variables."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                  "  pm.test('Login successful', () => pm.expect(res.success).to.be.true);",
+                  "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\",\n  \"password\": \"StrongP@ssw0rd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Login with email or phone + password. Automatically sets accessToken and refreshToken."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Identifier",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/check", "host": ["{{baseUrl}}"], "path": ["auth", "check"] },
+            "description": "Identifier-first flow. Returns: not_found | active | pending_activation | suspended. Mobile uses this to route to the correct screen."
+          },
+          "response": []
+        },
+        {
+          "name": "Activate Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                  "  pm.test('Activation successful', () => pm.expect(res.success).to.be.true);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"jane@company.com\",\n  \"password\": \"StrongP@ssw0rd\",\n  \"fullName\": \"Jane Smith\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/activate", "host": ["{{baseUrl}}"], "path": ["auth", "activate"] },
+            "description": "Activate a pre-created (invited) account. Used when user installs app fresh without clicking the invite deep-link."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Password (Deep-Link Flow)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inviteToken\": \"uuid-from-deep-link\",\n  \"password\": \"StrongP@ssw0rd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/set-password", "host": ["{{baseUrl}}"], "path": ["auth", "set-password"] },
+            "description": "Happy-path for invite flow. Used when user taps the deep-link from SMS/email and the app intercepts the token."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                  "  pm.test('Tokens refreshed', () => pm.expect(res.success).to.be.true);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] },
+            "description": "Exchange refresh token for a new access + refresh token pair. Uses token rotation — old refresh token is invalidated."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "" },
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+            "description": "Invalidate the current refresh token. Requires Bearer auth."
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] },
+            "description": "Request a password reset. Always returns 200 regardless of whether account exists (prevents enumeration)."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"reset-token-from-email-or-sms\",\n  \"password\": \"NewStrongP@ssw0rd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["auth", "reset-password"] },
+            "description": "Submit new password with the reset token received via email/SMS."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Get current authenticated user info and roles."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\",\n  \"otp\": \"482910\",\n  \"channel\": \"email\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["auth", "verify-otp"] },
+            "description": "Verify email or phone using the 6-digit OTP sent after registration. channel: 'email' | 'phone'."
+          },
+          "response": []
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\",\n  \"purpose\": \"verification\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/resend-otp", "host": ["{{baseUrl}}"], "path": ["auth", "resend-otp"] },
+            "description": "Resend OTP. purpose: 'verification' | 'reset'. Rate limited to 1 request per 60 seconds."
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password (sends OTP)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] },
+            "description": "Request a password reset OTP. Sends a 6-digit code via email and/or SMS. Always returns 200."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password (OTP)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"john@example.com\",\n  \"otp\": \"391047\",\n  \"password\": \"NewStrongP@ssw0rd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["auth", "reset-password"] },
+            "description": "Reset password using identifier + 6-digit OTP received via email/SMS. OTP expires in 10 minutes."
+          },
+          "response": []
+        },
+        {
+          "name": "Setup Super Admin (first-run)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setupSecret\": \"your-ADMIN_SETUP_SECRET-from-env\",\n  \"fullName\": \"Super Admin\",\n  \"email\": \"admin@washermann.com\",\n  \"phone\": \"+2348012345678\",\n  \"password\": \"Admin@Str0ng!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/setup", "host": ["{{baseUrl}}"], "path": ["auth", "setup"] },
+            "description": "One-time endpoint to create the first super admin. Requires ADMIN_SETUP_SECRET from .env. Disabled once any admin exists. Use in production only — dev/staging auto-seed via SEED_ADMIN_* env vars."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "User profile and address management",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+            "description": "Get the authenticated user's profile."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"John Doe Updated\",\n  \"email\": \"newemail@example.com\",\n  \"phone\": \"+2348099999999\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+            "description": "Update own profile. All fields are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Addresses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me/addresses", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses"] },
+            "description": "List all saved addresses for the authenticated user. Default address appears first."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressText\": \"12 Admiralty Way, Lekki Phase 1, Lagos\",\n  \"latitude\": 6.4281,\n  \"longitude\": 3.4219,\n  \"isDefault\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/me/addresses", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses"] },
+            "description": "Add a new address. If isDefault is true, existing default is unset. First address is automatically set as default."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Address",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressText\": \"15 Victoria Island, Lagos\",\n  \"latitude\": 6.4281,\n  \"longitude\": 3.4219\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "description": "Update an existing address. All fields optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Address",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "description": "Delete an address. If the deleted address was the default, the most recent remaining address is promoted."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Default Address",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id/default", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id", "default"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "description": "Set an address as the default delivery address."
+          },
+          "response": []
+        },
+        {
+          "name": "[Admin] List All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "[Admin only] List all users with pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "[Admin] Get User By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/:id", "host": ["{{baseUrl}}"], "path": ["users", ":id"], "variable": [{ "key": "id", "value": "user-uuid-here" }] },
+            "description": "[Admin only] Get any user by their UUID."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
