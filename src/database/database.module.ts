@@ -9,22 +9,36 @@ import { Address } from './entities/address.entity';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get<string>('database.host'),
-        port: config.get<number>('database.port'),
-        username: config.get<string>('database.username'),
-        password: config.get<string>('database.password'),
-        database: config.get<string>('database.name'),
-        ssl: config.get<boolean>('database.ssl')
-          ? { rejectUnauthorized: false }
-          : false,
-        entities: [User, Address],
-        migrations: [__dirname + '/migrations/*{.ts,.js}'],
-        synchronize: config.get<boolean>('database.synchronize'),
-        logging: config.get<boolean>('database.logging'),
-        migrationsRun: config.get<boolean>('database.migrationsRun'),
-      }),
+      useFactory: (config: ConfigService) => {
+        const databaseUrl = config.get<string>('database.url');
+        const ssl = config.get<boolean>('database.ssl');
+        const sslConfig = ssl ? { rejectUnauthorized: false } : false;
+
+        const base = {
+          type: 'postgres' as const,
+          entities: [User, Address],
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
+          synchronize: config.get<boolean>('database.synchronize'),
+          logging: config.get<boolean>('database.logging'),
+          migrationsRun: config.get<boolean>('database.migrationsRun'),
+          ssl: sslConfig,
+        };
+
+        // ── When DATABASE_URL is set (Railway, Neon, Supabase) ─────────────────
+        if (databaseUrl) {
+          return { ...base, url: databaseUrl };
+        }
+
+        // ── Individual params (local Docker) ───────────────────────────────────
+        return {
+          ...base,
+          host: config.get<string>('database.host'),
+          port: config.get<number>('database.port'),
+          username: config.get<string>('database.username'),
+          password: config.get<string>('database.password'),
+          database: config.get<string>('database.name'),
+        };
+      },
     }),
   ],
 })
