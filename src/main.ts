@@ -13,6 +13,7 @@ async function bootstrap() {
   const port = configService.get<number>('app.port') || 3000;
   const apiPrefix = configService.get<string>('app.apiPrefix') || 'api/v1';
   const env = configService.get<string>('app.env') || 'development';
+  const appUrl = configService.get<string>('app.appUrl') || `http://localhost:${port}`;
 
   // ─── Global prefix ──────────────────────────────────────────────────────────
   app.setGlobalPrefix(apiPrefix);
@@ -69,7 +70,8 @@ All responses follow the standard envelope:
       .addBearerAuth()
       .addTag('Auth', 'Authentication, registration and identity flows')
       .addTag('Users', 'User profiles and address management')
-      .addServer(`http://localhost:${port}`, 'Local Development')
+      .addServer(`http://localhost:${port}`, 'Local')
+      .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')
       .build();
 
@@ -83,13 +85,11 @@ All responses follow the standard envelope:
       customSiteTitle: 'Washermann API Docs',
     });
 
-    console.log(
-      `📖 Swagger docs available at: http://localhost:${port}/${apiPrefix}/docs`,
-    );
+    console.log(`📖 Swagger docs: ${appUrl}/${apiPrefix}/docs`);
   }
 
   await app.listen(port);
-  console.log(`🚀 Washermann API running on: http://localhost:${port}/${apiPrefix}`);
+  console.log(`🚀 Washermann API running on: ${appUrl}/${apiPrefix}`);
   console.log(`🌍 Environment: ${env}`);
 }
 
