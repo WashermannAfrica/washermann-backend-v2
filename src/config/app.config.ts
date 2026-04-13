@@ -24,4 +24,5 @@ export default registerAs('app', () => ({
   ),
   walletConversionSecret: process.env.WALLET_CONVERSION_SECRET || '',
   adminSetupSecret: process.env.ADMIN_SETUP_SECRET || '',
+  appUrl: process.env.APP_URL || null, // e.g. https://dev-api.washermann.com
 }));
