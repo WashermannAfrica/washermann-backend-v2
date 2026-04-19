@@ -1,36 +1,22 @@
 {
   "info": {
     "name": "Washermann API",
-    "description": "Washermann Platform API — Phase 1: Auth & Users\n\n## Setup\n1. Set the `baseUrl` variable to your API URL (default: http://localhost:3000/api/v1)\n2. Use **POST /auth/login** or **POST /auth/register** — the collection auto-sets `accessToken` and `refreshToken` variables.\n3. All authenticated requests automatically use the `accessToken` variable.",
-    "version": "1.0.0",
+    "description": "Washermann Platform API — Phase 1: Auth & Users | Phase 2: Companies & Tiers\n\n## Setup\n1. Set the `baseUrl` variable to your API URL (default: http://localhost:3000/api/v1)\n2. Use **POST /auth/login** or **POST /auth/register** — the collection auto-sets `accessToken` and `refreshToken` variables.\n3. All authenticated requests automatically use the `accessToken` variable.\n4. Set `companyId`, `tierId`, `employeeId`, `userId` variables as you work through company endpoints.",
+    "version": "2.0.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:3000/api/v1",
-      "type": "string"
-    },
-    {
-      "key": "accessToken",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "refreshToken",
-      "value": "",
-      "type": "string"
-    }
+    { "key": "baseUrl",    "value": "http://localhost:3000/api/v1", "type": "string" },
+    { "key": "accessToken",  "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "companyId",    "value": "", "type": "string" },
+    { "key": "tierId",       "value": "", "type": "string" },
+    { "key": "employeeId",   "value": "", "type": "string" },
+    { "key": "userId",       "value": "", "type": "string" }
   ],
   "auth": {
     "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{accessToken}}",
-        "type": "string"
-      }
-    ]
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
   },
   "item": [
     {
@@ -39,23 +25,21 @@
       "item": [
         {
           "name": "Register",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "  const res = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
-                  "  pm.test('Registration successful', () => pm.expect(res.success).to.be.true);",
-                  "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "  const res = pm.response.json();",
+                "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                "  pm.test('Registration successful', () => pm.expect(res.success).to.be.true);",
+                "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
+                "}"
+              ],
+              "type": "text/javascript"
             }
-          ],
+          }],
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -71,23 +55,21 @@
         },
         {
           "name": "Login",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const res = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
-                  "  pm.test('Login successful', () => pm.expect(res.success).to.be.true);",
-                  "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "  const res = pm.response.json();",
+                "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                "  pm.test('Login successful', () => pm.expect(res.success).to.be.true);",
+                "  pm.test('Access token present', () => pm.expect(res.data.accessToken).to.be.a('string'));",
+                "}"
+              ],
+              "type": "text/javascript"
             }
-          ],
+          }],
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -118,22 +100,20 @@
         },
         {
           "name": "Activate Account",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const res = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
-                  "  pm.test('Activation successful', () => pm.expect(res.success).to.be.true);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "  const res = pm.response.json();",
+                "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                "  pm.test('Activation successful', () => pm.expect(res.success).to.be.true);",
+                "}"
+              ],
+              "type": "text/javascript"
             }
-          ],
+          }],
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -149,21 +129,19 @@
         },
         {
           "name": "Set Password (Deep-Link Flow)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const res = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "  const res = pm.response.json();",
+                "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                "}"
+              ],
+              "type": "text/javascript"
             }
-          ],
+          }],
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -179,22 +157,20 @@
         },
         {
           "name": "Refresh Token",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const res = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
-                  "  pm.test('Tokens refreshed', () => pm.expect(res.success).to.be.true);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "  const res = pm.response.json();",
+                "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+                "  pm.collectionVariables.set('refreshToken', res.data.refreshToken);",
+                "  pm.test('Tokens refreshed', () => pm.expect(res.success).to.be.true);",
+                "}"
+              ],
+              "type": "text/javascript"
             }
-          ],
+          }],
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -216,46 +192,6 @@
             "body": { "mode": "raw", "raw": "" },
             "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
             "description": "Invalidate the current refresh token. Requires Bearer auth."
-          },
-          "response": []
-        },
-        {
-          "name": "Forgot Password",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"identifier\": \"john@example.com\"\n}"
-            },
-            "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] },
-            "description": "Request a password reset. Always returns 200 regardless of whether account exists (prevents enumeration)."
-          },
-          "response": []
-        },
-        {
-          "name": "Reset Password",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"reset-token-from-email-or-sms\",\n  \"password\": \"NewStrongP@ssw0rd\"\n}"
-            },
-            "url": { "raw": "{{baseUrl}}/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["auth", "reset-password"] },
-            "description": "Submit new password with the reset token received via email/SMS."
-          },
-          "response": []
-        },
-        {
-          "name": "Get Me",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
-            "description": "Get current authenticated user info and roles."
           },
           "response": []
         },
@@ -290,7 +226,7 @@
           "response": []
         },
         {
-          "name": "Forgot Password (sends OTP)",
+          "name": "Forgot Password",
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -300,12 +236,12 @@
               "raw": "{\n  \"identifier\": \"john@example.com\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] },
-            "description": "Request a password reset OTP. Sends a 6-digit code via email and/or SMS. Always returns 200."
+            "description": "Request a password reset OTP. Sends a 6-digit code via email and/or SMS. Always returns 200 (prevents enumeration)."
           },
           "response": []
         },
         {
-          "name": "Reset Password (OTP)",
+          "name": "Reset Password",
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -320,6 +256,16 @@
           "response": []
         },
         {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Get current authenticated user info and roles."
+          },
+          "response": []
+        },
+        {
           "name": "Setup Super Admin (first-run)",
           "request": {
             "auth": { "type": "noauth" },
@@ -330,7 +276,7 @@
               "raw": "{\n  \"setupSecret\": \"your-ADMIN_SETUP_SECRET-from-env\",\n  \"fullName\": \"Super Admin\",\n  \"email\": \"admin@washermann.com\",\n  \"phone\": \"+2348012345678\",\n  \"password\": \"Admin@Str0ng!\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/auth/setup", "host": ["{{baseUrl}}"], "path": ["auth", "setup"] },
-            "description": "One-time endpoint to create the first super admin. Requires ADMIN_SETUP_SECRET from .env. Disabled once any admin exists. Use in production only — dev/staging auto-seed via SEED_ADMIN_* env vars."
+            "description": "One-time endpoint to create the first super admin. Requires ADMIN_SETUP_SECRET from .env. Disabled once any admin exists."
           },
           "response": []
         }
@@ -338,7 +284,7 @@
     },
     {
       "name": "Users",
-      "description": "User profile and address management",
+      "description": "User profile, address management and company membership view",
       "item": [
         {
           "name": "Get Profile",
@@ -361,6 +307,16 @@
             },
             "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
             "description": "Update own profile. All fields are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/me/companies", "host": ["{{baseUrl}}"], "path": ["users", "me", "companies"] },
+            "description": "List all active company memberships for the authenticated employee. Returns assignment records with company and tier details."
           },
           "response": []
         },
@@ -397,7 +353,12 @@
               "mode": "raw",
               "raw": "{\n  \"addressText\": \"15 Victoria Island, Lagos\",\n  \"latitude\": 6.4281,\n  \"longitude\": 3.4219\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/addresses/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "addresses", ":id"],
+              "variable": [{ "key": "id", "value": "address-uuid-here" }]
+            },
             "description": "Update an existing address. All fields optional."
           },
           "response": []
@@ -407,7 +368,12 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/addresses/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "addresses", ":id"],
+              "variable": [{ "key": "id", "value": "address-uuid-here" }]
+            },
             "description": "Delete an address. If the deleted address was the default, the most recent remaining address is promoted."
           },
           "response": []
@@ -417,7 +383,12 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/users/me/addresses/:id/default", "host": ["{{baseUrl}}"], "path": ["users", "me", "addresses", ":id", "default"], "variable": [{ "key": "id", "value": "address-uuid-here" }] },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/addresses/:id/default",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "addresses", ":id", "default"],
+              "variable": [{ "key": "id", "value": "address-uuid-here" }]
+            },
             "description": "Set an address as the default delivery address."
           },
           "response": []
@@ -445,10 +416,354 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/users/:id", "host": ["{{baseUrl}}"], "path": ["users", ":id"], "variable": [{ "key": "id", "value": "user-uuid-here" }] },
+            "url": {
+              "raw": "{{baseUrl}}/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "variable": [{ "key": "id", "value": "user-uuid-here" }]
+            },
             "description": "[Admin only] Get any user by their UUID."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Companies",
+      "description": "Company management, tiers, employee assignments and admin grants. Company-scoped endpoints require either Role.ADMIN (platform admin) or Role.COMPANY_ADMIN for that specific company.",
+      "item": [
+        {
+          "name": "— Company CRUD (Admin only) —",
+          "item": [
+            {
+              "name": "[Admin] Create Company",
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 201) {",
+                    "  const res = pm.response.json();",
+                    "  pm.collectionVariables.set('companyId', res.data.id);",
+                    "  pm.test('Company created', () => pm.expect(res.success).to.be.true);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme Corp\",\n  \"contactEmail\": \"hr@acme.com\",\n  \"contactPhone\": \"+2348012345678\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/companies", "host": ["{{baseUrl}}"], "path": ["companies"] },
+                "description": "[Admin only] Create a new company on the platform. Auto-saves the returned ID as `companyId` collection variable."
+              },
+              "response": []
+            },
+            {
+              "name": "[Admin] List Companies",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" }
+                  ]
+                },
+                "description": "[Admin only] Paginated list of all companies on the platform."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Company",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Get company details including its tiers."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Company",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme Corp (Updated)\",\n  \"contactEmail\": \"newhر@acme.com\",\n  \"contactPhone\": \"+2348099999999\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Update company name or contact details. All fields optional."
+              },
+              "response": []
+            },
+            {
+              "name": "[Admin] Update Company Status",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"inactive\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "status"]
+                },
+                "description": "[Admin only] Toggle company status. status: 'active' | 'inactive'."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "— Tiers —",
+          "item": [
+            {
+              "name": "List Tiers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/tiers",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "tiers"]
+                },
+                "description": "[Admin | CompanyAdmin] List all benefit tiers for the company."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Tier",
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 201) {",
+                    "  const res = pm.response.json();",
+                    "  pm.collectionVariables.set('tierId', res.data.id);",
+                    "  pm.test('Tier created', () => pm.expect(res.success).to.be.true);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Senior Staff\",\n  \"monthlyPoints\": 500,\n  \"monthlyOrderLimit\": 4,\n  \"itemLimit\": 10\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/tiers",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "tiers"]
+                },
+                "description": "[Admin | CompanyAdmin] Create a new benefit tier for the company. monthlyPoints = Wash Points allocated per cycle. Auto-saves returned ID as `tierId`."
+              },
+              "response": []
+            },
+            {
+              "name": "Update Tier",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Senior Staff (Updated)\",\n  \"monthlyPoints\": 600,\n  \"monthlyOrderLimit\": 5,\n  \"itemLimit\": 12\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/tiers/{{tierId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "tiers", "{{tierId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Update tier fields. All fields optional. Changes apply from the next billing cycle."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Tier",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/tiers/{{tierId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "tiers", "{{tierId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Delete a tier. All employees on this tier will have their tierId set to null (unassigned) via SET NULL FK."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "— Employees —",
+          "item": [
+            {
+              "name": "List Employees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/employees?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "employees"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" }
+                  ]
+                },
+                "description": "[Admin | CompanyAdmin] Paginated list of all employees in this company. Returns assignment records with embedded user and tier."
+              },
+              "response": []
+            },
+            {
+              "name": "Add Employee (existing user)",
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 201) {",
+                    "  const res = pm.response.json();",
+                    "  pm.collectionVariables.set('employeeId', res.data.id);",
+                    "  pm.test('Employee added', () => pm.expect(res.success).to.be.true);",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"jane@acme.com\",\n  \"tierId\": \"{{tierId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/employees",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "employees"]
+                },
+                "description": "[Admin | CompanyAdmin] Add an employee by email or phone. If the user already exists → creates assignment and notifies. If new → creates PENDING user, assignment, Redis invite token (7d TTL), and sends invite via email/SMS. tierId is optional."
+              },
+              "response": []
+            },
+            {
+              "name": "Add Employee (new user / invite)",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"newstaff@acme.com\",\n  \"tierId\": \"{{tierId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/employees",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "employees"]
+                },
+                "description": "When the email/phone does not match any existing user, a PENDING account is created and an invite email/SMS is sent with a deep-link containing the invite token."
+              },
+              "response": []
+            },
+            {
+              "name": "Remove Employee",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/employees/{{employeeId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "employees", "{{employeeId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Soft-remove an employee (sets assignmentStatus to 'inactive'). They can be re-added later."
+              },
+              "response": []
+            },
+            {
+              "name": "Reassign Employee Tier",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"tierId\": \"{{tierId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/employees/{{employeeId}}/tier",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "employees", "{{employeeId}}", "tier"]
+                },
+                "description": "[Admin | CompanyAdmin] Move an employee to a different tier. Pass tierId: null to unassign. Takes effect from the next billing cycle."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "— Company Admins —",
+          "item": [
+            {
+              "name": "List Company Admins",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/admins",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "admins"]
+                },
+                "description": "[Admin | CompanyAdmin] List all admins for this company."
+              },
+              "response": []
+            },
+            {
+              "name": "Grant Company Admin",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/admins/{{userId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "admins", "{{userId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Grant company_admin role to an existing user. Creates a CompanyAdmin record and appends Role.COMPANY_ADMIN to their roles array."
+              },
+              "response": []
+            },
+            {
+              "name": "Revoke Company Admin",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/companies/{{companyId}}/admins/{{userId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["companies", "{{companyId}}", "admins", "{{userId}}"]
+                },
+                "description": "[Admin | CompanyAdmin] Remove company admin access. If the user has no remaining admin memberships across any company, the COMPANY_ADMIN role is stripped from their profile."
+              },
+              "response": []
+            }
+          ]
         }
       ]
     }

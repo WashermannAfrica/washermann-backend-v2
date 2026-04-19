@@ -75,9 +75,9 @@ export class AuthService {
     await this.userRepository.save(user);
     this.logger.log(`New user registered: ${user.id}`);
 
-    // Send welcome + verification OTP (fire-and-forget, don't block response)
-    this.sendWelcomeAndVerificationOtp(user).catch((err) =>
-      this.logger.error(`Post-registration notifications failed: ${err.message}`),
+    // Send verification OTP only — welcome email is sent after OTP is verified
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Post-registration OTP failed: ${err.message}`),
     );
 
     const tokens = await this.generateTokenPair(user);
@@ -176,9 +176,9 @@ export class AuthService {
     await this.userRepository.save(user);
     this.logger.log(`User activated: ${user.id}`);
 
-    // Send welcome + verification OTP
-    this.sendWelcomeAndVerificationOtp(user).catch((err) =>
-      this.logger.error(`Post-activation notifications failed: ${err.message}`),
+    // Send verification OTP only — welcome email is sent after OTP is verified
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Post-activation OTP failed: ${err.message}`),
     );
 
     const tokens = await this.generateTokenPair(user);
@@ -211,8 +211,8 @@ export class AuthService {
 
     this.logger.log(`User activated via invite token: ${user.id}`);
 
-    this.sendWelcomeAndVerificationOtp(user).catch((err) =>
-      this.logger.error(`Post-set-password notifications failed: ${err.message}`),
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Post-set-password OTP failed: ${err.message}`),
     );
 
     const tokens = await this.generateTokenPair(user);
@@ -239,6 +239,9 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired OTP');
     }
 
+    // Track whether this is the user's first verification
+    const isFirstVerification = !user.emailVerified && !user.phoneVerified;
+
     // Mark as verified
     if (dto.channel === 'email') {
       user.emailVerified = true;
@@ -250,6 +253,13 @@ export class AuthService {
     await this.redisService.del(`${prefix}${user.id}`);
 
     this.logger.log(`${dto.channel} verified for user: ${user.id}`);
+
+    // Send welcome email on the first successful verification only
+    if (isFirstVerification) {
+      this.notificationsService
+        .sendWelcome({ fullName: user.fullName, email: user.email, phone: user.phone })
+        .catch((err) => this.logger.error(`Welcome email failed: ${err.message}`));
+    }
 
     return {
       data: {
@@ -450,18 +460,6 @@ export class AuthService {
 
   private generateOtp(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  private async sendWelcomeAndVerificationOtp(user: User): Promise<void> {
-    // Welcome email
-    await this.notificationsService.sendWelcome({
-      fullName: user.fullName,
-      email: user.email,
-      phone: user.phone,
-    });
-
-    // Verification OTP
-    await this.sendVerificationOtp(user);
   }
 
   private async sendVerificationOtp(user: User): Promise<void> {

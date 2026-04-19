@@ -27,6 +27,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { CompaniesModule } from './modules/companies/companies.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { UsersModule } from './modules/users/users.module';
     // ─── Feature Modules ──────────────────────────────────────────────────────
     AuthModule,
     UsersModule,
+    CompaniesModule,
   ],
 
   providers: [

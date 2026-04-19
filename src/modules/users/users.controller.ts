@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { CompaniesService } from '../companies/companies.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -34,7 +35,10 @@ import { Role } from '../../common/enums/roles.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly companiesService: CompaniesService,
+  ) {}
 
   // ─── Profile ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +105,15 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) addressId: string,
   ) {
     return this.usersService.setDefaultAddress(userId, addressId);
+  }
+
+  // ─── Company memberships (employee self-view) ─────────────────────────────────
+
+  @Get('me/companies')
+  @ApiOperation({ summary: "List the employee's active company memberships" })
+  @ApiResponse({ status: 200, description: 'Company memberships' })
+  getMyCompanies(@CurrentUser('id') userId: string) {
+    return this.companiesService.getMyCompanies(userId);
   }
 
   // ─── Admin Endpoints ──────────────────────────────────────────────────────────

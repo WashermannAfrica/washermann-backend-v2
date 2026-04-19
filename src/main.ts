@@ -70,6 +70,7 @@ All responses follow the standard envelope:
       .addBearerAuth()
       .addTag('Auth', 'Authentication, registration and identity flows')
       .addTag('Users', 'User profiles and address management')
+      .addTag('Companies', 'Company management, tiers, employees and admin grants')
       .addServer(`http://localhost:${port}`, 'Local')
       .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')
