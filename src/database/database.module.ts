@@ -3,6 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Address } from './entities/address.entity';
+import { Company } from './entities/company.entity';
+import { Tier } from './entities/tier.entity';
+import { CompanyEmployee } from './entities/company-employee.entity';
+import { CompanyAdmin } from './entities/company-admin.entity';
 
 @Module({
   imports: [
@@ -16,7 +20,7 @@ import { Address } from './entities/address.entity';
 
         const base = {
           type: 'postgres' as const,
-          entities: [User, Address],
+          entities: [User, Address, Company, Tier, CompanyEmployee, CompanyAdmin],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
           logging: config.get<boolean>('database.logging'),
