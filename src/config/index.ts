@@ -4,3 +4,5 @@ export { default as jwtConfig } from './jwt.config';
 export { default as redisConfig } from './redis.config';
 export { default as notificationsConfig } from './notifications.config';
 export { default as seedConfig } from './seed.config';
+export { default as paystackConfig } from './paystack.config';
+export { default as topupConfig } from './topup.config';
