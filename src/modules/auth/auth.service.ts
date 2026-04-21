@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
+import { createHmac } from 'crypto';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
@@ -529,7 +530,16 @@ export class AuthService {
     );
     await this.redisService.setEx(`${REFRESH_TOKEN_PREFIX}${user.id}`, ttl, jti);
 
-    return { accessToken, refreshToken };
+    // ── topupKey ──────────────────────────────────────────────────────────────
+    // Deterministic per-user key derived from TOPUP_SIGNING_SECRET + userId.
+    // Never stored in DB. The mobile app uses this to generate the time-based
+    // HMAC code (X-WM-Topup-Code) required on every top-up request.
+    const signingSecret = this.configService.get<string>('topup.signingSecret') || '';
+    const topupKey = signingSecret
+      ? createHmac('sha256', signingSecret).update(user.id).digest('hex')
+      : '';
+
+    return { accessToken, refreshToken, topupKey };
   }
 
   // ─── Misc helpers ─────────────────────────────────────────────────────────────

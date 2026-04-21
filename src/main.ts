@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'warn', 'error', 'debug'],
+    rawBody: true,  // Required for Paystack webhook HMAC-SHA512 signature verification
   });
 
   const configService = app.get(ConfigService);
@@ -22,7 +23,7 @@ async function bootstrap() {
   app.enableCors({
     origin: configService.get<string>('app.frontendUrl') || '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret', 'X-WM-Topup-Code'],
     credentials: true,
   });
 
@@ -71,6 +72,8 @@ All responses follow the standard envelope:
       .addTag('Auth', 'Authentication, registration and identity flows')
       .addTag('Users', 'User profiles and address management')
       .addTag('Companies', 'Company management, tiers, employees and admin grants')
+      .addTag('Wallets', 'WashPoint wallet balance, ledger history and top-up flows')
+      .addTag('Conversion Rates', 'WashPoint ↔ fiat conversion rate management (admin)')
       .addServer(`http://localhost:${port}`, 'Local')
       .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')

@@ -7,6 +7,10 @@ import { Company } from './entities/company.entity';
 import { Tier } from './entities/tier.entity';
 import { CompanyEmployee } from './entities/company-employee.entity';
 import { CompanyAdmin } from './entities/company-admin.entity';
+import { ConversionRate } from './entities/conversion-rate.entity';
+import { Wallet } from './entities/wallet.entity';
+import { LedgerEntry } from './entities/ledger-entry.entity';
+import { PaystackTransaction } from './entities/paystack-transaction.entity';
 
 @Module({
   imports: [
@@ -20,7 +24,11 @@ import { CompanyAdmin } from './entities/company-admin.entity';
 
         const base = {
           type: 'postgres' as const,
-          entities: [User, Address, Company, Tier, CompanyEmployee, CompanyAdmin],
+          entities: [
+            User, Address,
+            Company, Tier, CompanyEmployee, CompanyAdmin,
+            ConversionRate, Wallet, LedgerEntry, PaystackTransaction,
+          ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
           logging: config.get<boolean>('database.logging'),

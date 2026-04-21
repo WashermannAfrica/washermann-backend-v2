@@ -10,6 +10,8 @@ import {
   redisConfig,
   notificationsConfig,
   seedConfig,
+  paystackConfig,
+  topupConfig,
 } from './config';
 
 // Database
@@ -28,13 +30,15 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CompaniesModule } from './modules/companies/companies.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
     // ─── Config ───────────────────────────────────────────────────────────────
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig, redisConfig, notificationsConfig, seedConfig],
+      load: [appConfig, databaseConfig, jwtConfig, redisConfig, notificationsConfig, seedConfig, paystackConfig, topupConfig],
       envFilePath: '.env',
     }),
 
@@ -54,6 +58,8 @@ import { CompaniesModule } from './modules/companies/companies.module';
     AuthModule,
     UsersModule,
     CompaniesModule,
+    WalletsModule,
+    PaymentsModule,
   ],
 
   providers: [
