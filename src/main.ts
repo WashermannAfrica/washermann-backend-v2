@@ -72,6 +72,7 @@ All responses follow the standard envelope:
       .addTag('Auth', 'Authentication, registration and identity flows')
       .addTag('Users', 'User profiles and address management')
       .addTag('Companies', 'Company management, tiers, employees and admin grants')
+      .addTag('Teams', 'Self-service teams — create, manage members and assign roles')
       .addTag('Wallets', 'WashPoint wallet balance, ledger history and top-up flows')
       .addTag('Conversion Rates', 'WashPoint ↔ fiat conversion rate management (admin)')
       .addServer(`http://localhost:${port}`, 'Local')

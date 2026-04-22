@@ -5,9 +5,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcryptjs';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Company } from '../../database/entities/company.entity';
@@ -17,22 +19,27 @@ import { CompanyAdmin } from '../../database/entities/company-admin.entity';
 import { User } from '../../database/entities/user.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { CompanyStatus } from '../../common/enums/company-status.enum';
+import { CompanyActivationStatus } from '../../common/enums/company-activation-status.enum';
+import { CompanyRole } from '../../common/enums/company-role.enum';
 import { AssignmentStatus } from '../../common/enums/assignment-status.enum';
 import { Role } from '../../common/enums/roles.enum';
 import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateCompanyDto,
+  ActivateCompanyDto,
   UpdateCompanyDto,
   UpdateCompanyStatusDto,
+  GrantAdminDto,
   AddEmployeeDto,
   ReassignTierDto,
   CreateTierDto,
   UpdateTierDto,
 } from './dto';
 
-const INVITE_TOKEN_PREFIX = 'company_invite:';
-const INVITE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const SALT_ROUNDS = 12;
+const COMPANY_INVITE_PREFIX = 'company_invite:';
+const COMPANY_INVITE_TTL_SECONDS = 48 * 60 * 60; // 48 hours
 
 @Injectable()
 export class CompaniesService {
@@ -54,21 +61,176 @@ export class CompaniesService {
     private configService: ConfigService,
   ) {}
 
-  // ─── Companies (Admin-only) ───────────────────────────────────────────────────
+  // ─── Platform-Admin: create company ──────────────────────────────────────────
 
   async createCompany(dto: CreateCompanyDto) {
+    const ownerEmail = dto.ownerEmail.toLowerCase();
+
+    // Prevent duplicate company invites to the same email
+    const emailTaken = await this.companyRepository.findOne({
+      where: { ownerEmail },
+    });
+    if (emailTaken) {
+      throw new ConflictException(
+        'A company account with this email already exists',
+      );
+    }
+
     const company = this.companyRepository.create({
       name: dto.name,
-      contactEmail: dto.contactEmail ?? null,
-      contactPhone: dto.contactPhone ?? null,
+      ownerEmail,
+      activationStatus: CompanyActivationStatus.PENDING,
       status: CompanyStatus.ACTIVE,
     });
 
     await this.companyRepository.save(company);
-    this.logger.log(`Company created: ${company.id} — ${company.name}`);
 
-    return { data: company, message: 'Company created successfully' };
+    // Generate one-time invite token and store in Redis
+    // The token payload carries companyId + ownerEmail so activation cannot be
+    // redirected to a different email or company.
+    const inviteToken = uuidv4();
+    await this.redisService.setEx(
+      `${COMPANY_INVITE_PREFIX}${inviteToken}`,
+      COMPANY_INVITE_TTL_SECONDS,
+      JSON.stringify({ companyId: company.id, ownerEmail }),
+    );
+
+    const deepLinkBase = this.configService.get<string>(
+      'app.deepLinkBase',
+      'https://app.washermann.com',
+    );
+
+    // Fire and forget — network errors must not block the admin's response
+    this.notificationsService
+      .sendCompanyInvite({
+        companyName: company.name,
+        ownerEmail,
+        inviteToken,
+        deepLinkBase,
+      })
+      .catch((err) =>
+        this.logger.error(`Company invite email failed: ${err.message}`),
+      );
+
+    this.logger.log(
+      `Company created: ${company.id} — "${company.name}" — invite sent to ${ownerEmail}`,
+    );
+
+    return {
+      data: { id: company.id, name: company.name, ownerEmail, activationStatus: company.activationStatus },
+      message: 'Company created. Activation invite sent to the company email.',
+    };
   }
+
+  // ─── Company activation (called by the company owner via the invite link) ─────
+
+  async activateCompany(dto: ActivateCompanyDto) {
+    // ── 1. Validate and consume the one-time token ──────────────────────────────
+    const redisKey = `${COMPANY_INVITE_PREFIX}${dto.inviteToken}`;
+    const raw = await this.redisService.get(redisKey);
+
+    if (!raw) {
+      throw new UnauthorizedException(
+        'Invalid or expired activation link. Please ask your Washermann account manager to resend.',
+      );
+    }
+
+    let payload: { companyId: string; ownerEmail: string };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      throw new UnauthorizedException('Malformed invite token.');
+    }
+
+    // Delete immediately — one-time use only; prevents replay attacks
+    await this.redisService.del(redisKey);
+
+    const { companyId, ownerEmail } = payload;
+
+    // ── 2. Load the company and guard against re-activation ───────────────────
+    const company = await this.findCompanyOrFail(companyId);
+
+    if (company.activationStatus === CompanyActivationStatus.ACTIVE) {
+      throw new ConflictException('This company account has already been activated.');
+    }
+
+    // ── 3. Check whether a user account already exists for this email ─────────
+    //    (handles edge case: someone registered personally with the same email)
+    let ownerUser = await this.userRepository.findOne({
+      where: { email: ownerEmail },
+    });
+
+    if (ownerUser) {
+      if (ownerUser.status === UserStatus.SUSPENDED) {
+        throw new ForbiddenException(
+          'The account associated with this email is suspended.',
+        );
+      }
+      // If account exists (self-registered), just elevate their role
+    } else {
+      // Create a fresh user account for the company owner
+      const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+
+      ownerUser = this.userRepository.create({
+        fullName: dto.fullName,
+        email: ownerEmail,
+        phone: dto.phone,
+        passwordHash,
+        roles: [Role.USER],
+        status: UserStatus.ACTIVE,
+        emailVerified: true,   // The activation link itself verified email ownership
+        phoneVerified: false,
+      });
+
+      await this.userRepository.save(ownerUser);
+    }
+
+    // ── 4. Grant COMPANY_OWNER role on the user ───────────────────────────────
+    if (!ownerUser.roles.includes(Role.COMPANY_OWNER)) {
+      ownerUser.roles = [...ownerUser.roles, Role.COMPANY_OWNER];
+      await this.userRepository.save(ownerUser);
+    }
+
+    // ── 5. Create the CompanyAdmin record with role = OWNER ───────────────────
+    const existingAdmin = await this.adminRepository.findOne({
+      where: { companyId, userId: ownerUser.id },
+    });
+
+    if (!existingAdmin) {
+      const ownerRecord = this.adminRepository.create({
+        companyId,
+        userId: ownerUser.id,
+        companyRole: CompanyRole.OWNER,
+      });
+      await this.adminRepository.save(ownerRecord);
+    } else {
+      // Upgrade existing record to owner if needed
+      existingAdmin.companyRole = CompanyRole.OWNER;
+      await this.adminRepository.save(existingAdmin);
+    }
+
+    // ── 6. Update the company profile ────────────────────────────────────────
+    company.activationStatus = CompanyActivationStatus.ACTIVE;
+    company.phone = dto.phone;
+    company.industry = dto.industry;
+    company.address = dto.address;
+    company.numberOfWorkers = dto.numberOfWorkers;
+    company.website = dto.website ?? null;
+    company.description = dto.description ?? null;
+
+    await this.companyRepository.save(company);
+
+    this.logger.log(
+      `Company activated: ${company.id} — "${company.name}" by user ${ownerUser.id}`,
+    );
+
+    return {
+      data: { company: this.sanitizeCompany(company), userId: ownerUser.id },
+      message: 'Company account activated successfully. You can now log in.',
+    };
+  }
+
+  // ─── Platform-Admin: list / get / status ─────────────────────────────────────
 
   async listCompanies(page = 1, limit = 20) {
     const [companies, total] = await this.companyRepository.findAndCount({
@@ -78,7 +240,7 @@ export class CompaniesService {
     });
 
     return {
-      data: companies,
+      data: companies.map((c) => this.sanitizeCompany(c)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
@@ -91,19 +253,23 @@ export class CompaniesService {
 
     if (!company) throw new NotFoundException('Company not found');
 
-    return { data: company };
+    return { data: this.sanitizeCompany(company) };
   }
 
   async updateCompany(companyId: string, dto: UpdateCompanyDto) {
     const company = await this.findCompanyOrFail(companyId);
 
-    if (dto.name !== undefined) company.name = dto.name;
-    if (dto.contactEmail !== undefined) company.contactEmail = dto.contactEmail;
-    if (dto.contactPhone !== undefined) company.contactPhone = dto.contactPhone;
+    if (dto.name !== undefined)            company.name = dto.name;
+    if (dto.phone !== undefined)           company.phone = dto.phone ?? null;
+    if (dto.industry !== undefined)        company.industry = dto.industry ?? null;
+    if (dto.address !== undefined)         company.address = dto.address ?? null;
+    if (dto.website !== undefined)         company.website = dto.website ?? null;
+    if (dto.numberOfWorkers !== undefined) company.numberOfWorkers = dto.numberOfWorkers ?? null;
+    if (dto.description !== undefined)     company.description = dto.description ?? null;
 
     await this.companyRepository.save(company);
 
-    return { data: company, message: 'Company updated' };
+    return { data: this.sanitizeCompany(company), message: 'Company updated' };
   }
 
   async updateCompanyStatus(companyId: string, dto: UpdateCompanyStatusDto) {
@@ -112,24 +278,67 @@ export class CompaniesService {
     company.status = dto.status;
     await this.companyRepository.save(company);
 
-    return { data: company, message: `Company status set to ${dto.status}` };
+    return {
+      data: this.sanitizeCompany(company),
+      message: `Company status set to ${dto.status}`,
+    };
   }
 
-  // ─── Company-Admin access check ───────────────────────────────────────────────
+  // ─── Multi-company dashboard: list all companies the user can admin ───────────
+
+  async getAdminCompanies(userId: string) {
+    const records = await this.adminRepository.find({
+      where: { userId },
+      relations: ['company'],
+      order: { createdAt: 'ASC' },
+    });
+
+    return {
+      data: records
+        .filter((r) => r.company)
+        .map((r) => ({
+          companyId: r.companyId,
+          companyRole: r.companyRole,
+          company: this.sanitizeCompany(r.company),
+        })),
+    };
+  }
+
+  // ─── Company-admin access check ───────────────────────────────────────────────
 
   /**
-   * Asserts that the calling user is an admin of the given company.
-   * Admins with Role.ADMIN bypass this check.
+   * Asserts that the calling user is an admin (OWNER or ADMIN) of the company.
+   * Platform admins (Role.ADMIN) bypass this check — they can access any company.
    */
   async assertCompanyAccess(companyId: string, userId: string, roles: Role[]) {
-    if (roles.includes(Role.ADMIN)) return; // platform admins can access any company
+    if (roles.includes(Role.ADMIN)) return; // Platform admin bypass
 
     const membership = await this.adminRepository.findOne({
       where: { companyId, userId },
     });
 
     if (!membership) {
-      throw new ForbiddenException('You do not have admin access to this company');
+      throw new ForbiddenException(
+        'You do not have admin access to this company',
+      );
+    }
+  }
+
+  /**
+   * Asserts that the caller holds OWNER role in the company.
+   * Used for operations restricted to the company owner: granting OWNER role.
+   */
+  async assertOwnerAccess(companyId: string, userId: string, roles: Role[]) {
+    if (roles.includes(Role.ADMIN)) return; // Platform admin bypass
+
+    const membership = await this.adminRepository.findOne({
+      where: { companyId, userId },
+    });
+
+    if (!membership || membership.companyRole !== CompanyRole.OWNER) {
+      throw new ForbiddenException(
+        'Only the company owner can perform this action',
+      );
     }
   }
 
@@ -165,10 +374,10 @@ export class CompaniesService {
   async updateTier(companyId: string, tierId: string, dto: UpdateTierDto) {
     const tier = await this.findTierOrFail(companyId, tierId);
 
-    if (dto.name !== undefined) tier.name = dto.name;
-    if (dto.monthlyPoints !== undefined) tier.monthlyPoints = dto.monthlyPoints;
+    if (dto.name !== undefined)              tier.name = dto.name;
+    if (dto.monthlyPoints !== undefined)     tier.monthlyPoints = dto.monthlyPoints;
     if (dto.monthlyOrderLimit !== undefined) tier.monthlyOrderLimit = dto.monthlyOrderLimit;
-    if (dto.itemLimit !== undefined) tier.itemLimit = dto.itemLimit;
+    if (dto.itemLimit !== undefined)         tier.itemLimit = dto.itemLimit;
 
     await this.tierRepository.save(tier);
 
@@ -178,7 +387,6 @@ export class CompaniesService {
   async deleteTier(companyId: string, tierId: string) {
     const tier = await this.findTierOrFail(companyId, tierId);
 
-    // Employees on this tier will have tierId set to NULL (SET NULL FK)
     await this.tierRepository.remove(tier);
 
     return { data: null, message: 'Tier deleted' };
@@ -210,12 +418,16 @@ export class CompaniesService {
 
     const company = await this.findCompanyOrFail(companyId);
 
-    // Validate tier if provided
+    if (company.activationStatus !== CompanyActivationStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Company is not yet activated. Cannot add employees.',
+      );
+    }
+
     if (dto.tierId) {
       await this.findTierOrFail(companyId, dto.tierId);
     }
 
-    // Look up user by email or phone
     const user = await this.userRepository.findOne({
       where: dto.email
         ? { email: dto.email.toLowerCase() }
@@ -223,16 +435,17 @@ export class CompaniesService {
     });
 
     if (user) {
-      // ── Existing user ────────────────────────────────────────────────────────
       const existing = await this.employeeRepository.findOne({
         where: { companyId, userId: user.id },
       });
 
       if (existing) {
         if (existing.assignmentStatus === AssignmentStatus.ACTIVE) {
-          throw new ConflictException('User is already an employee of this company');
+          throw new ConflictException(
+            'User is already an employee of this company',
+          );
         }
-        // Re-activate a previously deactivated assignment
+        // Re-activate
         existing.assignmentStatus = AssignmentStatus.ACTIVE;
         existing.tierId = dto.tierId ?? null;
         existing.assignedAt = new Date();
@@ -242,10 +455,12 @@ export class CompaniesService {
           this.logger.error(`Employee add notification failed: ${err.message}`),
         );
 
-        return { data: this.sanitizeEmployee(existing), message: 'Employee re-activated' };
+        return {
+          data: this.sanitizeEmployee(existing),
+          message: 'Employee re-activated',
+        };
       }
 
-      // Create fresh assignment
       const assignment = this.employeeRepository.create({
         companyId,
         userId: user.id,
@@ -262,11 +477,9 @@ export class CompaniesService {
 
       return { data: this.sanitizeEmployee(assignment), message: 'Employee added' };
     } else {
-      // ── New user — create PENDING account and send invite ────────────────────
+      // New user — create PENDING account and send invite
       const pendingUser = this.userRepository.create({
-        fullName: dto.email
-          ? dto.email.split('@')[0]   // temporary name; they'll update on first login
-          : 'Invited User',
+        fullName: dto.email ? dto.email.split('@')[0] : 'Invited User',
         email: dto.email ? dto.email.toLowerCase() : null,
         phone: dto.phone ?? null,
         roles: [Role.USER],
@@ -287,16 +500,17 @@ export class CompaniesService {
 
       await this.employeeRepository.save(assignment);
 
-      // Store invite token in Redis
       const inviteToken = uuidv4();
       await this.redisService.setEx(
-        `${INVITE_TOKEN_PREFIX}${inviteToken}`,
-        INVITE_TTL_SECONDS,
+        `company_invite:${inviteToken}`,
+        7 * 24 * 60 * 60, // 7 days
         JSON.stringify({ userId: pendingUser.id, companyId }),
       );
 
-      const deepLinkBase =
-        this.configService.get<string>('app.deepLinkBase', 'https://app.washermann.com');
+      const deepLinkBase = this.configService.get<string>(
+        'app.deepLinkBase',
+        'https://app.washermann.com',
+      );
 
       this.notificationsService
         .sendEmployeeInvite({
@@ -308,7 +522,7 @@ export class CompaniesService {
           deepLinkBase,
         })
         .catch((err) =>
-          this.logger.error(`Employee invite notification failed: ${err.message}`),
+          this.logger.error(`Employee invite failed: ${err.message}`),
         );
 
       return {
@@ -327,7 +541,11 @@ export class CompaniesService {
     return { data: null, message: 'Employee removed from company' };
   }
 
-  async reassignTier(companyId: string, employeeId: string, dto: ReassignTierDto) {
+  async reassignTier(
+    companyId: string,
+    employeeId: string,
+    dto: ReassignTierDto,
+  ) {
     const assignment = await this.findAssignmentOrFail(companyId, employeeId);
 
     if (dto.tierId) {
@@ -348,63 +566,129 @@ export class CompaniesService {
     const admins = await this.adminRepository.find({
       where: { companyId },
       relations: ['user'],
-      order: { createdAt: 'ASC' },
+      order: { companyRole: 'ASC', createdAt: 'ASC' }, // owners first
     });
 
     return { data: admins.map((a) => this.sanitizeAdmin(a)) };
   }
 
-  async addAdmin(companyId: string, userId: string) {
+  /**
+   * Grant admin or owner access to a user for this company.
+   *
+   * Security rules enforced here:
+   *  - Only COMPANY_OWNER (or platform ADMIN) may grant OWNER role.
+   *  - COMPANY_ADMIN cannot grant OWNER — not even to themselves.
+   *  - Cannot add a second OWNER without demoting the first (ownership transfer).
+   */
+  async addAdmin(
+    companyId: string,
+    targetUserId: string,
+    dto: GrantAdminDto,
+    callerId: string,
+    callerRoles: Role[],
+  ) {
     await this.findCompanyOrFail(companyId);
 
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
+    const target = await this.userRepository.findOne({
+      where: { id: targetUserId },
+    });
+    if (!target) throw new NotFoundException('User not found');
+
+    // ── Role escalation prevention ────────────────────────────────────────────
+    if (dto.companyRole === CompanyRole.OWNER) {
+      await this.assertOwnerAccess(companyId, callerId, callerRoles);
+    }
 
     const existing = await this.adminRepository.findOne({
-      where: { companyId, userId },
+      where: { companyId, userId: targetUserId },
     });
 
     if (existing) {
-      throw new ConflictException('User is already a company admin');
+      if (existing.companyRole === CompanyRole.OWNER && dto.companyRole === CompanyRole.ADMIN) {
+        // Downgrading an owner: verify no orphan risk
+        await this.assertNotLastOwner(companyId, targetUserId);
+        existing.companyRole = CompanyRole.ADMIN;
+
+        // Remove COMPANY_OWNER JWT role if they're not owner anywhere else
+        const stillOwner = await this.adminRepository.count({
+          where: { userId: targetUserId, companyRole: CompanyRole.OWNER },
+        });
+        if (stillOwner === 0 && target.roles.includes(Role.COMPANY_OWNER)) {
+          target.roles = target.roles.filter((r) => r !== Role.COMPANY_OWNER);
+          await this.userRepository.save(target);
+        }
+      } else {
+        existing.companyRole = dto.companyRole;
+      }
+      await this.adminRepository.save(existing);
+      return { data: this.sanitizeAdmin(existing), message: 'Admin role updated' };
     }
 
-    const admin = this.adminRepository.create({ companyId, userId });
+    const admin = this.adminRepository.create({
+      companyId,
+      userId: targetUserId,
+      companyRole: dto.companyRole,
+    });
     await this.adminRepository.save(admin);
 
-    // Grant COMPANY_ADMIN role if not already held
-    if (!user.roles.includes(Role.COMPANY_ADMIN)) {
-      user.roles = [...user.roles, Role.COMPANY_ADMIN];
-      await this.userRepository.save(user);
+    // Sync JWT role
+    const newRole =
+      dto.companyRole === CompanyRole.OWNER ? Role.COMPANY_OWNER : Role.COMPANY_ADMIN;
+
+    if (!target.roles.includes(newRole)) {
+      target.roles = [...target.roles, newRole];
+      await this.userRepository.save(target);
     }
 
     return { data: this.sanitizeAdmin(admin), message: 'Admin added' };
   }
 
-  async removeAdmin(companyId: string, userId: string) {
+  async removeAdmin(
+    companyId: string,
+    targetUserId: string,
+    callerId: string,
+    callerRoles: Role[],
+  ) {
     await this.findCompanyOrFail(companyId);
 
-    const admin = await this.adminRepository.findOne({
-      where: { companyId, userId },
+    const record = await this.adminRepository.findOne({
+      where: { companyId, userId: targetUserId },
     });
+    if (!record) throw new NotFoundException('Admin not found for this company');
 
-    if (!admin) throw new NotFoundException('Admin not found for this company');
+    // ── Owner removal protection ───────────────────────────────────────────────
+    if (record.companyRole === CompanyRole.OWNER) {
+      // Only another OWNER or platform ADMIN can remove an OWNER
+      await this.assertOwnerAccess(companyId, callerId, callerRoles);
+      // Cannot remove the last owner — company would be unmanageable
+      await this.assertNotLastOwner(companyId, targetUserId);
+    }
 
-    await this.adminRepository.remove(admin);
+    await this.adminRepository.remove(record);
 
-    // Remove COMPANY_ADMIN role only if they are not an admin of any other company
-    const stillAdmin = await this.adminRepository.count({ where: { userId } });
-    if (stillAdmin === 0) {
-      const user = await this.userRepository.findOne({ where: { id: userId } });
-      if (user) {
-        user.roles = user.roles.filter((r) => r !== Role.COMPANY_ADMIN);
-        await this.userRepository.save(user);
-      }
+    // Scrub JWT roles if no remaining memberships
+    const target = await this.userRepository.findOne({
+      where: { id: targetUserId },
+    });
+    if (target) {
+      const stillOwner = await this.adminRepository.count({
+        where: { userId: targetUserId, companyRole: CompanyRole.OWNER },
+      });
+      const stillAdmin = await this.adminRepository.count({
+        where: { userId: targetUserId },
+      });
+
+      let roles = [...target.roles];
+      if (stillOwner === 0) roles = roles.filter((r) => r !== Role.COMPANY_OWNER);
+      if (stillAdmin === 0) roles = roles.filter((r) => r !== Role.COMPANY_ADMIN);
+      target.roles = roles;
+      await this.userRepository.save(target);
     }
 
     return { data: null, message: 'Admin removed' };
   }
 
-  // ─── Employee view (for the employee themselves) ───────────────────────────────
+  // ─── Employee self-view ───────────────────────────────────────────────────────
 
   async getMyCompanies(userId: string) {
     const assignments = await this.employeeRepository.find({
@@ -418,6 +702,20 @@ export class CompaniesService {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+  private async assertNotLastOwner(
+    companyId: string,
+    userId: string,
+  ): Promise<void> {
+    const ownerCount = await this.adminRepository.count({
+      where: { companyId, companyRole: CompanyRole.OWNER },
+    });
+    if (ownerCount <= 1) {
+      throw new BadRequestException(
+        'Cannot remove or demote the last owner. Transfer ownership first.',
+      );
+    }
+  }
+
   private async findCompanyOrFail(companyId: string): Promise<Company> {
     const company = await this.companyRepository.findOne({
       where: { id: companyId },
@@ -426,7 +724,10 @@ export class CompaniesService {
     return company;
   }
 
-  private async findTierOrFail(companyId: string, tierId: string): Promise<Tier> {
+  private async findTierOrFail(
+    companyId: string,
+    tierId: string,
+  ): Promise<Tier> {
     const tier = await this.tierRepository.findOne({
       where: { id: tierId, companyId },
     });
@@ -441,7 +742,8 @@ export class CompaniesService {
     const assignment = await this.employeeRepository.findOne({
       where: { id: employeeId, companyId },
     });
-    if (!assignment) throw new NotFoundException('Employee assignment not found');
+    if (!assignment)
+      throw new NotFoundException('Employee assignment not found');
     return assignment;
   }
 
@@ -451,9 +753,31 @@ export class CompaniesService {
       email: user.email ?? undefined,
       phone: user.phone ?? undefined,
       companyName,
-      inviteToken: '',        // existing user doesn't need an invite token
-      deepLinkBase: this.configService.get<string>('app.deepLinkBase', 'https://app.washermann.com'),
+      inviteToken: '',
+      deepLinkBase: this.configService.get<string>(
+        'app.deepLinkBase',
+        'https://app.washermann.com',
+      ),
     });
+  }
+
+  private sanitizeCompany(c: Company) {
+    return {
+      id: c.id,
+      name: c.name,
+      ownerEmail: c.ownerEmail,
+      activationStatus: c.activationStatus,
+      status: c.status,
+      phone: c.phone,
+      industry: c.industry,
+      address: c.address,
+      website: c.website,
+      numberOfWorkers: c.numberOfWorkers,
+      description: c.description,
+      tiers: c.tiers,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    };
   }
 
   private sanitizeEmployee(e: CompanyEmployee) {
@@ -484,6 +808,7 @@ export class CompaniesService {
       id: a.id,
       companyId: a.companyId,
       userId: a.userId,
+      companyRole: a.companyRole,
       createdAt: a.createdAt,
       user: a.user
         ? {

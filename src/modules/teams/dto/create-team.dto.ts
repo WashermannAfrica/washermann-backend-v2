@@ -1,26 +1,25 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
-  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
 
-export class UpdateCompanyDto {
-  @ApiProperty({ example: 'Acme Corp', required: false })
-  @IsOptional()
+export class CreateTeamDto {
+  @ApiProperty({ example: 'Design Team' })
+  @IsNotEmpty()
   @IsString()
   @MaxLength(255)
-  name?: string;
+  name: string;
 
-  @ApiProperty({ example: '+2348012345678', required: false })
+  @ApiProperty({ example: 'Our internal creative team', required: false })
   @IsOptional()
   @IsString()
-  @Matches(/^\+?[0-9]{10,15}$/, { message: 'Invalid phone number format' })
-  phone?: string;
+  description?: string;
 
   @ApiProperty({ example: 'Technology', required: false })
   @IsOptional()
@@ -33,20 +32,15 @@ export class UpdateCompanyDto {
   @IsString()
   address?: string;
 
-  @ApiProperty({ example: 'https://acme.com', required: false })
+  @ApiProperty({ example: 'https://team.com', required: false })
   @IsOptional()
   @IsUrl({}, { message: 'Website must be a valid URL' })
   @MaxLength(255)
   website?: string;
 
-  @ApiProperty({ example: 300, required: false })
+  @ApiProperty({ example: 10, required: false })
   @IsOptional()
   @IsInt()
   @Min(1)
-  numberOfWorkers?: number;
-
-  @ApiProperty({ example: 'We provide top-quality laundry logistics', required: false })
-  @IsOptional()
-  @IsString()
-  description?: string;
+  memberCount?: number;
 }

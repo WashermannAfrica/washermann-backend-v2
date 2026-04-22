@@ -99,6 +99,37 @@ export class NotificationsService {
     );
   }
 
+  // ─── Company Activation Invite ────────────────────────────────────────────────
+
+  async sendCompanyInvite(data: {
+    companyName: string;
+    ownerEmail: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
+    const activationLink = `${data.deepLinkBase}/company/activate?token=${data.inviteToken}`;
+
+    await this.emailService.send({
+      to: data.ownerEmail,
+      subject: `Activate your ${data.companyName} account on Washermann`,
+      html: `
+        <p>Hello,</p>
+        <p>A Washermann account has been created for <strong>${data.companyName}</strong>.</p>
+        <p>Click the link below to activate your company account and set up your profile:</p>
+        <p><a href="${activationLink}" style="padding:12px 24px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;">
+          Activate Company Account
+        </a></p>
+        <p>This link expires in <strong>48 hours</strong> and can only be used once.</p>
+        <p>If you did not request this, please ignore this email or contact support.</p>
+        <p>— The Washermann Team</p>
+      `,
+    });
+
+    this.logger.log(
+      `Company activation invite sent to ${data.ownerEmail} for "${data.companyName}"`,
+    );
+  }
+
   // ─── Employee Invite ──────────────────────────────────────────────────────────
 
   async sendEmployeeInvite(data: {

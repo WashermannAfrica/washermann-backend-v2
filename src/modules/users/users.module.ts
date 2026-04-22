@@ -5,9 +5,10 @@ import { Address } from '../../database/entities/address.entity';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { CompaniesModule } from '../companies/companies.module';
+import { TeamsModule } from '../teams/teams.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Address]), CompaniesModule],
+  imports: [TypeOrmModule.forFeature([User, Address]), CompaniesModule, TeamsModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],
