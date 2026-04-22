@@ -37,13 +37,19 @@ export class PaystackService {
    * Creates a pending PaystackTransaction with the conversion rate locked at
    * initiation time, then calls Paystack to get the authorization URL.
    */
-  async initiateTopup(userId: string, userEmail: string, dto: InitiateTopupDto) {
-    const currency    = (dto.currency ?? 'NGN').toUpperCase();
-    const amountKobo  = dto.amountNaira * 100;          // Naira → kobo
+  async initiateTopup(
+    userId: string,
+    userEmail: string,
+    dto: InitiateTopupDto,
+  ) {
+    const currency = (dto.currency ?? 'NGN').toUpperCase();
+    const amountKobo = dto.amountNaira * 100; // Naira → kobo
 
     // Validate amount bounds
-    const minKobo = this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
-    const maxKobo = this.configService.get<number>('paystack.maxTopupKobo') ?? 50_000_000;
+    const minKobo =
+      this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
+    const maxKobo =
+      this.configService.get<number>('paystack.maxTopupKobo') ?? 50_000_000;
 
     if (amountKobo < minKobo) {
       throw new BadRequestException(
@@ -58,7 +64,10 @@ export class PaystackService {
 
     // Lock the current rate NOW (before payment) — prevents post-change exploitation
     const rate = await this.conversionRateService.getActiveRate(currency);
-    const washPoints = this.conversionRateService.koboToWashPoints(amountKobo, rate);
+    const washPoints = this.conversionRateService.koboToWashPoints(
+      amountKobo,
+      rate,
+    );
 
     // Ensure wallet exists before we accept payment
     await this.walletsService.getOrCreateWallet(userId);
@@ -72,21 +81,21 @@ export class PaystackService {
       reference,
       amountKobo,
       currency,
-      conversionRateId:       rate.id,
+      conversionRateId: rate.id,
       conversionRateSnapshot: rate.pointsPerUnit,
-      washPointsCredited:     null,
-      status:                 TransactionStatus.PENDING,
+      washPointsCredited: null,
+      status: TransactionStatus.PENDING,
       metadata: {
         washPointsPreview: washPoints,
-        initiatedAt:       new Date().toISOString(),
+        initiatedAt: new Date().toISOString(),
       },
     });
     await this.txRepo.save(tx);
 
     // Call Paystack Initialize Transaction
     const { authorizationUrl, accessCode } = await this.paystackInitialize({
-      email:     userEmail,
-      amount:    amountKobo,
+      email: userEmail,
+      amount: amountKobo,
       reference,
       currency,
       metadata: {
@@ -96,18 +105,20 @@ export class PaystackService {
       },
     });
 
-    this.logger.log(`Top-up initiated: ref=${reference} | ₦${dto.amountNaira} | ${washPoints} WP preview`);
+    this.logger.log(
+      `Top-up initiated: ref=${reference} | ₦${dto.amountNaira} | ${washPoints} WP preview`,
+    );
 
     return {
       data: {
         reference,
         authorizationUrl,
         accessCode,
-        amountNaira:        dto.amountNaira,
+        amountNaira: dto.amountNaira,
         currency,
-        washPointsPreview:  washPoints,
-        conversionRate:     rate.pointsPerUnit,
-        rateEffectiveFrom:  rate.effectiveFrom,
+        washPointsPreview: washPoints,
+        conversionRate: rate.pointsPerUnit,
+        rateEffectiveFrom: rate.effectiveFrom,
       },
     };
   }
@@ -140,8 +151,11 @@ export class PaystackService {
       return { data: this.sanitizeTx(updated!) };
     }
 
-    if (paystackData.status === 'failed' || paystackData.status === 'abandoned') {
-      tx.status      = TransactionStatus.FAILED;
+    if (
+      paystackData.status === 'failed' ||
+      paystackData.status === 'abandoned'
+    ) {
+      tx.status = TransactionStatus.FAILED;
       tx.webhookData = paystackData;
       await this.txRepo.save(tx);
     }
@@ -161,7 +175,7 @@ export class PaystackService {
     this.verifyPaystackSignature(rawBody, signature);
 
     const payload = JSON.parse(rawBody.toString('utf-8'));
-    const event   = payload?.event as string;
+    const event = payload?.event as string;
 
     this.logger.log(`Paystack webhook received: ${event}`);
 
@@ -192,7 +206,7 @@ export class PaystackService {
       // Lock the transaction row — prevents duplicate webhook processing
       const tx = await qr.manager.findOne(PaystackTransaction, {
         where: { reference },
-        lock:  { mode: 'pessimistic_write' },
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!tx) {
@@ -203,16 +217,18 @@ export class PaystackService {
 
       // Idempotency guard — only process if still PENDING
       if (tx.status !== TransactionStatus.PENDING) {
-        this.logger.log(`charge.success already processed for ref: ${reference} (status=${tx.status})`);
+        this.logger.log(
+          `charge.success already processed for ref: ${reference} (status=${tx.status})`,
+        );
         await qr.rollbackTransaction();
         return;
       }
 
       // Update transaction record
-      tx.status             = TransactionStatus.SUCCESS;
-      tx.channel            = (data.channel as string) ?? null;
-      tx.paystackReference  = (data.id as string)?.toString() ?? null;
-      tx.webhookData        = data;
+      tx.status = TransactionStatus.SUCCESS;
+      tx.channel = (data.channel as string) ?? null;
+      tx.paystackReference = (data.id as string)?.toString() ?? null;
+      tx.webhookData = data;
       await qr.manager.save(PaystackTransaction, tx);
 
       await qr.commitTransaction();
@@ -224,15 +240,15 @@ export class PaystackService {
       );
 
       await this.walletsService.credit({
-        userId:                  tx.userId,
-        amount:                  washPoints,
-        source:                  LedgerSource.TOPUP,
-        reference:               tx.reference,
-        description:             `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
-        conversionRateId:        tx.conversionRateId,
-        conversionRateSnapshot:  tx.conversionRateSnapshot,
-        fiatAmountKobo:          tx.amountKobo,
-        fiatCurrency:            tx.currency,
+        userId: tx.userId,
+        amount: washPoints,
+        source: LedgerSource.TOPUP,
+        reference: tx.reference,
+        description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+        conversionRateId: tx.conversionRateId,
+        conversionRateSnapshot: tx.conversionRateSnapshot,
+        fiatAmountKobo: tx.amountKobo,
+        fiatCurrency: tx.currency,
         metadata: { paystackReference: tx.paystackReference },
       });
 
@@ -244,7 +260,9 @@ export class PaystackService {
       );
     } catch (err) {
       await qr.rollbackTransaction();
-      this.logger.error(`Error processing charge.success for ref ${reference}: ${(err as Error).message}`);
+      this.logger.error(
+        `Error processing charge.success for ref ${reference}: ${(err as Error).message}`,
+      );
       throw err;
     } finally {
       await qr.release();
@@ -258,7 +276,7 @@ export class PaystackService {
     const tx = await this.txRepo.findOne({ where: { reference } });
     if (!tx || tx.status !== TransactionStatus.PENDING) return;
 
-    tx.status      = TransactionStatus.FAILED;
+    tx.status = TransactionStatus.FAILED;
     tx.webhookData = data;
     await this.txRepo.save(tx);
 
@@ -273,10 +291,10 @@ export class PaystackService {
     // (the verify endpoint is already outside a transaction context)
     if (tx.status !== TransactionStatus.PENDING) return;
 
-    tx.status            = TransactionStatus.SUCCESS;
-    tx.channel           = (paystackData.channel as string) ?? null;
+    tx.status = TransactionStatus.SUCCESS;
+    tx.channel = (paystackData.channel as string) ?? null;
     tx.paystackReference = (paystackData.id as string)?.toString() ?? null;
-    tx.webhookData       = paystackData;
+    tx.webhookData = paystackData;
     await this.txRepo.save(tx);
 
     const washPoints = this.conversionRateService.koboToWashPoints(
@@ -285,15 +303,15 @@ export class PaystackService {
     );
 
     await this.walletsService.credit({
-      userId:                  tx.userId,
-      amount:                  washPoints,
-      source:                  LedgerSource.TOPUP,
-      reference:               tx.reference,
-      description:             `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
-      conversionRateId:        tx.conversionRateId,
-      conversionRateSnapshot:  tx.conversionRateSnapshot,
-      fiatAmountKobo:          tx.amountKobo,
-      fiatCurrency:            tx.currency,
+      userId: tx.userId,
+      amount: washPoints,
+      source: LedgerSource.TOPUP,
+      reference: tx.reference,
+      description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+      conversionRateId: tx.conversionRateId,
+      conversionRateSnapshot: tx.conversionRateSnapshot,
+      fiatAmountKobo: tx.amountKobo,
+      fiatCurrency: tx.currency,
       metadata: { paystackReference: tx.paystackReference },
     });
 
@@ -303,24 +321,24 @@ export class PaystackService {
   // ─── Private: Paystack API calls ──────────────────────────────────────────────
 
   private async paystackInitialize(params: {
-    email:     string;
-    amount:    number;
+    email: string;
+    amount: number;
     reference: string;
-    currency:  string;
-    metadata:  Record<string, unknown>;
+    currency: string;
+    metadata: Record<string, unknown>;
   }): Promise<{ authorizationUrl: string; accessCode: string }> {
     const secretKey = this.configService.get<string>('paystack.secretKey');
-    const baseUrl   = this.configService.get<string>('paystack.baseUrl');
+    const baseUrl = this.configService.get<string>('paystack.baseUrl');
 
     try {
       const res = await axios.post(
         `${baseUrl}/transaction/initialize`,
         {
-          email:     params.email,
-          amount:    params.amount,
+          email: params.email,
+          amount: params.amount,
           reference: params.reference,
-          currency:  params.currency,
-          metadata:  params.metadata,
+          currency: params.currency,
+          metadata: params.metadata,
         },
         {
           headers: {
@@ -334,15 +352,18 @@ export class PaystackService {
       const { authorization_url, access_code } = res.data.data;
       return { authorizationUrl: authorization_url, accessCode: access_code };
     } catch (err: any) {
-      const message = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      const message =
+        err?.response?.data?.message ?? err?.message ?? 'Paystack error';
       this.logger.error(`Paystack initialize failed: ${message}`);
       throw new BadRequestException(`Payment gateway error: ${message}`);
     }
   }
 
-  private async paystackVerify(reference: string): Promise<Record<string, unknown>> {
+  private async paystackVerify(
+    reference: string,
+  ): Promise<Record<string, unknown>> {
     const secretKey = this.configService.get<string>('paystack.secretKey');
-    const baseUrl   = this.configService.get<string>('paystack.baseUrl');
+    const baseUrl = this.configService.get<string>('paystack.baseUrl');
 
     try {
       const res = await axios.get(
@@ -354,7 +375,8 @@ export class PaystackService {
       );
       return res.data.data;
     } catch (err: any) {
-      const message = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      const message =
+        err?.response?.data?.message ?? err?.message ?? 'Paystack error';
       this.logger.error(`Paystack verify failed: ${message}`);
       throw new BadRequestException(`Payment gateway error: ${message}`);
     }
@@ -372,26 +394,28 @@ export class PaystackService {
     const secret = this.configService.get<string>('paystack.webhookSecret');
 
     if (!secret) {
-      this.logger.warn('PAYSTACK_WEBHOOK_SECRET not set — skipping signature verification (INSECURE)');
+      this.logger.warn(
+        'PAYSTACK_WEBHOOK_SECRET not set — skipping signature verification (INSECURE)',
+      );
       return;
     }
     if (!signature) {
       throw new UnauthorizedException('Missing Paystack webhook signature');
     }
 
-    const expected = createHmac('sha512', secret)
-      .update(rawBody)
-      .digest('hex');
+    const expected = createHmac('sha512', secret).update(rawBody).digest('hex');
 
-    const sigBuffer      = Buffer.from(signature,  'hex');
-    const expectedBuffer = Buffer.from(expected,   'hex');
+    const sigBuffer = Buffer.from(signature, 'hex');
+    const expectedBuffer = Buffer.from(expected, 'hex');
 
     const valid =
       sigBuffer.length === expectedBuffer.length &&
       timingSafeEqual(sigBuffer, expectedBuffer);
 
     if (!valid) {
-      this.logger.warn('Paystack webhook signature mismatch — request rejected');
+      this.logger.warn(
+        'Paystack webhook signature mismatch — request rejected',
+      );
       throw new UnauthorizedException('Invalid Paystack webhook signature');
     }
   }
@@ -400,17 +424,17 @@ export class PaystackService {
 
   private sanitizeTx(tx: PaystackTransaction) {
     return {
-      id:                     tx.id,
-      reference:              tx.reference,
-      amountKobo:             tx.amountKobo,
-      amountNaira:            tx.amountKobo / 100,
-      currency:               tx.currency,
+      id: tx.id,
+      reference: tx.reference,
+      amountKobo: tx.amountKobo,
+      amountNaira: tx.amountKobo / 100,
+      currency: tx.currency,
       conversionRateSnapshot: tx.conversionRateSnapshot,
-      washPointsCredited:     tx.washPointsCredited,
-      status:                 tx.status,
-      channel:                tx.channel,
-      createdAt:              tx.createdAt,
-      updatedAt:              tx.updatedAt,
+      washPointsCredited: tx.washPointsCredited,
+      status: tx.status,
+      channel: tx.channel,
+      createdAt: tx.createdAt,
+      updatedAt: tx.updatedAt,
     };
   }
 }

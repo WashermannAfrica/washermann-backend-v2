@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CompaniesService } from '../companies/companies.service';
+import { TeamsService } from '../teams/teams.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -38,6 +39,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly companiesService: CompaniesService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -114,6 +116,34 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Company memberships' })
   getMyCompanies(@CurrentUser('id') userId: string) {
     return this.companiesService.getMyCompanies(userId);
+  }
+
+  // ─── Company admin dashboard — multi-company switcher ─────────────────────────
+
+  @Get('me/admin-companies')
+  @ApiOperation({
+    summary: 'List all companies where the user is an owner or admin',
+    description:
+      'Used to populate the company switcher on the dashboard. ' +
+      'Returns the companyRole (owner | admin) alongside each company so the ' +
+      'dashboard can render the correct permissions UI.',
+  })
+  @ApiResponse({ status: 200, description: 'Companies with admin access' })
+  getAdminCompanies(@CurrentUser('id') userId: string) {
+    return this.companiesService.getAdminCompanies(userId);
+  }
+
+  // ─── Team memberships — team switcher ─────────────────────────────────────────
+
+  @Get('me/teams')
+  @ApiOperation({
+    summary: 'List all teams the current user belongs to',
+    description:
+      'Returns every active team membership including the user\'s role in each team. ' +
+      'Used to power the team switcher on the dashboard.',
+  })
+  getMyTeams(@CurrentUser('id') userId: string) {
+    return this.teamsService.getMyTeams(userId);
   }
 
   // ─── Admin Endpoints ──────────────────────────────────────────────────────────

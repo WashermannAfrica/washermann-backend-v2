@@ -7,6 +7,8 @@ import { Company } from './entities/company.entity';
 import { Tier } from './entities/tier.entity';
 import { CompanyEmployee } from './entities/company-employee.entity';
 import { CompanyAdmin } from './entities/company-admin.entity';
+import { Team } from './entities/team.entity';
+import { TeamMember } from './entities/team-member.entity';
 import { ConversionRate } from './entities/conversion-rate.entity';
 import { Wallet } from './entities/wallet.entity';
 import { LedgerEntry } from './entities/ledger-entry.entity';
@@ -26,7 +28,7 @@ import { PaystackTransaction } from './entities/paystack-transaction.entity';
           type: 'postgres' as const,
           entities: [
             User, Address,
-            Company, Tier, CompanyEmployee, CompanyAdmin,
+            Company, Tier, CompanyEmployee, CompanyAdmin, Team, TeamMember,
             ConversionRate, Wallet, LedgerEntry, PaystackTransaction,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],

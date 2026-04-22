@@ -5,6 +5,8 @@ export * from './company.entity';
 export * from './tier.entity';
 export * from './company-employee.entity';
 export * from './company-admin.entity';
+export * from './team.entity';
+export * from './team-member.entity';
 export * from './conversion-rate.entity';
 export * from './wallet.entity';
 export * from './ledger-entry.entity';

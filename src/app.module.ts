@@ -30,6 +30,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CompaniesModule } from './modules/companies/companies.module';
+import { TeamsModule } from './modules/teams/teams.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 
@@ -58,6 +59,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     AuthModule,
     UsersModule,
     CompaniesModule,
+    TeamsModule,
     WalletsModule,
     PaymentsModule,
   ],
