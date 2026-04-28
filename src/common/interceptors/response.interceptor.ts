@@ -34,15 +34,21 @@ export class ResponseInterceptor<T>
         }
 
         // Wrap in standard envelope
-        const { data, message } =
-          payload && typeof payload === 'object' && 'data' in payload
-            ? payload
-            : { data: payload, message: undefined };
+        if (payload && typeof payload === 'object' && 'data' in payload) {
+          // Destructure known keys; spread the rest (e.g. meta, total, page) so
+          // paginated responses like { data: [...], meta: {...} } are preserved.
+          const { data, message, ...rest } = payload as Record<string, unknown>;
+          return {
+            success: true,
+            data: data !== undefined ? data : payload,
+            ...(message && { message }),
+            ...rest,
+          };
+        }
 
         return {
           success: true,
-          data: data !== undefined ? data : payload,
-          ...(message && { message }),
+          data: payload,
         };
       }),
     );
