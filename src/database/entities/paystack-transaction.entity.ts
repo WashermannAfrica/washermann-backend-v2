@@ -50,6 +50,14 @@ export class PaystackTransaction extends BaseEntity {
   })
   conversionRateSnapshot: number | null;
 
+  @ApiProperty({ description: 'Vault used for this top-up', nullable: true })
+  @Column({ name: 'vault_id', nullable: true, comment: 'Vault used for this top-up' })
+  vaultId: string | null;
+
+  @ApiProperty({ description: 'Set for company wallet top-ups', nullable: true })
+  @Column({ name: 'company_id', nullable: true, comment: 'Set for company wallet top-ups' })
+  companyId: string | null;
+
   @ApiProperty({ description: 'WashPoints credited on success', nullable: true })
   @Column({
     name: 'wash_points_credited',

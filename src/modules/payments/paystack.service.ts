@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -14,7 +16,10 @@ import { PaystackTransaction } from '../../database/entities/paystack-transactio
 import { TransactionStatus } from '../../common/enums/transaction-status.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { WalletsService } from '../wallets/wallets.service';
+import { CompanyWalletService } from '../companies/company-wallet.service';
+import { CompanyLedgerSource } from '../../database/entities/company-ledger-entry.entity';
 import { ConversionRateService } from './conversion-rate.service';
+import { VaultsService } from '../vaults/vaults.service';
 import { InitiateTopupDto } from './dto';
 
 @Injectable()
@@ -26,16 +31,21 @@ export class PaystackService {
     private txRepo: Repository<PaystackTransaction>,
     @InjectDataSource()
     private dataSource: DataSource,
+    @Inject(forwardRef(() => WalletsService))
     private walletsService: WalletsService,
+    @Inject(forwardRef(() => VaultsService))
+    private vaultsService: VaultsService,
+    @Inject(forwardRef(() => CompanyWalletService))
+    private companyWalletService: CompanyWalletService,
     private conversionRateService: ConversionRateService,
     private configService: ConfigService,
   ) {}
 
-  // ─── Initiate top-up ─────────────────────────────────────────────────────────
+  // ─── Initiate user top-up ─────────────────────────────────────────────────────
 
   /**
-   * Creates a pending PaystackTransaction with the conversion rate locked at
-   * initiation time, then calls Paystack to get the authorization URL.
+   * Creates a pending PaystackTransaction using the active vault's rate snapshot.
+   * The vault rate is locked at initiation time to prevent exploitation.
    */
   async initiateTopup(
     userId: string,
@@ -43,13 +53,10 @@ export class PaystackService {
     dto: InitiateTopupDto,
   ) {
     const currency = (dto.currency ?? 'NGN').toUpperCase();
-    const amountKobo = dto.amountNaira * 100; // Naira → kobo
+    const amountKobo = dto.amountNaira * 100;
 
-    // Validate amount bounds
-    const minKobo =
-      this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
-    const maxKobo =
-      this.configService.get<number>('paystack.maxTopupKobo') ?? 50_000_000;
+    const minKobo = this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
+    const maxKobo = this.configService.get<number>('paystack.maxTopupKobo') ?? 50_000_000;
 
     if (amountKobo < minKobo) {
       throw new BadRequestException(
@@ -62,27 +69,26 @@ export class PaystackService {
       );
     }
 
-    // Lock the current rate NOW (before payment) — prevents post-change exploitation
-    const rate = await this.conversionRateService.getActiveRate(currency);
+    // Use the vault's locked rate — vault is the source of truth
+    const vault = await this.vaultsService.getActiveDefaultVault();
     const washPoints = this.conversionRateService.koboToWashPoints(
       amountKobo,
-      rate,
+      { pointsPerUnit: vault.conversionRateSnapshot! } as any,
     );
 
-    // Ensure wallet exists before we accept payment
+    // Ensure wallet exists before accepting payment
     await this.walletsService.getOrCreateWallet(userId);
 
-    // Generate our reference (wm_ prefix makes it easy to identify in Paystack dashboard)
     const reference = `wm_${uuidv4().replace(/-/g, '')}`;
 
-    // Persist the pending transaction with the locked rate
     const tx = this.txRepo.create({
       userId,
       reference,
       amountKobo,
       currency,
-      conversionRateId: rate.id,
-      conversionRateSnapshot: rate.pointsPerUnit,
+      conversionRateId: vault.conversionRateId,
+      conversionRateSnapshot: vault.conversionRateSnapshot,
+      vaultId: vault.id,
       washPointsCredited: null,
       status: TransactionStatus.PENDING,
       metadata: {
@@ -92,7 +98,6 @@ export class PaystackService {
     });
     await this.txRepo.save(tx);
 
-    // Call Paystack Initialize Transaction
     const { authorizationUrl, accessCode } = await this.paystackInitialize({
       email: userEmail,
       amount: amountKobo,
@@ -101,12 +106,12 @@ export class PaystackService {
       metadata: {
         userId,
         washPoints,
-        conversionRate: rate.pointsPerUnit,
+        conversionRate: vault.conversionRateSnapshot,
       },
     });
 
     this.logger.log(
-      `Top-up initiated: ref=${reference} | ₦${dto.amountNaira} | ${washPoints} WP preview`,
+      `Top-up initiated: ref=${reference} | ₦${dto.amountNaira} | ${washPoints} WP preview | vault=${vault.id}`,
     );
 
     return {
@@ -117,18 +122,99 @@ export class PaystackService {
         amountNaira: dto.amountNaira,
         currency,
         washPointsPreview: washPoints,
-        conversionRate: rate.pointsPerUnit,
-        rateEffectiveFrom: rate.effectiveFrom,
+        conversionRate: vault.conversionRateSnapshot,
+      },
+    };
+  }
+
+  // ─── Initiate company top-up ──────────────────────────────────────────────────
+
+  async initiateCompanyTopup(
+    companyId: string,
+    userId: string,
+    userEmail: string,
+    dto: InitiateTopupDto,
+  ) {
+    const currency = (dto.currency ?? 'NGN').toUpperCase();
+    const amountKobo = dto.amountNaira * 100;
+
+    const minKobo = this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
+    const maxKobo = this.configService.get<number>('paystack.maxTopupKobo') ?? 50_000_000;
+
+    if (amountKobo < minKobo) {
+      throw new BadRequestException(
+        `Minimum top-up is ₦${minKobo / 100}. You submitted ₦${dto.amountNaira}.`,
+      );
+    }
+    if (amountKobo > maxKobo) {
+      throw new BadRequestException(
+        `Maximum top-up is ₦${maxKobo / 100}. You submitted ₦${dto.amountNaira}.`,
+      );
+    }
+
+    const vault = await this.vaultsService.getActiveDefaultVault();
+    const washPoints = this.conversionRateService.koboToWashPoints(
+      amountKobo,
+      { pointsPerUnit: vault.conversionRateSnapshot! } as any,
+    );
+
+    // Ensure company wallet exists
+    await this.companyWalletService.getOrCreateWallet(companyId);
+
+    const reference = `wmc_${uuidv4().replace(/-/g, '')}`;
+
+    const tx = this.txRepo.create({
+      userId,
+      reference,
+      amountKobo,
+      currency,
+      conversionRateId: vault.conversionRateId,
+      conversionRateSnapshot: vault.conversionRateSnapshot,
+      vaultId: vault.id,
+      companyId,
+      washPointsCredited: null,
+      status: TransactionStatus.PENDING,
+      metadata: {
+        washPointsPreview: washPoints,
+        initiatedAt: new Date().toISOString(),
+        companyId,
+      },
+    });
+    await this.txRepo.save(tx);
+
+    const { authorizationUrl, accessCode } = await this.paystackInitialize({
+      email: userEmail,
+      amount: amountKobo,
+      reference,
+      currency,
+      metadata: {
+        userId,
+        companyId,
+        washPoints,
+        conversionRate: vault.conversionRateSnapshot,
+      },
+    });
+
+    this.logger.log(
+      `Company top-up initiated: ref=${reference} | ₦${dto.amountNaira} | ${washPoints} WP preview | company=${companyId} | vault=${vault.id}`,
+    );
+
+    return {
+      data: {
+        reference,
+        authorizationUrl,
+        accessCode,
+        amountNaira: dto.amountNaira,
+        currency,
+        washPointsPreview: washPoints,
+        conversionRate: vault.conversionRateSnapshot,
+        companyId,
       },
     };
   }
 
   // ─── Verify (mobile fallback) ─────────────────────────────────────────────────
 
-  /**
-   * Polls Paystack directly. If the transaction is successful and not yet
-   * processed locally, credits the wallet (same path as the webhook).
-   */
   async verifyTopup(userId: string, reference: string) {
     const tx = await this.txRepo.findOne({
       where: { reference, userId },
@@ -137,12 +223,10 @@ export class PaystackService {
       throw new BadRequestException('Transaction not found');
     }
 
-    // If already processed, return current state without calling Paystack
     if (tx.status !== TransactionStatus.PENDING) {
       return { data: this.sanitizeTx(tx) };
     }
 
-    // Call Paystack Verify
     const paystackData = await this.paystackVerify(reference);
 
     if (paystackData.status === 'success') {
@@ -165,13 +249,7 @@ export class PaystackService {
 
   // ─── Webhook processor ───────────────────────────────────────────────────────
 
-  /**
-   * Entry point called by WebhooksController.
-   * rawBody MUST be the original Buffer before any JSON parsing — required for
-   * Paystack HMAC-SHA512 signature verification.
-   */
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
-    // 1. Verify HMAC signature — reject immediately if invalid
     this.verifyPaystackSignature(rawBody, signature);
 
     const payload = JSON.parse(rawBody.toString('utf-8'));
@@ -187,7 +265,6 @@ export class PaystackService {
         await this.onChargeFailed(payload.data);
         break;
       default:
-        // Log and ignore unhandled events (transfers, refunds handled in future phases)
         this.logger.log(`Unhandled Paystack event: ${event}`);
     }
   }
@@ -203,7 +280,6 @@ export class PaystackService {
     await qr.startTransaction();
 
     try {
-      // Lock the transaction row — prevents duplicate webhook processing
       const tx = await qr.manager.findOne(PaystackTransaction, {
         where: { reference },
         lock: { mode: 'pessimistic_write' },
@@ -215,7 +291,6 @@ export class PaystackService {
         return;
       }
 
-      // Idempotency guard — only process if still PENDING
       if (tx.status !== TransactionStatus.PENDING) {
         this.logger.log(
           `charge.success already processed for ref: ${reference} (status=${tx.status})`,
@@ -224,7 +299,6 @@ export class PaystackService {
         return;
       }
 
-      // Update transaction record
       tx.status = TransactionStatus.SUCCESS;
       tx.channel = (data.channel as string) ?? null;
       tx.paystackReference = (data.id as string)?.toString() ?? null;
@@ -233,30 +307,47 @@ export class PaystackService {
 
       await qr.commitTransaction();
 
-      // Credit wallet OUTSIDE the transaction lock (walletsService has its own lock)
+      // Compute WP from frozen snapshot
       const washPoints = this.conversionRateService.koboToWashPoints(
         tx.amountKobo,
         { pointsPerUnit: tx.conversionRateSnapshot! } as any,
       );
 
-      await this.walletsService.credit({
-        userId: tx.userId,
-        amount: washPoints,
-        source: LedgerSource.TOPUP,
-        reference: tx.reference,
-        description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
-        conversionRateId: tx.conversionRateId,
-        conversionRateSnapshot: tx.conversionRateSnapshot,
-        fiatAmountKobo: tx.amountKobo,
-        fiatCurrency: tx.currency,
-        metadata: { paystackReference: tx.paystackReference },
-      });
+      if (tx.companyId) {
+        // Company wallet top-up
+        await this.companyWalletService.credit({
+          companyId: tx.companyId,
+          amount: washPoints,
+          source: CompanyLedgerSource.TOPUP,
+          fiatAmountKobo: tx.amountKobo,
+          description: `Company WP purchase: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+          metadata: { paystackReference: tx.paystackReference, reference: tx.reference },
+        });
+      } else {
+        // User wallet top-up
+        await this.walletsService.credit({
+          userId: tx.userId,
+          amount: washPoints,
+          source: LedgerSource.TOPUP,
+          reference: tx.reference,
+          description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+          conversionRateId: tx.conversionRateId,
+          conversionRateSnapshot: tx.conversionRateSnapshot,
+          fiatAmountKobo: tx.amountKobo,
+          fiatCurrency: tx.currency,
+          metadata: { paystackReference: tx.paystackReference },
+        });
+      }
 
-      // Record WP credited on the transaction (for reporting)
+      // Debit vault if vaultId present
+      if (tx.vaultId) {
+        await this.vaultsService.debitVault(tx.vaultId, washPoints);
+      }
+
       await this.txRepo.update(tx.id, { washPointsCredited: washPoints });
 
       this.logger.log(
-        `charge.success processed: ref=${reference} | ${washPoints} WP → user ${tx.userId}`,
+        `charge.success processed: ref=${reference} | ${washPoints} WP | user=${tx.userId} | company=${tx.companyId ?? 'n/a'} | vault=${tx.vaultId ?? 'n/a'}`,
       );
     } catch (err) {
       await qr.rollbackTransaction();
@@ -287,8 +378,6 @@ export class PaystackService {
     tx: PaystackTransaction,
     paystackData: Record<string, unknown>,
   ): Promise<void> {
-    // Reuse the same logic as the webhook handler but without a separate DB tx
-    // (the verify endpoint is already outside a transaction context)
     if (tx.status !== TransactionStatus.PENDING) return;
 
     tx.status = TransactionStatus.SUCCESS;
@@ -302,18 +391,33 @@ export class PaystackService {
       { pointsPerUnit: tx.conversionRateSnapshot! } as any,
     );
 
-    await this.walletsService.credit({
-      userId: tx.userId,
-      amount: washPoints,
-      source: LedgerSource.TOPUP,
-      reference: tx.reference,
-      description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
-      conversionRateId: tx.conversionRateId,
-      conversionRateSnapshot: tx.conversionRateSnapshot,
-      fiatAmountKobo: tx.amountKobo,
-      fiatCurrency: tx.currency,
-      metadata: { paystackReference: tx.paystackReference },
-    });
+    if (tx.companyId) {
+      await this.companyWalletService.credit({
+        companyId: tx.companyId,
+        amount: washPoints,
+        source: CompanyLedgerSource.TOPUP,
+        fiatAmountKobo: tx.amountKobo,
+        description: `Company WP purchase: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+        metadata: { paystackReference: tx.paystackReference, reference: tx.reference },
+      });
+    } else {
+      await this.walletsService.credit({
+        userId: tx.userId,
+        amount: washPoints,
+        source: LedgerSource.TOPUP,
+        reference: tx.reference,
+        description: `Top-up: ₦${tx.amountKobo / 100} → ${washPoints} WP`,
+        conversionRateId: tx.conversionRateId,
+        conversionRateSnapshot: tx.conversionRateSnapshot,
+        fiatAmountKobo: tx.amountKobo,
+        fiatCurrency: tx.currency,
+        metadata: { paystackReference: tx.paystackReference },
+      });
+    }
+
+    if (tx.vaultId) {
+      await this.vaultsService.debitVault(tx.vaultId, washPoints);
+    }
 
     await this.txRepo.update(tx.id, { washPointsCredited: washPoints });
   }
@@ -384,12 +488,6 @@ export class PaystackService {
 
   // ─── Private: webhook signature ──────────────────────────────────────────────
 
-  /**
-   * Verifies the x-paystack-signature header against HMAC-SHA512 of the raw
-   * request body using the Paystack webhook secret.
-   *
-   * Must use the RAW body bytes — not JSON.stringify of the parsed object.
-   */
   private verifyPaystackSignature(rawBody: Buffer, signature: string): void {
     const secret = this.configService.get<string>('paystack.webhookSecret');
 

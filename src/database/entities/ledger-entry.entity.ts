@@ -78,6 +78,10 @@ export class LedgerEntry {
   })
   conversionRateSnapshot: number | null;
 
+  @ApiProperty({ nullable: true, description: 'Vault the WP was sourced from (TOPUP entries only)' })
+  @Column({ name: 'vault_id', nullable: true, comment: 'Vault the WP was sourced from (TOPUP entries only)' })
+  vaultId: string | null;
+
   @ApiProperty({
     nullable: true,
     description: 'Raw fiat paid in kobo (TOPUP entries only)',
