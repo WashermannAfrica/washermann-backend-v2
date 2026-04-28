@@ -18,7 +18,7 @@ import { InviteStaffDto } from './dto/invite-staff.dto';
 import { UpdateStaffRoleDto } from './dto/update-staff-role.dto';
 
 const STAFF_ROLES = [Role.ADMIN, Role.DISPUTE_RESOLVER, Role.FINANCE];
-const INVITE_TOKEN_PREFIX = 'invite_token:';
+const INVITE_TOKEN_PREFIX = 'invite:'; // Must match auth.service.ts INVITE_TOKEN_PREFIX
 const INVITE_TTL = 7 * 24 * 60 * 60; // 7 days
 
 @Injectable()
@@ -68,10 +68,10 @@ export class StaffService {
 
     const deepLinkBase = this.configService.get<string>('app.deepLinkBase') || this.configService.get<string>('app.frontendUrl') || 'https://app.washermann.com';
 
-    await this.notificationsService.sendEmployeeInvite({
+    await this.notificationsService.sendStaffInvite({
       fullName: dto.fullName,
       email: dto.email.toLowerCase(),
-      companyName: 'Washermann Platform',
+      role: dto.role,
       inviteToken: token,
       deepLinkBase,
     });

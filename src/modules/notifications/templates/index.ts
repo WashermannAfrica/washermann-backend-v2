@@ -97,6 +97,33 @@ export const passwordResetOtpTemplate = (data: {
   `),
 });
 
+// ─── Invite: Company Account ─────────────────────────────────────────────────
+export const companyInviteTemplate = (data: {
+  companyName: string;
+  inviteLink: string;
+}) => ({
+  subject: `Activate your ${data.companyName} account on Washermann`,
+  html: baseLayout(`
+    <p>Hello,</p>
+    <p>A <strong>Washermann</strong> company account has been created for <strong>${data.companyName}</strong>.</p>
+    <p>Click the button below to activate your account and complete your company profile:</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${data.inviteLink}"
+         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
+        Activate Company Account
+      </a>
+    </div>
+    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
+    <p style="font-size: 13px; color: #888;">
+      Button not working? Copy this link into your browser:<br/>
+      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
+    </p>
+    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
+      This link expires in <strong>48 hours</strong> and can only be used once. If you did not request this, please ignore this email.
+    </div>
+  `),
+});
+
 // ─── Invite: Company Employee ─────────────────────────────────────────────────
 export const employeeInviteTemplate = (data: {
   fullName: string;
@@ -109,15 +136,46 @@ export const employeeInviteTemplate = (data: {
     <p><strong>${data.companyName}</strong> has added you to their Washermann account. You now have access to laundry benefits provided by your company.</p>
     <p>Click the button below to set up your account:</p>
     <div style="text-align: center; margin: 28px 0;">
-      <a href="${data.inviteLink}" class="btn">Set Up My Account</a>
+      <a href="${data.inviteLink}"
+         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
+        Set Up My Account
+      </a>
     </div>
-    <div class="divider"></div>
+    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
     <p style="font-size: 13px; color: #888;">
-      Or copy this link into your browser:<br/>
-      <span style="color: #4fc3f7; word-break: break-all;">${data.inviteLink}</span>
+      Button not working? Copy this link into your browser:<br/>
+      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
     </p>
-    <div class="warning">
-      This invite link expires in 7 days.
+    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
+      This invite link expires in <strong>7 days</strong> and can only be used once.
+    </div>
+  `),
+});
+
+// ─── Invite: Platform Staff ───────────────────────────────────────────────────
+export const staffInviteTemplate = (data: {
+  fullName: string;
+  role: string;
+  inviteLink: string;
+}) => ({
+  subject: `You've been invited to join the Washermann team`,
+  html: baseLayout(`
+    <p>Hi <strong>${data.fullName}</strong>,</p>
+    <p>You have been invited to join the <strong>Washermann</strong> platform team as a <strong>${data.role}</strong>.</p>
+    <p>Click the button below to set your password and activate your account:</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${data.inviteLink}"
+         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
+        Activate My Account
+      </a>
+    </div>
+    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
+    <p style="font-size: 13px; color: #888;">
+      Button not working? Copy this link into your browser:<br/>
+      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
+    </p>
+    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
+      This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.
     </div>
   `),
 });
