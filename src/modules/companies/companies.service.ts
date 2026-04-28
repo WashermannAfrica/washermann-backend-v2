@@ -176,6 +176,19 @@ export class CompaniesService {
       // If account exists (self-registered), just elevate their role
     } else {
       // Create a fresh user account for the company owner
+
+      // Guard: phone must not already belong to another account
+      if (dto.phone) {
+        const phoneTaken = await this.userRepository.findOne({
+          where: { phone: dto.phone },
+        });
+        if (phoneTaken) {
+          throw new ConflictException(
+            'This phone number is already associated with another account. Please use a different phone number.',
+          );
+        }
+      }
+
       const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
       ownerUser = this.userRepository.create({

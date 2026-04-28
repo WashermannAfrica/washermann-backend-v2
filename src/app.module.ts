@@ -36,6 +36,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { VaultsModule } from './modules/vaults/vaults.module';
 import { GiftCardsModule } from './modules/gift-cards/gift-cards.module';
 import { StaffModule } from './modules/staff/staff.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { StaffModule } from './modules/staff/staff.module';
     VaultsModule,
     GiftCardsModule,
     StaffModule,
+    AdminModule,
   ],
 
   providers: [
