@@ -5,8 +5,12 @@ import { Tier } from '../../database/entities/tier.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
 import { CompanyAdmin } from '../../database/entities/company-admin.entity';
 import { User } from '../../database/entities/user.entity';
+import { CompanyWallet } from '../../database/entities/company-wallet.entity';
+import { CompanyLedgerEntry } from '../../database/entities/company-ledger-entry.entity';
+import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
+import { CompanyWalletService } from './company-wallet.service';
 
 @Module({
   imports: [
@@ -16,10 +20,13 @@ import { CompaniesService } from './companies.service';
       CompanyEmployee,
       CompanyAdmin,
       User,
+      CompanyWallet,
+      CompanyLedgerEntry,
+      LedgerEntry,
     ]),
   ],
   controllers: [CompaniesController],
-  providers: [CompaniesService],
-  exports: [CompaniesService],
+  providers: [CompaniesService, CompanyWalletService],
+  exports: [CompaniesService, CompanyWalletService],
 })
 export class CompaniesModule {}

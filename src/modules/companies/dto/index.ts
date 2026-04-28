@@ -7,3 +7,4 @@ export * from './add-employee.dto';
 export * from './reassign-tier.dto';
 export * from './create-tier.dto';
 export * from './update-tier.dto';
+export * from './admin-company-wallet.dto';

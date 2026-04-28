@@ -15,8 +15,11 @@ import { createHmac } from 'crypto';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
+import { Company } from '../../database/entities/company.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { Role } from '../../common/enums/roles.enum';
+import { CompanyActivationStatus } from '../../common/enums/company-activation-status.enum';
+import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto } from './dto/register.dto';
@@ -26,6 +29,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SetupAdminDto } from './dto/setup-admin.dto';
+import { RegisterCompanyDto } from './dto/register-company.dto';
 
 const SALT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 600;       // 10 minutes
@@ -45,6 +49,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Company)
+    private companyRepository: Repository<Company>,
     private jwtService: JwtService,
     private configService: ConfigService,
     private redisService: RedisService,
@@ -119,6 +125,7 @@ export class AuthService {
       data: {
         user: this.sanitizeUser(user),
         ...tokens,
+        source: dto.source ?? 'user',
         emailVerified: user.emailVerified,
         phoneVerified: user.phoneVerified,
       },
@@ -443,6 +450,71 @@ export class AuthService {
     return {
       data: { user: this.sanitizeUser(admin) },
       message: 'Super admin created successfully',
+    };
+  }
+
+  // ─── Company Self-Registration ────────────────────────────────────────────────
+
+  async registerCompany(dto: RegisterCompanyDto) {
+    // Check if company email already registered
+    const existing = await this.companyRepository.findOne({
+      where: { ownerEmail: dto.companyEmail.toLowerCase() },
+    });
+    if (existing) throw new ConflictException('A company with this email already exists');
+
+    // Create the company in AWAITING_APPROVAL state
+    const company = this.companyRepository.create({
+      name: dto.companyName,
+      ownerEmail: dto.companyEmail.toLowerCase(),
+      activationStatus: CompanyActivationStatus.AWAITING_APPROVAL,
+      status: CompanyStatus.INACTIVE,
+      industry: dto.industry,
+      phone: dto.phone,
+      address: dto.address,
+      website: dto.website,
+      numberOfWorkers: dto.numberOfWorkers ? parseInt(dto.numberOfWorkers) : undefined,
+    });
+    await this.companyRepository.save(company);
+
+    // Create or find contact person user account (PENDING status until company approved)
+    let user = await this.userRepository.findOne({
+      where: dto.contactPersonPhone
+        ? [
+            { email: dto.contactPersonEmail.toLowerCase() },
+            { phone: dto.contactPersonPhone },
+          ]
+        : [{ email: dto.contactPersonEmail.toLowerCase() }],
+    });
+
+    if (!user) {
+      const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+      user = this.userRepository.create({
+        fullName: dto.contactPersonName,
+        email: dto.contactPersonEmail.toLowerCase(),
+        phone: dto.contactPersonPhone ?? null,
+        passwordHash,
+        roles: [Role.USER],
+        status: UserStatus.PENDING,
+        emailVerified: false,
+        phoneVerified: false,
+      });
+      await this.userRepository.save(user);
+    }
+
+    // Send OTP for contact person email verification (fire-and-forget)
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Company registration OTP failed: ${err.message}`),
+    );
+
+    this.logger.log(
+      `Company self-registered: ${company.id} — "${company.name}" by contact ${user.id}`,
+    );
+
+    return {
+      data: {
+        companyId: company.id,
+        message: 'Company registration submitted. Pending admin approval. Please verify your email.',
+      },
     };
   }
 

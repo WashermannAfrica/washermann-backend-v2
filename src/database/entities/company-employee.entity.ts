@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne, Unique } from 'typeorm';
+import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, Unique } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from './base.entity';
 import { AssignmentStatus } from '../../common/enums/assignment-status.enum';
@@ -37,6 +37,19 @@ export class CompanyEmployee extends BaseEntity {
     default: () => 'CURRENT_TIMESTAMP',
   })
   assignedAt: Date;
+
+  @ApiProperty({ example: 'WM-EMP-AB1234' })
+  @Column({ name: 'tracking_id', type: 'varchar', length: 20, unique: true, nullable: false })
+  trackingId: string;
+
+  @BeforeInsert()
+  generateTrackingId() {
+    if (!this.trackingId) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const suffix = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      this.trackingId = `WM-EMP-${suffix}`;
+    }
+  }
 
   // ─── Relations ───────────────────────────────────────────────────────────────
   @ManyToOne(() => Company, (c) => c.employeeAssignments, { onDelete: 'CASCADE' })

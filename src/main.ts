@@ -75,6 +75,7 @@ All responses follow the standard envelope:
       .addTag('Teams', 'Self-service teams — create, manage members and assign roles')
       .addTag('Wallets', 'WashPoint wallet balance, ledger history and top-up flows')
       .addTag('Conversion Rates', 'WashPoint ↔ fiat conversion rate management (admin)')
+      .addTag('Company Wallet', 'Company WashPoint wallet, ledger and admin operations')
       .addServer(`http://localhost:${port}`, 'Local')
       .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')

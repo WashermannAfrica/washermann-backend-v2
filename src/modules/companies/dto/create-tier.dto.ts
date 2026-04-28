@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { TierDuration } from '../../../database/entities/tier.entity';
 
 export class CreateTierDto {
   @ApiProperty({ example: 'Senior Staff' })
@@ -8,10 +9,10 @@ export class CreateTierDto {
   @MaxLength(255)
   name: string;
 
-  @ApiProperty({ example: 500, description: 'Points allocated per billing cycle' })
+  @ApiProperty({ example: 500, description: 'WashPoints allocated per cycle' })
   @IsInt()
   @Min(0)
-  monthlyPoints: number;
+  pointsPerCycle: number;
 
   @ApiProperty({ example: 4, description: 'Max orders per billing cycle' })
   @IsInt()
@@ -22,4 +23,20 @@ export class CreateTierDto {
   @IsInt()
   @Min(1)
   itemLimit: number;
+
+  @ApiProperty({ enum: TierDuration, default: TierDuration.MONTHLY, required: false })
+  @IsOptional()
+  @IsEnum(TierDuration)
+  duration?: TierDuration = TierDuration.MONTHLY;
+
+  @ApiProperty({
+    example: 0,
+    description: 'Max WP a single worker can spend per cycle (0 = no cap). Changes take effect from the next allocation cycle.',
+    required: false,
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  spendingCapPerCycle?: number = 0;
 }

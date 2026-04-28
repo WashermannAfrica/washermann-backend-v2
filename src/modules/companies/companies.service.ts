@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +18,9 @@ import { Tier } from '../../database/entities/tier.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
 import { CompanyAdmin } from '../../database/entities/company-admin.entity';
 import { User } from '../../database/entities/user.entity';
+import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
+import { LedgerSource } from '../../common/enums/ledger-source.enum';
+import { CompanyWalletService } from './company-wallet.service';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { CompanyActivationStatus } from '../../common/enums/company-activation-status.enum';
@@ -56,9 +60,12 @@ export class CompaniesService {
     private adminRepository: Repository<CompanyAdmin>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(LedgerEntry)
+    private ledgerEntryRepository: Repository<LedgerEntry>,
     private redisService: RedisService,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
+    @Optional() private companyWalletService?: CompanyWalletService,
   ) {}
 
   // ─── Platform-Admin: create company ──────────────────────────────────────────
@@ -278,6 +285,19 @@ export class CompaniesService {
     company.status = dto.status;
     await this.companyRepository.save(company);
 
+    // Freeze/unfreeze the company wallet on status change
+    if (this.companyWalletService) {
+      if (dto.status === CompanyStatus.INACTIVE) {
+        await this.companyWalletService.freezeWallet(companyId).catch((err) =>
+          this.logger.error(`Wallet freeze failed for company ${companyId}: ${err.message}`),
+        );
+      } else if (dto.status === CompanyStatus.ACTIVE) {
+        await this.companyWalletService.unfreezeWallet(companyId).catch((err) =>
+          this.logger.error(`Wallet unfreeze failed for company ${companyId}: ${err.message}`),
+        );
+      }
+    }
+
     return {
       data: this.sanitizeCompany(company),
       message: `Company status set to ${dto.status}`,
@@ -361,9 +381,11 @@ export class CompaniesService {
     const tier = this.tierRepository.create({
       companyId,
       name: dto.name,
-      monthlyPoints: dto.monthlyPoints,
+      pointsPerCycle: dto.pointsPerCycle,
       monthlyOrderLimit: dto.monthlyOrderLimit,
       itemLimit: dto.itemLimit,
+      duration: dto.duration,
+      spendingCapPerCycle: dto.spendingCapPerCycle ?? 0,
     });
 
     await this.tierRepository.save(tier);
@@ -374,14 +396,47 @@ export class CompaniesService {
   async updateTier(companyId: string, tierId: string, dto: UpdateTierDto) {
     const tier = await this.findTierOrFail(companyId, tierId);
 
-    if (dto.name !== undefined)              tier.name = dto.name;
-    if (dto.monthlyPoints !== undefined)     tier.monthlyPoints = dto.monthlyPoints;
-    if (dto.monthlyOrderLimit !== undefined) tier.monthlyOrderLimit = dto.monthlyOrderLimit;
-    if (dto.itemLimit !== undefined)         tier.itemLimit = dto.itemLimit;
+    // Check if any employees are currently assigned to this tier
+    const activeEmployeeCount = await this.employeeRepository.count({
+      where: { tierId, assignmentStatus: AssignmentStatus.ACTIVE },
+    });
+
+    if (activeEmployeeCount === 0) {
+      // No active employees — apply changes immediately
+      if (dto.name !== undefined)               tier.name = dto.name;
+      if (dto.pointsPerCycle !== undefined)     tier.pointsPerCycle = dto.pointsPerCycle;
+      if (dto.monthlyOrderLimit !== undefined)  tier.monthlyOrderLimit = dto.monthlyOrderLimit;
+      if (dto.itemLimit !== undefined)          tier.itemLimit = dto.itemLimit;
+      if (dto.duration !== undefined)           tier.duration = dto.duration;
+      if (dto.spendingCapPerCycle !== undefined) tier.spendingCapPerCycle = dto.spendingCapPerCycle;
+
+      await this.tierRepository.save(tier);
+
+      return { data: tier, message: 'Tier updated' };
+    }
+
+    // Active employees exist — stage changes for next cycle
+    const pendingChanges: Record<string, any> = {};
+    if (dto.name !== undefined)               pendingChanges.name = dto.name;
+    if (dto.pointsPerCycle !== undefined)     pendingChanges.pointsPerCycle = dto.pointsPerCycle;
+    if (dto.monthlyOrderLimit !== undefined)  pendingChanges.monthlyOrderLimit = dto.monthlyOrderLimit;
+    if (dto.itemLimit !== undefined)          pendingChanges.itemLimit = dto.itemLimit;
+    if (dto.duration !== undefined)           pendingChanges.duration = dto.duration;
+    if (dto.spendingCapPerCycle !== undefined) pendingChanges.spendingCapPerCycle = dto.spendingCapPerCycle;
+
+    tier.pendingChanges = pendingChanges;
+
+    // Set effective from: start of next cycle (next month first day for monthly, etc.)
+    const now = new Date();
+    const nextCycleStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    tier.pendingEffectiveFrom = nextCycleStart;
 
     await this.tierRepository.save(tier);
 
-    return { data: tier, message: 'Tier updated' };
+    return {
+      data: tier,
+      message: 'Tier changes will take effect at the start of the next allocation cycle.',
+    };
   }
 
   async deleteTier(companyId: string, tierId: string) {
@@ -686,6 +741,32 @@ export class CompaniesService {
     }
 
     return { data: null, message: 'Admin removed' };
+  }
+
+  // ─── Employee Transactions ────────────────────────────────────────────────────
+
+  async getEmployeeTransactions(
+    companyId: string,
+    employeeId: string,
+    page = 1,
+    limit = 20,
+  ) {
+    const assignment = await this.findAssignmentOrFail(companyId, employeeId);
+
+    const [entries, total] = await this.ledgerEntryRepository.findAndCount({
+      where: [
+        { userId: assignment.userId, source: LedgerSource.BENEFIT_CREDIT },
+        { userId: assignment.userId, source: LedgerSource.BENEFIT_EXPIRY },
+      ],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return {
+      data: entries,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   // ─── Employee self-view ───────────────────────────────────────────────────────
