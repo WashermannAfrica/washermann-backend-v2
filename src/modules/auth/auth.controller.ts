@@ -26,6 +26,7 @@ import { ActivateDto } from './dto/activate.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { SetupAdminDto } from './dto/setup-admin.dto';
+import { RegisterCompanyDto } from './dto/register-company.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -169,6 +170,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current authenticated user info and roles' })
   getMe(@CurrentUser('id') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  // ─── POST /auth/company/register ────────────────────────────────────────────
+  @Public()
+  @Post('company/register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Self-register a company — awaits admin approval' })
+  @ApiResponse({ status: 201, description: 'Company registration submitted' })
+  @ApiResponse({ status: 409, description: 'Company email already exists' })
+  registerCompany(@Body() dto: RegisterCompanyDto) {
+    return this.authService.registerCompany(dto);
   }
 
   // ─── POST /auth/setup ────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
@@ -14,4 +14,9 @@ export class LoginDto {
   @IsNotEmpty()
   @IsString()
   password: string;
+
+  @ApiProperty({ enum: ['user', 'washerman', 'admin', 'company'], required: false, default: 'user' })
+  @IsOptional()
+  @IsEnum(['user', 'washerman', 'admin', 'company'])
+  source?: string = 'user';
 }

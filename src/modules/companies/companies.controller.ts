@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
+import { CompanyWalletService } from './company-wallet.service';
 import {
   CreateCompanyDto,
   ActivateCompanyDto,
@@ -31,6 +32,7 @@ import {
   CreateTierDto,
   UpdateTierDto,
 } from './dto';
+import { AdminCompanyWalletCreditDto, AdminCompanyWalletDebitDto } from './dto/admin-company-wallet.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -43,7 +45,10 @@ import { Role } from '../../common/enums/roles.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('companies')
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    private readonly companyWalletService: CompanyWalletService,
+  ) {}
 
   // ─── Platform-Admin: CRUD Companies ──────────────────────────────────────────
 
@@ -308,6 +313,82 @@ export class CompaniesController {
       targetUserId,
       callerId,
       callerRoles,
+    );
+  }
+
+  // ─── Company Wallet ───────────────────────────────────────────────────────────
+
+  @Get(':companyId/wallet')
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[Admin | CompanyOwner | CompanyAdmin] Get company wallet balance' })
+  async getCompanyWallet(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    return this.companyWalletService.getWallet(companyId);
+  }
+
+  @Get(':companyId/wallet/ledger')
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[Admin | CompanyOwner | CompanyAdmin] Get company wallet ledger' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getCompanyLedger(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    return this.companyWalletService.getLedger(companyId, Number(page), Number(limit));
+  }
+
+  @Post(':companyId/wallet/credit')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '[Admin only] Manually credit WashPoints to company wallet' })
+  adminCreditCompanyWallet(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Body() dto: AdminCompanyWalletCreditDto,
+  ) {
+    return this.companyWalletService.adminCredit(companyId, dto);
+  }
+
+  @Post(':companyId/wallet/debit')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '[Admin only] Manually debit WashPoints from company wallet' })
+  adminDebitCompanyWallet(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Body() dto: AdminCompanyWalletDebitDto,
+  ) {
+    return this.companyWalletService.adminDebit(companyId, dto);
+  }
+
+  // ─── Employee Transactions ────────────────────────────────────────────────────
+
+  @Get(':companyId/employees/:employeeId/transactions')
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[Admin | CompanyOwner | CompanyAdmin] Get employee benefit transactions' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getEmployeeTransactions(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    return this.companiesService.getEmployeeTransactions(
+      companyId,
+      employeeId,
+      Number(page),
+      Number(limit),
     );
   }
 }

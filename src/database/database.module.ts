@@ -13,6 +13,8 @@ import { ConversionRate } from './entities/conversion-rate.entity';
 import { Wallet } from './entities/wallet.entity';
 import { LedgerEntry } from './entities/ledger-entry.entity';
 import { PaystackTransaction } from './entities/paystack-transaction.entity';
+import { CompanyWallet } from './entities/company-wallet.entity';
+import { CompanyLedgerEntry } from './entities/company-ledger-entry.entity';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { PaystackTransaction } from './entities/paystack-transaction.entity';
             User, Address,
             Company, Tier, CompanyEmployee, CompanyAdmin, Team, TeamMember,
             ConversionRate, Wallet, LedgerEntry, PaystackTransaction,
+            CompanyWallet, CompanyLedgerEntry,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
