@@ -5,7 +5,9 @@ import {
   welcomeTemplate,
   emailVerificationOtpTemplate,
   passwordResetOtpTemplate,
+  companyInviteTemplate,
   employeeInviteTemplate,
+  staffInviteTemplate,
 } from './templates';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -107,22 +109,17 @@ export class NotificationsService {
     inviteToken: string;
     deepLinkBase: string;
   }) {
-    const activationLink = `${data.deepLinkBase}/company/activate?token=${data.inviteToken}`;
+    const inviteLink = `${data.deepLinkBase}/company/activate?token=${data.inviteToken}`;
+
+    const template = companyInviteTemplate({
+      companyName: data.companyName,
+      inviteLink,
+    });
 
     await this.emailService.send({
       to: data.ownerEmail,
-      subject: `Activate your ${data.companyName} account on Washermann`,
-      html: `
-        <p>Hello,</p>
-        <p>A Washermann account has been created for <strong>${data.companyName}</strong>.</p>
-        <p>Click the link below to activate your company account and set up your profile:</p>
-        <p><a href="${activationLink}" style="padding:12px 24px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;">
-          Activate Company Account
-        </a></p>
-        <p>This link expires in <strong>48 hours</strong> and can only be used once.</p>
-        <p>If you did not request this, please ignore this email or contact support.</p>
-        <p>— The Washermann Team</p>
-      `,
+      subject: template.subject,
+      html: template.html,
     });
 
     this.logger.log(
@@ -161,5 +158,31 @@ export class NotificationsService {
         message: `${data.companyName} has added you to Washermann. Set up your account: ${inviteLink}`,
       });
     }
+  }
+
+  // ─── Platform Staff Invite ────────────────────────────────────────────────────
+
+  async sendStaffInvite(data: {
+    fullName: string;
+    email: string;
+    role: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
+    const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
+
+    const template = staffInviteTemplate({
+      fullName: data.fullName,
+      role: data.role,
+      inviteLink,
+    });
+
+    await this.emailService.send({
+      to: data.email,
+      subject: template.subject,
+      html: template.html,
+    });
+
+    this.logger.log(`Staff invite sent to ${data.email} | role=${data.role}`);
   }
 }
