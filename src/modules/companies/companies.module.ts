@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Company } from '../../database/entities/company.entity';
 import { Tier } from '../../database/entities/tier.entity';
@@ -11,6 +11,8 @@ import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
 import { CompanyWalletService } from './company-wallet.service';
+import { PaymentsModule } from '../payments/payments.module';
+import { GiftCardsModule } from '../gift-cards/gift-cards.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { CompanyWalletService } from './company-wallet.service';
       CompanyLedgerEntry,
       LedgerEntry,
     ]),
+    forwardRef(() => PaymentsModule),
+    forwardRef(() => GiftCardsModule),
   ],
   controllers: [CompaniesController],
   providers: [CompaniesService, CompanyWalletService],

@@ -33,6 +33,9 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { VaultsModule } from './modules/vaults/vaults.module';
+import { GiftCardsModule } from './modules/gift-cards/gift-cards.module';
+import { StaffModule } from './modules/staff/staff.module';
 
 @Module({
   imports: [
@@ -62,6 +65,9 @@ import { PaymentsModule } from './modules/payments/payments.module';
     TeamsModule,
     WalletsModule,
     PaymentsModule,
+    VaultsModule,
+    GiftCardsModule,
+    StaffModule,
   ],
 
   providers: [

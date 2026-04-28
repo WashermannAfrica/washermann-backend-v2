@@ -5,12 +5,14 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UseGuards,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -39,6 +41,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Role } from '../../common/enums/roles.enum';
+import { PaystackService } from '../payments/paystack.service';
+import { InitiateTopupDto } from '../payments/dto';
+import { GiftCardsService } from '../gift-cards/gift-cards.service';
+import { CreateGiftCardDto } from '../gift-cards/dto/create-gift-card.dto';
 
 @ApiTags('Companies')
 @ApiBearerAuth()
@@ -48,6 +54,10 @@ export class CompaniesController {
   constructor(
     private readonly companiesService: CompaniesService,
     private readonly companyWalletService: CompanyWalletService,
+    @Inject(forwardRef(() => PaystackService))
+    private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => GiftCardsService))
+    private readonly giftCardsService: GiftCardsService,
   ) {}
 
   // ─── Platform-Admin: CRUD Companies ──────────────────────────────────────────
@@ -366,6 +376,66 @@ export class CompaniesController {
     @Body() dto: AdminCompanyWalletDebitDto,
   ) {
     return this.companyWalletService.adminDebit(companyId, dto);
+  }
+
+  @Post(':companyId/wallet/topup')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[CompanyOwner | CompanyAdmin | Admin] Initiate a company WP purchase via Paystack' })
+  async initiateCompanyTopup(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @CurrentUser() user: any,
+    @Body() dto: InitiateTopupDto,
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, user.id, user.roles);
+    return this.paystackService.initiateCompanyTopup(companyId, user.id, user.email, dto);
+  }
+
+  // ─── Company Gift Cards ───────────────────────────────────────────────────────
+
+  @Post(':companyId/gift-cards')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[CompanyOwner | CompanyAdmin | Admin] Create a gift card from company wallet' })
+  async createCompanyGiftCard(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Body() dto: CreateGiftCardDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    return this.giftCardsService.createCompanyGiftCard(companyId, dto, userId);
+  }
+
+  @Get(':companyId/gift-cards')
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[CompanyOwner | CompanyAdmin | Admin] List company gift cards' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async listCompanyGiftCards(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    return this.giftCardsService.listCompanyGiftCards(companyId, Number(page), Number(limit));
+  }
+
+  @Delete(':companyId/gift-cards/:giftCardId')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.ADMIN, Role.COMPANY_OWNER, Role.COMPANY_ADMIN)
+  @ApiOperation({ summary: '[CompanyOwner | CompanyAdmin | Admin] Revoke a company gift card' })
+  async revokeCompanyGiftCard(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Param('giftCardId', ParseUUIDPipe) giftCardId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: Role[],
+  ) {
+    await this.companiesService.assertCompanyAccess(companyId, userId, roles);
+    const isAdmin = roles.includes(Role.ADMIN);
+    return this.giftCardsService.revokeGiftCard(giftCardId, userId, isAdmin, companyId);
   }
 
   // ─── Employee Transactions ────────────────────────────────────────────────────

@@ -6,4 +6,6 @@ export enum Role {
   TEAM_ADMIN = 'team_admin',        // Promoted by the team owner
   WASHERMAN = 'washerman',
   ADMIN = 'admin',                  // Washermann platform admin; bypasses all company/team checks
+  DISPUTE_RESOLVER = 'dispute_resolver',
+  FINANCE = 'finance',
 }

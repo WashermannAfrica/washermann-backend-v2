@@ -8,11 +8,15 @@ import { PaystackService } from './paystack.service';
 import { TopupGuardService } from './topup-guard.service';
 import { WebhooksController } from './webhooks.controller';
 import { WalletsModule } from '../wallets/wallets.module';
+import { VaultsModule } from '../vaults/vaults.module';
+import { CompaniesModule } from '../companies/companies.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ConversionRate, PaystackTransaction]),
-    forwardRef(() => WalletsModule),  // circular: PaymentsModule ↔ WalletsModule
+    forwardRef(() => WalletsModule),
+    forwardRef(() => VaultsModule),
+    forwardRef(() => CompaniesModule),
   ],
   controllers: [
     ConversionRateController,

@@ -28,4 +28,7 @@ export enum LedgerSource {
 
   /** Coupon discount applied at checkout */
   COUPON          = 'coupon',
+
+  /** WashPoints from gift card redemption */
+  GIFT_CARD       = 'gift_card',
 }
