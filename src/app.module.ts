@@ -37,6 +37,14 @@ import { VaultsModule } from './modules/vaults/vaults.module';
 import { GiftCardsModule } from './modules/gift-cards/gift-cards.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AreasModule } from './modules/areas/areas.module';
+import { VendorsModule } from './modules/vendors/vendors.module';
+import { RepsModule } from './modules/reps/reps.module';
+import { PlatformConfigModule } from './modules/platform-config/platform-config.module';
+import { PricingModule } from './modules/pricing/pricing.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { AssignmentModule } from './modules/assignment/assignment.module';
+import { PayoutsModule } from './modules/payouts/payouts.module';
 
 @Module({
   imports: [
@@ -70,6 +78,15 @@ import { AdminModule } from './modules/admin/admin.module';
     GiftCardsModule,
     StaffModule,
     AdminModule,
+    // ─── Phase 6 ──────────────────────────────────────────────────────────────
+    AreasModule,
+    VendorsModule,
+    RepsModule,
+    PlatformConfigModule,
+    PricingModule,
+    OrdersModule,
+    AssignmentModule,
+    PayoutsModule,
   ],
 
   providers: [
