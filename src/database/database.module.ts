@@ -18,6 +18,25 @@ import { CompanyLedgerEntry } from './entities/company-ledger-entry.entity';
 import { Vault } from './entities/vault.entity';
 import { GiftCard } from './entities/gift-card.entity';
 import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
+// ─── Phase 6 entities ─────────────────────────────────────────────────────────
+import { Area } from './entities/area.entity';
+import { Vendor } from './entities/vendor.entity';
+import { VendorDocument } from './entities/vendor-document.entity';
+import { VendorPricing } from './entities/vendor-pricing.entity';
+import { VendorEarningsWallet } from './entities/vendor-earnings-wallet.entity';
+import { VendorLedgerEntry } from './entities/vendor-ledger-entry.entity';
+import { Rep } from './entities/rep.entity';
+import { RepPseudoWallet } from './entities/rep-pseudo-wallet.entity';
+import { RepPseudoLedgerEntry } from './entities/rep-pseudo-ledger-entry.entity';
+import { PlatformPriceList } from './entities/platform-price-list.entity';
+import { PlatformConfig } from './entities/platform-config.entity';
+import { RepBonusTier } from './entities/rep-bonus-tier.entity';
+import { PayoutRequest } from './entities/payout-request.entity';
+import { RatingEvent } from './entities/rating-event.entity';
+import { Order } from './entities/order.entity';
+import { OrderEscrow } from './entities/order-escrow.entity';
+import { OrderStatusHistory } from './entities/order-status-history.entity';
+import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
 
 @Module({
   imports: [
@@ -37,6 +56,13 @@ import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
             ConversionRate, Wallet, LedgerEntry, PaystackTransaction,
             CompanyWallet, CompanyLedgerEntry,
             Vault, GiftCard, GiftCardRedemption,
+            // Phase 6
+            Area,
+            Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry,
+            Rep, RepPseudoWallet, RepPseudoLedgerEntry,
+            PlatformPriceList, PlatformConfig, RepBonusTier,
+            PayoutRequest, RatingEvent,
+            Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

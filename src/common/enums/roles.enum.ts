@@ -5,6 +5,8 @@ export enum Role {
   TEAM_OWNER = 'team_owner',        // Creator of a team
   TEAM_ADMIN = 'team_admin',        // Promoted by the team owner
   WASHERMAN = 'washerman',
+  REP = 'rep',                      // Platform field agent (logistics) — admin-created only
+  VENDOR = 'vendor',                // Laundry operator — verified by admin before active
   ADMIN = 'admin',                  // Washermann platform admin; bypasses all company/team checks
   DISPUTE_RESOLVER = 'dispute_resolver',
   FINANCE = 'finance',

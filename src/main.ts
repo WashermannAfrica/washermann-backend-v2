@@ -61,10 +61,13 @@ All responses follow the standard envelope:
 \`\`\`
 
 ### Roles
-- \`user\` — Regular platform user
+- \`user\` — Regular platform user (customer)
 - \`company_admin\` — Company administrator
-- \`washerman\` — Laundry service vendor
+- \`vendor\` — Laundry service vendor (Washerman)
+- \`rep\` — Field representative (pickup & delivery)
 - \`admin\` — Platform administrator
+- \`finance\` — Finance team (read-only financial access)
+- \`dispute_resolver\` — Dispute resolution team
       `,
       )
       .setVersion('1.0')
@@ -79,6 +82,15 @@ All responses follow the standard envelope:
       .addTag('Vaults', 'WashPoint vault management — admin only')
       .addTag('Gift Cards', 'Gift card creation, listing and redemption')
       .addTag('Staff', 'Platform staff management — invite, roles, deactivation')
+      // ─── Phase 6 ───────────────────────────────────────────────────────────────
+      .addTag('Areas', 'Geographic service area management')
+      .addTag('Vendors', 'Vendor (Washerman) lifecycle — registration, verification, pricing, wallet')
+      .addTag('Reps', 'Field rep management — assignment, availability, pseudo-wallet')
+      .addTag('Platform Config', 'Global platform settings, price lists and rep bonus tiers')
+      .addTag('Pricing', 'Order price calculation — client preview and authoritative server-side')
+      .addTag('Orders', 'Full order lifecycle from placement to delivery and rating')
+      .addTag('Assignment', 'Rep & vendor broadcast and manual assignment for orders')
+      .addTag('Payouts', 'Vendor payout requests and rep bonus cycle')
       .addServer(`http://localhost:${port}`, 'Local')
       .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')
