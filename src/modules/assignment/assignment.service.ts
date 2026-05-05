@@ -12,6 +12,7 @@ import { RepStatus } from '../../common/enums/rep-status.enum';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { AreasService } from '../areas/areas.service';
 import { OrdersService } from '../orders/orders.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /** Priority score for a rep or vendor candidate */
 interface ScoredCandidate {
@@ -41,6 +42,7 @@ export class AssignmentService {
 
     private areasService: AreasService,
     private ordersService: OrdersService,
+    private notificationsService: NotificationsService,
     private configService: ConfigService,
   ) {}
 
@@ -102,6 +104,12 @@ export class AssignmentService {
           note: 'No available reps found in any area — requires manual admin assignment',
         }),
       );
+      // Notify admin
+      this.notificationsService.notifyNoRepsAvailableAdmin({
+        orderRef: order.reference,
+        areaName: areaId,
+        orderId,
+      });
       return;
     }
 
@@ -122,10 +130,23 @@ export class AssignmentService {
       await this.broadcastRepository.save(record);
     }
 
-    // In production: send push notification to each rep
     this.logger.log(
       `Order ${orderId}: Broadcasting to ${batch.length} reps (batch ${batchNumber}), window: ${this.windowSeconds}s`,
     );
+
+    // Notify each rep
+    const scheduledPickupAt = order.scheduledPickupAt
+      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })
+      : '';
+    for (const candidate of batch) {
+      this.notificationsService.notifyAssignmentBroadcastRep({
+        repId:            candidate.id,
+        orderRef:         order.reference,
+        pickupAddress:    order.pickupAddress,
+        scheduledPickupAt,
+        orderId,
+      });
+    }
   }
 
   // ─── Rep accepts assignment ───────────────────────────────────────────────────
@@ -170,6 +191,15 @@ export class AssignmentService {
         note: 'Rep accepted assignment',
       }),
     );
+
+    // Notify rep of confirmed assignment
+    this.notificationsService.notifyAssignmentConfirmedRep({
+      repId:         repId,
+      orderRef:      order.reference,
+      pickupAddress: order.pickupAddress,
+      customerName:  '',    // will be looked up inside notifyAssignmentConfirmedRep via customer ID if needed
+      orderId,
+    });
 
     // Start vendor assignment
     await this.startVendorAssignment(orderId);
@@ -233,6 +263,19 @@ export class AssignmentService {
     this.logger.log(
       `Order ${orderId}: Broadcasting to ${batch.length} vendors (batch ${batchNumber})`,
     );
+
+    // Notify each vendor
+    const scheduledPickupAt = order.scheduledPickupAt
+      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })
+      : '';
+    for (const candidate of batch) {
+      this.notificationsService.notifyAssignmentBroadcastVendor({
+        vendorId:          candidate.id,
+        orderRef:          order.reference,
+        scheduledPickupAt,
+        orderId,
+      });
+    }
   }
 
   // ─── Vendor accepts assignment ────────────────────────────────────────────────

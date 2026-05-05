@@ -25,6 +25,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class OrdersService {
@@ -60,6 +61,7 @@ export class OrdersService {
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
+    private notificationsService: NotificationsService,
     private dataSource: DataSource,
     private configService: ConfigService,
   ) {}
@@ -170,6 +172,16 @@ export class OrdersService {
         }),
       );
 
+      // 9. Fire order-placed notifications (fire-and-forget)
+      this.notificationsService.notifyOrderPlaced({
+        customerId:        customerId,
+        orderRef:          ref,
+        totalWP:           pricing.totalWP,
+        nairaEquivalent:   pricing.nairaEquivalent,
+        pickupAddress:     dto.pickupAddress,
+        scheduledPickupAt: new Date(dto.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }),
+      });
+
       return { order, pricing };
     });
   }
@@ -259,6 +271,24 @@ export class OrdersService {
         note: note ?? null,
       }),
     );
+
+    // Fire transition-based notifications
+    if (toStatus === OrderStatus.PICKED_UP) {
+      this.notificationsService.notifyOrderPickedUp({
+        customerId: order.customerId,
+        vendorId:   order.vendorId!,
+        repId:      order.repId!,
+        orderRef:   order.reference,
+      });
+    }
+    if (toStatus === OrderStatus.DELIVERED) {
+      this.notificationsService.notifyOrderDelivered({
+        customerId: order.customerId,
+        vendorId:   order.vendorId,
+        repId:      order.repId,
+        orderRef:   order.reference,
+      });
+    }
 
     return order;
   }
@@ -364,6 +394,17 @@ export class OrdersService {
         }),
       );
 
+      // Fire completion notifications (fire-and-forget)
+      this.notificationsService.notifyOrderCompleted({
+        customerId:      order.customerId,
+        vendorId:        order.vendorId,
+        repId:           order.repId,
+        orderRef:        order.reference,
+        vendorShareWP:   order.vendorShareWP ?? 0,
+        repShareWP:      order.repShareWP ?? 0,
+        nairaEquivalent: order.vendorShareNairaSnapshot ?? 0,
+      });
+
       return order;
     });
   }
@@ -442,6 +483,13 @@ export class OrdersService {
           note: reason,
         }),
       );
+
+      // Fire cancellation notification (fire-and-forget)
+      this.notificationsService.notifyOrderCancelled({
+        customerId: customerId,
+        orderRef:   order.reference,
+        totalWP:    order.totalWP,
+      });
 
       return order;
     });

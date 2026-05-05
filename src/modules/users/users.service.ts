@@ -62,6 +62,11 @@ export class UsersService {
     return { data: this.sanitizeUser(user), message: 'Profile updated' };
   }
 
+  async updateFcmToken(userId: string, token: string) {
+    await this.userRepository.update({ id: userId }, { fcmToken: token || null });
+    return { message: 'FCM token updated' };
+  }
+
   // ─── Addresses ───────────────────────────────────────────────────────────────
 
   async getAddresses(userId: string) {

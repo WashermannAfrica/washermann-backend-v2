@@ -23,6 +23,7 @@ import { VerifyVendorDto } from './dto/verify-vendor.dto';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { Role } from '../../common/enums/roles.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class VendorsService {
@@ -47,6 +48,7 @@ export class VendorsService {
 
     private dataSource: DataSource,
     private configService: ConfigService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -199,7 +201,13 @@ export class VendorsService {
       }
     }
 
-    return this.vendorRepository.save(vendor);
+    const saved = await this.vendorRepository.save(vendor);
+
+    if (dto.decision === VendorVerificationStatus.VERIFIED) {
+      this.notificationsService.notifyVendorVerified({ vendorId });
+    }
+
+    return saved;
   }
 
   // ─── Admin: Suspend / unsuspend vendor ──────────────────────────────────────
@@ -310,6 +318,9 @@ export class VendorsService {
     await this.vendorRepository.update(pricing.vendorId, {
       pricingLastUpdatedAt: new Date(),
     });
+
+    // Notify vendor
+    this.notificationsService.notifyPricingApproved({ vendorId: pricing.vendorId });
 
     return pricing;
   }

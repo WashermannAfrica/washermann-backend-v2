@@ -37,6 +37,8 @@ import { Order } from './entities/order.entity';
 import { OrderEscrow } from './entities/order-escrow.entity';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
+import { InAppNotification } from './entities/in-app-notification.entity';
+import { NotificationTemplate } from './entities/notification-template.entity';
 
 @Module({
   imports: [
@@ -63,6 +65,8 @@ import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
             PlatformPriceList, PlatformConfig, RepBonusTier,
             PayoutRequest, RatingEvent,
             Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast,
+            // Notifications
+            InAppNotification, NotificationTemplate,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
