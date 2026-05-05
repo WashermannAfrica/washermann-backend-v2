@@ -67,6 +67,10 @@ export class Vendor extends BaseEntity {
   @Column({ name: 'pricing_last_updated_at', type: 'timestamp with time zone', nullable: true })
   pricingLastUpdatedAt: Date | null;
 
+  @ApiProperty({ nullable: true, description: 'Cloudinary URL of vendor business logo / shop photo' })
+  @Column({ name: 'logo_url', type: 'varchar', length: 2000, nullable: true })
+  logoUrl: string | null;
+
   @ApiProperty({ nullable: true })
   @Column({ name: 'verified_at', type: 'timestamp with time zone', nullable: true })
   verifiedAt: Date | null;

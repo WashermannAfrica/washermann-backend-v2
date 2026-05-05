@@ -13,6 +13,7 @@ import {
   seedConfig,
   paystackConfig,
   topupConfig,
+  cloudinaryConfig,
 } from './config';
 
 // Database
@@ -47,6 +48,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { AssignmentModule } from './modules/assignment/assignment.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { UploadModule } from './modules/upload/upload.module';
 
 @Module({
   imports: [
@@ -56,7 +58,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     // ─── Config ───────────────────────────────────────────────────────────────
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig, redisConfig, notificationsConfig, seedConfig, paystackConfig, topupConfig],
+      load: [appConfig, databaseConfig, jwtConfig, redisConfig, notificationsConfig, seedConfig, paystackConfig, topupConfig, cloudinaryConfig],
       envFilePath: '.env',
     }),
 
@@ -93,6 +95,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     AssignmentModule,
     PayoutsModule,
     TasksModule,
+    UploadModule,
   ],
 
   providers: [
