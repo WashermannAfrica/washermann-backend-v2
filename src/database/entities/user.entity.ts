@@ -48,6 +48,10 @@ export class User extends BaseEntity {
   @Column({ name: 'phone_verified', type: 'boolean', default: false })
   phoneVerified: boolean;
 
+  @ApiProperty({ nullable: true, description: 'Cloudinary URL of profile picture' })
+  @Column({ name: 'avatar_url', type: 'varchar', length: 2000, nullable: true })
+  avatarUrl: string | null;
+
   // ─── Relations (populated in later phases) ──────────────────────────────────
   @OneToMany(() => Address, (address) => address.user, { cascade: true })
   addresses: Address[];

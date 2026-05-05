@@ -6,3 +6,4 @@ export { default as notificationsConfig } from './notifications.config';
 export { default as seedConfig } from './seed.config';
 export { default as paystackConfig } from './paystack.config';
 export { default as topupConfig } from './topup.config';
+export { default as cloudinaryConfig } from './cloudinary.config';

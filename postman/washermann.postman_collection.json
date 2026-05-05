@@ -21,7 +21,8 @@
     { "key": "orderId",           "value": "", "type": "string", "description": "UUID of an order" },
     { "key": "pricingId",         "value": "", "type": "string", "description": "UUID of a vendor pricing proposal" },
     { "key": "bonusTierId",       "value": "", "type": "string", "description": "UUID of a rep bonus tier" },
-    { "key": "payoutId",          "value": "", "type": "string", "description": "UUID of a payout request" }
+    { "key": "payoutId",          "value": "", "type": "string", "description": "UUID of a payout request" },
+    { "key": "repIdForContract",  "value": "", "type": "string", "description": "UUID of a rep for contract upload" }
   ],
   "auth": {
     "type": "bearer",
@@ -2100,6 +2101,90 @@
             "header": [],
             "url": { "raw": "{{baseUrl}}/payouts/bonus-cycle/run", "host": ["{{baseUrl}}"], "path": ["payouts", "bonus-cycle", "run"] },
             "description": "[Admin] Manually trigger the rep bonus cycle. Calculates 30-day average rating for all active reps, maps to bonus tier (% of cycle WP balance), credits bonus to pseudo-wallet, flags low-rated reps for review, then resets cycle balance. Returns a full report."
+          },
+          "response": []
+        }
+      ]
+    },
+
+    {
+      "name": "Upload",
+      "description": "File uploads via multipart/form-data. All requests use Cloudinary for storage. Files are validated (type + size) before upload.\n\n**How to use in Postman:**\n1. Select the request\n2. Go to Body → form-data\n3. Set key `file`, change type to **File**, and select your file\n4. For document uploads, also add key `documentType` as Text",
+      "item": [
+        {
+          "name": "Upload My Avatar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "Profile picture — JPG, PNG, or WebP, max 5 MB" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/upload/avatar", "host": ["{{baseUrl}}"], "path": ["upload", "avatar"] },
+            "description": "Upload a profile picture for the authenticated user. Works for any role (customer, rep, vendor, admin). Resized to 400×400 square on Cloudinary. Updates `avatarUrl` on the user record."
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "  const res = pm.response.json();",
+                "  pm.test('Avatar uploaded', () => pm.expect(res.data.avatarUrl).to.be.a('string'));",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "response": []
+        },
+        {
+          "name": "[Vendor] Upload Business Logo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "Business logo — JPG, PNG, or WebP, max 5 MB" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/upload/vendor/logo", "host": ["{{baseUrl}}"], "path": ["upload", "vendor", "logo"] },
+            "description": "[Vendor] Upload or replace the vendor's business logo / shop photo. Resized to fit within 800×600. Updates `logoUrl` on the vendor record."
+          },
+          "response": []
+        },
+        {
+          "name": "[Vendor] Upload KYC Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file",         "type": "file",  "src": "",    "description": "Document — JPG, PNG, WebP, or PDF, max 10 MB" },
+                { "key": "documentType", "type": "text",  "value": "nin", "description": "nin | cac | address_proof | photo | other" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/upload/vendor/document", "host": ["{{baseUrl}}"], "path": ["upload", "vendor", "document"] },
+            "description": "[Vendor] Upload a KYC verification document. Append-only — existing documents are preserved. Admin reads these during the verification review. `documentType`: nin | cac | address_proof | photo | other."
+          },
+          "response": []
+        },
+        {
+          "name": "[Admin] Upload Rep Contract",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "Signed contract — PDF or image, max 10 MB" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/upload/rep/{{repId}}/contract", "host": ["{{baseUrl}}"], "path": ["upload", "rep", "{{repId}}", "contract"] },
+            "description": "[Admin] Upload a signed contract document for a rep. Updates `contractUrl` on the rep record."
           },
           "response": []
         }

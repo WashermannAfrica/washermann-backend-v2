@@ -91,6 +91,7 @@ All responses follow the standard envelope:
       .addTag('Orders', 'Full order lifecycle from placement to delivery and rating')
       .addTag('Assignment', 'Rep & vendor broadcast and manual assignment for orders')
       .addTag('Payouts', 'Vendor payout requests and rep bonus cycle')
+      .addTag('Upload', 'File uploads — profile pictures, vendor logos, KYC documents, rep contracts')
       .addServer(`http://localhost:${port}`, 'Local')
       .addServer('https://dev-api.washermann.com', 'Development')
       .addServer('https://api.washermann.com', 'Production')
