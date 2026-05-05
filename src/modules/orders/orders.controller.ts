@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
+import { RepsService } from '../reps/reps.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { LogGarmentCountDto } from './dto/garment-log.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
@@ -31,7 +32,10 @@ class CancelOrderDto {
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly repsService: RepsService,
+  ) {}
 
   // ─── Customer: place order ────────────────────────────────────────────────────
 
@@ -92,9 +96,8 @@ export class OrdersController {
     @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: OrderStatus,
   ) {
-    // Find repId from userId
-    const { RepsService } = await import('../reps/reps.service');
-    return this.ordersService.findAll({ page, limit, status });
+    const rep = await this.repsService.findByUserId(req.user.sub);
+    return this.ordersService.findAll({ page, limit, repId: rep.id, status });
   }
 
   // ─── Get one order ────────────────────────────────────────────────────────────

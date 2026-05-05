@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 // Config
@@ -45,9 +46,13 @@ import { PricingModule } from './modules/pricing/pricing.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { AssignmentModule } from './modules/assignment/assignment.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
+    // ─── Scheduler ───────────────────────────────────────────────────────────
+    ScheduleModule.forRoot(),
+
     // ─── Config ───────────────────────────────────────────────────────────────
     ConfigModule.forRoot({
       isGlobal: true,
@@ -87,6 +92,7 @@ import { PayoutsModule } from './modules/payouts/payouts.module';
     OrdersModule,
     AssignmentModule,
     PayoutsModule,
+    TasksModule,
   ],
 
   providers: [

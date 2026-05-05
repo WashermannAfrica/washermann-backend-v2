@@ -518,6 +518,90 @@ export class PaystackService {
     }
   }
 
+  // ─── Paystack Transfer (vendor payouts) ─────────────────────────────────────
+
+  /**
+   * Create a Paystack transfer recipient.
+   * Must be done once per bank account before initiating a transfer.
+   * Returns a recipient code (e.g. RCP_xxxx) that is stable for the same account.
+   */
+  async createTransferRecipient(params: {
+    name: string;
+    accountNumber: string;
+    bankCode: string;
+  }): Promise<string> {
+    const secretKey = this.configService.get<string>('paystack.secretKey');
+    const baseUrl   = this.configService.get<string>('paystack.baseUrl');
+
+    try {
+      const res = await axios.post(
+        `${baseUrl}/transferrecipient`,
+        {
+          type:           'nuban',
+          name:           params.name,
+          account_number: params.accountNumber,
+          bank_code:      params.bankCode,
+          currency:       'NGN',
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10_000,
+        },
+      );
+      return res.data.data.recipient_code as string;
+    } catch (err: any) {
+      const message = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      this.logger.error(`Paystack createTransferRecipient failed: ${message}`);
+      throw new BadRequestException(`Payment gateway error: ${message}`);
+    }
+  }
+
+  /**
+   * Initiate a Paystack transfer to a recipient.
+   * Amount is in Naira (we convert to kobo internally).
+   * Returns the transfer code and initial status.
+   */
+  async initiateTransfer(params: {
+    amountNaira: number;
+    recipientCode: string;
+    reason: string;
+    reference: string;
+  }): Promise<{ transferCode: string; status: string }> {
+    const secretKey = this.configService.get<string>('paystack.secretKey');
+    const baseUrl   = this.configService.get<string>('paystack.baseUrl');
+
+    const amountKobo = Math.round(params.amountNaira * 100);
+
+    try {
+      const res = await axios.post(
+        `${baseUrl}/transfer`,
+        {
+          source:    'balance',
+          amount:    amountKobo,
+          recipient: params.recipientCode,
+          reason:    params.reason,
+          reference: params.reference,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15_000,
+        },
+      );
+      const { transfer_code, status } = res.data.data;
+      return { transferCode: transfer_code as string, status: status as string };
+    } catch (err: any) {
+      const message = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      this.logger.error(`Paystack initiateTransfer failed: ${message}`);
+      throw new BadRequestException(`Payment gateway error: ${message}`);
+    }
+  }
+
   // ─── Private: helpers ────────────────────────────────────────────────────────
 
   private sanitizeTx(tx: PaystackTransaction) {
