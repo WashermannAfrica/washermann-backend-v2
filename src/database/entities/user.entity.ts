@@ -52,6 +52,10 @@ export class User extends BaseEntity {
   @Column({ name: 'avatar_url', type: 'varchar', length: 2000, nullable: true })
   avatarUrl: string | null;
 
+  @ApiProperty({ nullable: true, description: 'Firebase FCM device token for push notifications' })
+  @Column({ name: 'fcm_token', type: 'varchar', length: 1000, nullable: true })
+  fcmToken: string | null;
+
   // ─── Relations (populated in later phases) ──────────────────────────────────
   @OneToMany(() => Address, (address) => address.user, { cascade: true })
   addresses: Address[];

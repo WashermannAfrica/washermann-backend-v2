@@ -18,6 +18,7 @@ import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { PaystackService } from '../payments/paystack.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PayoutsService {
@@ -43,6 +44,7 @@ export class PayoutsService {
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
     private paystackService: PaystackService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─── Vendor: request payout ───────────────────────────────────────────────────
@@ -68,7 +70,21 @@ export class PayoutsService {
       accountName:        dto.accountName,
       status:             PayoutStatus.PENDING,
     });
-    return this.payoutRepository.save(payout);
+    const saved = await this.payoutRepository.save(payout);
+
+    // Notify admin of new payout request
+    const vendor = await this.vendorsService.findOne(vendorId);
+    if (vendor) {
+      this.notificationsService.notifyNewPayoutRequest({
+        vendorId,
+        vendorName:  vendor.businessName,
+        amountWP:    dto.amountWP,
+        nairaAmount,
+        payoutId:    saved.id,
+      });
+    }
+
+    return saved;
   }
 
   // ─── Admin: approve payout ────────────────────────────────────────────────────
@@ -132,6 +148,28 @@ export class PayoutsService {
     }
 
     await this.payoutRepository.save(payout);
+
+    // Fire payout notification
+    if (payout.status === PayoutStatus.FAILED) {
+      this.notificationsService.notifyPayoutFailed({
+        vendorId:      payout.vendorId,
+        nairaAmount:   payout.nairaAmount,
+        amountWP:      payout.amountWP,
+        failureReason: payout.failureReason ?? 'Unknown error',
+        payoutId:      payout.id,
+      });
+    } else {
+      this.notificationsService.notifyPayoutApproved({
+        vendorId:      payout.vendorId,
+        nairaAmount:   payout.nairaAmount,
+        amountWP:      payout.amountWP,
+        accountName:   payout.accountName,
+        accountNumber: payout.accountNumber,
+        bankCode:      payout.bankCode,
+        payoutId:      payout.id,
+      });
+    }
+
     return payout;
   }
 

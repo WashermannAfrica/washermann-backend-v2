@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Washermann Notifications API — Usage Documentation</title>
+<style>
+  :root {
+    --navy:   #1a1a2e;
+    --accent: #4fc3f7;
+    --green:  #2e7d32;
+    --red:    #c62828;
+    --amber:  #f57f17;
+    --purple: #6a1b9a;
+    --teal:   #00695c;
+    --bg:     #f7f8fa;
+    --card:   #ffffff;
+    --border: #e2e8f0;
+    --text:   #2d3748;
+    --muted:  #718096;
+    --code-bg:#1e2a3a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+
+  /* ─── Cover Page ─────────────────────────────────── */
+  .cover {
+    background: linear-gradient(135deg, var(--navy) 0%, #162040 60%, #0d3060 100%);
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 60px 40px;
+    page-break-after: always;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    border: 2px solid rgba(79,195,247,0.15);
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -120px; left: -120px;
+    width: 500px; height: 500px;
+    border-radius: 50%;
+    border: 2px solid rgba(79,195,247,0.08);
+  }
+  .cover-logo {
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-logo span { color: var(--accent); }
+  .cover-pill {
+    background: rgba(79,195,247,0.15);
+    border: 1px solid rgba(79,195,247,0.4);
+    color: var(--accent);
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+    display: inline-block;
+    position: relative;
+    z-index: 1;
+  }
+  .cover h1 {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover p {
+    font-size: 16px;
+    color: rgba(255,255,255,0.7);
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 48px;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 40px;
+    position: relative;
+    z-index: 1;
+    margin-top: 40px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding-top: 32px;
+    width: 100%;
+    max-width: 560px;
+    justify-content: space-around;
+  }
+  .cover-meta-item { text-align: center; }
+  .cover-meta-item .label { font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; }
+  .cover-meta-item .value { font-size: 14px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+  .cover-channels {
+    display: flex;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .cover-channel-tag {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* ─── Layout ─────────────────────────────────────── */
+  .page { max-width: 860px; margin: 0 auto; padding: 40px 48px; }
+
+  /* ─── Chapter break ──────────────────────────────── */
+  .chapter-break { page-break-before: always; padding-top: 20px; }
+
+  /* ─── Section headings ───────────────────────────── */
+  .section-header {
+    background: var(--navy);
+    color: white;
+    padding: 18px 28px;
+    border-radius: 10px;
+    margin: 36px 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .section-header .num {
+    background: var(--accent);
+    color: var(--navy);
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .section-header h2 { font-size: 20px; font-weight: 700; margin: 0; }
+  .section-header p { font-size: 12px; color: rgba(255,255,255,0.6); margin: 2px 0 0; }
+
+  h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--navy);
+    margin: 28px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  h4 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    margin: 20px 0 8px;
+  }
+
+  p { margin-bottom: 12px; }
+
+  /* ─── Cards ──────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ─── Badges ─────────────────────────────────────── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    gap: 4px;
+  }
+  .badge-email    { background: #e3f2fd; color: #1565c0; }
+  .badge-sms      { background: #e8f5e9; color: #2e7d32; }
+  .badge-push     { background: #fff3e0; color: #e65100; }
+  .badge-inapp    { background: #f3e5f5; color: #6a1b9a; }
+  .badge-whatsapp { background: #e8f5e9; color: #1b5e20; }
+  .badge-get      { background: #e3f2fd; color: #1565c0; }
+  .badge-post     { background: #e8f5e9; color: #2e7d32; }
+  .badge-patch    { background: #fff8e1; color: #f57f17; }
+  .badge-delete   { background: #ffebee; color: #c62828; }
+  .badge-admin    { background: #fce4ec; color: #880e4f; }
+  .badge-user     { background: #e3f2fd; color: #0d47a1; }
+  .badge-public   { background: #f5f5f5; color: #424242; }
+  .badge-required { background: #ffebee; color: #c62828; }
+  .badge-optional { background: #f5f5f5; color: #616161; }
+
+  /* ─── Code blocks ────────────────────────────────── */
+  pre {
+    background: var(--code-bg);
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    background: #edf2f7;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #c0392b;
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+  .comment { color: #6b7a94; }
+  .str     { color: #98c379; }
+  .key     { color: #61afef; }
+  .num     { color: #d19a66; }
+  .kw      { color: #c678dd; }
+
+  /* ─── Tables ─────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 12.5px;
+    page-break-inside: avoid;
+  }
+  th {
+    background: var(--navy);
+    color: white;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .3px;
+  }
+  th:first-child { border-radius: 8px 0 0 0; }
+  th:last-child  { border-radius: 0 8px 0 0; }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f9fbfd; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ─── Channel grid ───────────────────────────────── */
+  .channel-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .channel-box {
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .channel-box .icon { font-size: 28px; margin-bottom: 8px; }
+  .channel-box .name { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .channel-box .desc { font-size: 10.5px; color: var(--muted); }
+
+  .ch-email    { background: #e3f2fd; border: 1px solid #90caf9; }
+  .ch-sms      { background: #e8f5e9; border: 1px solid #a5d6a7; }
+  .ch-push     { background: #fff3e0; border: 1px solid #ffcc80; }
+  .ch-inapp    { background: #f3e5f5; border: 1px solid #ce93d8; }
+  .ch-whatsapp { background: #e8f5e9; border: 1px solid #66bb6a; }
+
+  /* ─── Event matrix ───────────────────────────────── */
+  .matrix-wrap { overflow-x: auto; margin: 16px 0; }
+  .check { color: var(--green); font-weight: 700; }
+  .cross { color: #ccc; }
+
+  /* ─── Info boxes ─────────────────────────────────── */
+  .info-box {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 13px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+  }
+  .info-box .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .info-box.info    { background: #e3f2fd; border-left: 4px solid #1976d2; }
+  .info-box.warning { background: #fff8e1; border-left: 4px solid #f9a825; }
+  .info-box.success { background: #e8f5e9; border-left: 4px solid #388e3c; }
+  .info-box.danger  { background: #ffebee; border-left: 4px solid #c62828; }
+
+  /* ─── Endpoint blocks ────────────────────────────── */
+  .endpoint {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    page-break-inside: avoid;
+  }
+  .endpoint-header {
+    background: #f8fafc;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .endpoint-path {
+    font-family: 'SF Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+    flex: 1;
+  }
+  .endpoint-body { padding: 16px 20px; }
+  .endpoint-desc { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+
+  /* ─── Params table ───────────────────────────────── */
+  .params-table { font-size: 12px; }
+  .params-table th { background: #f0f4f8; color: var(--navy); }
+
+  /* ─── TOC ────────────────────────────────────────── */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 32px;
+    margin: 0 0 32px;
+  }
+  .toc h2 { font-size: 18px; margin-bottom: 20px; color: var(--navy); border: none; padding: 0; }
+  .toc ol { padding-left: 20px; }
+  .toc li { padding: 5px 0; font-size: 13.5px; }
+  .toc li a { color: var(--navy); text-decoration: none; }
+  .toc li a:hover { color: var(--accent); }
+  .toc .sub { padding-left: 20px; list-style: lower-alpha; margin: 4px 0; }
+  .toc .sub li { padding: 2px 0; font-size: 12.5px; color: var(--muted); }
+
+  /* ─── Print ──────────────────────────────────────── */
+  @media print {
+    .cover { min-height: 100vh; }
+    .chapter-break { page-break-before: always; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  /* ─── Util ───────────────────────────────────────── */
+  .divider { height: 1px; background: var(--border); margin: 24px 0; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 200px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .mb-0 { margin-bottom: 0; }
+  .mt-8 { margin-top: 8px; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════ COVER ═══ -->
+<div class="cover">
+  <div class="cover-logo">Washer<span>mann</span></div>
+  <div class="cover-pill">Backend API Documentation</div>
+  <h1>Notifications System<br/>Developer Reference</h1>
+  <p>Complete technical guide covering all five notification channels, every event trigger, admin template management, and direct API testing.</p>
+
+  <div class="cover-channels">
+    <div class="cover-channel-tag">📧 Email (Resend)</div>
+    <div class="cover-channel-tag">💬 SMS (Termii)</div>
+    <div class="cover-channel-tag">🔔 Push (FCM)</div>
+    <div class="cover-channel-tag">📱 In-App</div>
+    <div class="cover-channel-tag">🟢 WhatsApp (Twilio)</div>
+  </div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="label">Version</div>
+      <div class="value">4.0.0</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="label">Base URL</div>
+      <div class="value">https://api.washermann.com</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="label">Auth</div>
+      <div class="value">JWT Bearer</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="label">Date</div>
+      <div class="value">May 2026</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ MAIN DOC ═══ -->
+<div class="page">
+
+<!-- TOC -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#overview">System Overview &amp; Architecture</a>
+      <ul class="sub">
+        <li>Five-channel design</li>
+        <li>Environment configuration</li>
+        <li>How templates work</li>
+      </ul>
+    </li>
+    <li><a href="#channels">Channel Reference</a>
+      <ul class="sub">
+        <li>Email (Resend)</li>
+        <li>SMS (Termii)</li>
+        <li>Push Notifications (Firebase)</li>
+        <li>In-App Inbox</li>
+        <li>WhatsApp (Twilio)</li>
+      </ul>
+    </li>
+    <li><a href="#matrix">Event &amp; Channel Matrix</a></li>
+    <li><a href="#in-app-api">In-App Inbox API</a></li>
+    <li><a href="#template-api">Admin Template Management API</a></li>
+    <li><a href="#fcm-token">FCM Token Registration</a></li>
+    <li><a href="#testing">Direct API Testing (cURL &amp; Postman)</a></li>
+    <li><a href="#usecases">Use Cases &amp; Scenario Walkthroughs</a></li>
+    <li><a href="#justification">Design Decisions &amp; Justification</a></li>
+    <li><a href="#env">Environment Variables Reference</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════ §1 OVERVIEW ════ -->
+<div class="section-header" id="overview">
+  <div class="num">1</div>
+  <div>
+    <h2>System Overview &amp; Architecture</h2>
+    <p>How the notification system is structured and why</p>
+  </div>
+</div>
+
+<p>The Washermann notification system is a unified, five-channel messaging layer built inside a <strong>NestJS global module</strong>. Every business event that matters to a customer, rep, vendor, or admin triggers the appropriate channel mix automatically — the calling code only calls one method.</p>
+
+<div class="row">
+  <div class="col card">
+    <div class="card-title">🏗️ Architecture</div>
+    <p class="mb-0"><strong>NotificationsModule</strong> is decorated <code>@Global()</code>, meaning its <code>NotificationsService</code> is injectable everywhere without re-importing. Calling code simply injects the service and calls a semantic method like <code>notifyOrderPlaced()</code>.</p>
+  </div>
+  <div class="col card">
+    <div class="card-title">🔥 Fire &amp; Forget</div>
+    <p class="mb-0">Every notification call is wrapped in a fire-and-forget pattern. A transient Resend outage or an expired FCM token will <strong>never crash a business transaction</strong>. Failures are logged as warnings only.</p>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col card">
+    <div class="card-title">📋 DB-Backed Templates</div>
+    <p class="mb-0">50+ default templates seed the <code>notification_templates</code> table on first startup. Admins can update content, styling, subject lines, and HTML via the REST API without redeployment.</p>
+  </div>
+  <div class="col card">
+    <div class="card-title">🎨 Handlebars Rendering</div>
+    <p class="mb-0">Template bodies use <code>{{variableName}}</code> syntax. The <code>TemplateService</code> compiles and renders them at send time with real data. DB templates take precedence over code defaults.</p>
+  </div>
+</div>
+
+<h3>Service Dependency Map</h3>
+<pre><code><span class="comment">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="comment">│  OrdersService  │  AssignmentService  │  PayoutsService      │</span>
+<span class="comment">│  VendorsService │                     │                       │</span>
+<span class="comment">└──────────────┬──────────────┬─────────────────┬─────────────┘</span>
+               │              │                 │
+               ▼              ▼                 ▼
+      <span class="str">NotificationsService</span>  <span class="comment">(Global — @Inject anywhere)</span>
+               │
+       ┌───────┼────────────────────────┐
+       │       │       │        │       │
+       ▼       ▼       ▼        ▼       ▼
+  <span class="key">Email</span>   <span class="key">SMS</span>   <span class="key">Push</span>   <span class="key">InApp</span>  <span class="key">WhatsApp</span>
+  Resend Termii  FCM    DB     Twilio
+       │
+  <span class="str">TemplateService</span>  <span class="comment">(Handlebars + DB lookup)</span>
+       │
+  <span class="num">notification_templates</span> table  <span class="comment">(seeded on startup)</span></code></pre>
+
+<h3>Environment Configuration</h3>
+<p>Add these keys to your <code>.env</code> file to enable each channel:</p>
+
+<table>
+  <tr><th>Variable</th><th>Channel</th><th>Example</th></tr>
+  <tr><td><code>RESEND_API_KEY</code></td><td><span class="badge badge-email">Email</span></td><td><code>re_xxxxxxxxxxxxxxxx</code></td></tr>
+  <tr><td><code>RESEND_FROM_EMAIL</code></td><td><span class="badge badge-email">Email</span></td><td><code>no-reply@washermann.com</code></td></tr>
+  <tr><td><code>RESEND_FROM_NAME</code></td><td><span class="badge badge-email">Email</span></td><td><code>Washermann</code></td></tr>
+  <tr><td><code>TERMII_API_KEY</code></td><td><span class="badge badge-sms">SMS</span></td><td><code>TLxxxxxxxxxxxxxxxx</code></td></tr>
+  <tr><td><code>TERMII_SENDER_ID</code></td><td><span class="badge badge-sms">SMS</span></td><td><code>Washermann</code></td></tr>
+  <tr><td><code>FIREBASE_PROJECT_ID</code></td><td><span class="badge badge-push">Push</span></td><td><code>washermann-prod</code></td></tr>
+  <tr><td><code>FIREBASE_CLIENT_EMAIL</code></td><td><span class="badge badge-push">Push</span></td><td><code>firebase-adminsdk@…</code></td></tr>
+  <tr><td><code>FIREBASE_PRIVATE_KEY</code></td><td><span class="badge badge-push">Push</span></td><td><code>-----BEGIN RSA…</code> (use <code>\n</code> for newlines)</td></tr>
+  <tr><td><code>TWILIO_ACCOUNT_SID</code></td><td><span class="badge badge-whatsapp">WhatsApp</span></td><td><code>ACxxxxxxxxxxxxxxxx</code></td></tr>
+  <tr><td><code>TWILIO_AUTH_TOKEN</code></td><td><span class="badge badge-whatsapp">WhatsApp</span></td><td><code>xxxxxxxxxxxxxxxx</code></td></tr>
+  <tr><td><code>TWILIO_WHATSAPP_FROM</code></td><td><span class="badge badge-whatsapp">WhatsApp</span></td><td><code>whatsapp:+14155238886</code></td></tr>
+  <tr><td><code>ADMIN_NOTIFICATION_EMAIL</code></td><td><span class="badge badge-email">Email</span></td><td><code>ops@washermann.com</code></td></tr>
+</table>
+
+<div class="info-box info">
+  <div class="icon">ℹ️</div>
+  <div><strong>Graceful degradation:</strong> If a channel's credentials are absent, that channel is silently disabled at startup and a warning is logged. All other channels continue to function normally. No <code>500</code> errors are thrown.</div>
+</div>
+
+<!-- ════════════════════════════════ §2 CHANNELS ════ -->
+<div class="section-header chapter-break" id="channels">
+  <div class="num">2</div>
+  <div>
+    <h2>Channel Reference</h2>
+    <p>Provider details, rate limits, and when each channel fires</p>
+  </div>
+</div>
+
+<div class="channel-grid">
+  <div class="channel-box ch-email">
+    <div class="icon">📧</div>
+    <div class="name">Email</div>
+    <div class="desc">Resend API · HTML templates · deep detail</div>
+  </div>
+  <div class="channel-box ch-sms">
+    <div class="icon">💬</div>
+    <div class="name">SMS</div>
+    <div class="desc">Termii · plain text · 160 chars · high open rate</div>
+  </div>
+  <div class="channel-box ch-push">
+    <div class="icon">🔔</div>
+    <div class="name">Push</div>
+    <div class="desc">Firebase FCM · iOS &amp; Android · device token</div>
+  </div>
+  <div class="channel-box ch-inapp">
+    <div class="icon">📱</div>
+    <div class="name">In-App</div>
+    <div class="desc">PostgreSQL · REST inbox · read/unread</div>
+  </div>
+  <div class="channel-box ch-whatsapp">
+    <div class="icon">🟢</div>
+    <div class="name">WhatsApp</div>
+    <div class="desc">Twilio · conversational · high engagement</div>
+  </div>
+</div>
+
+<h3>📧 Email — Resend</h3>
+<div class="card">
+  <p><strong>Provider:</strong> <a href="https://resend.com">Resend</a> — modern transactional email API. Free tier: 100 emails/day, 3,000/month. Paid from $20/month.</p>
+  <p><strong>Format:</strong> Full responsive HTML generated via the <code>buildEmailHtml()</code> helper. Admins can override the HTML body entirely via the template API. The email renders a header, styled content block, and footer.</p>
+  <p><strong>When it fires:</strong> Order confirmations, delivery notifications, payout confirmations/failures, vendor verification, pricing approvals — all events where a permanent record or rich formatting is valuable.</p>
+  <p class="mb-0"><strong>Not used for:</strong> Real-time alerts (push/WhatsApp are faster). Short operational messages (use SMS).</p>
+</div>
+
+<h3>💬 SMS — Termii</h3>
+<div class="card">
+  <p><strong>Provider:</strong> <a href="https://termii.com">Termii</a> — Nigerian-focused SMS gateway with excellent local delivery rates. Sender ID registration required for production.</p>
+  <p><strong>Format:</strong> Plain text, concise (under 160 characters where possible to avoid multi-part billing). No links unless absolutely necessary.</p>
+  <p><strong>When it fires:</strong> Order placed (backup to push for users without the app), order delivered, payout approved, assignment broadcast to rep/vendor, vendor verification. SMS fires when the user has a phone number registered.</p>
+  <p class="mb-0"><strong>Billing note:</strong> SMS has per-message cost. Use for high-value events only — the system does not send SMS for every status change.</p>
+</div>
+
+<h3>🔔 Push — Firebase Cloud Messaging (FCM)</h3>
+<div class="card">
+  <p><strong>Provider:</strong> <a href="https://firebase.google.com/docs/cloud-messaging">Firebase Admin SDK</a> — supports iOS (APNs bridged), Android, and Web.</p>
+  <p><strong>Requirements:</strong> The mobile app must call <code>PATCH /users/me/fcm-token</code> at login and whenever the device token refreshes. Stale tokens (uninstalled app) are handled gracefully — logged as <code>WARN</code>, not errors.</p>
+  <p><strong>When it fires:</strong> Every actionable event — order placed, rep/vendor assigned, pickup, delivery, earnings, payouts, assignments. Push is the primary real-time channel for app users.</p>
+  <p><strong>Priority:</strong> Android: <code>high</code> (wakes device). iOS APNs: <code>badge: 1, sound: default</code>. Channel ID: <code>washermann_default</code>.</p>
+  <p class="mb-0"><strong>Multi-cast:</strong> <code>PushService.sendMulti(tokens[], title, body)</code> supports up to 500 tokens per batch via <code>sendEachForMulticast</code>.</p>
+</div>
+
+<h3>📱 In-App Notifications</h3>
+<div class="card">
+  <p><strong>Storage:</strong> PostgreSQL table <code>in_app_notifications</code>. Each notification is a row with <code>userId</code>, <code>title</code>, <code>body</code>, <code>type</code>, <code>isRead</code>, <code>readAt</code>, and optional <code>metadata</code> JSONB.</p>
+  <p><strong>Types:</strong> <code>order</code> | <code>assignment</code> | <code>payout</code> | <code>account</code> | <code>general</code></p>
+  <p><strong>When it fires:</strong> Every event fires an in-app notification (it's free and persistent). The mobile app polls <code>GET /notifications/me/unread-count</code> on launch to show the badge count.</p>
+  <p class="mb-0"><strong>Retention:</strong> Notifications are never auto-deleted — they form a permanent audit trail visible to the user.</p>
+</div>
+
+<h3>🟢 WhatsApp — Twilio</h3>
+<div class="card">
+  <p><strong>Provider:</strong> <a href="https://www.twilio.com/whatsapp">Twilio WhatsApp Business API</a>. For sandbox testing, use the Twilio sandbox number. For production, you need a WABA (WhatsApp Business Account) approved number.</p>
+  <p><strong>Format:</strong> Rich text with <code>*bold*</code> and <code>_italic_</code> markdown. Emoji supported. Can include multi-line messages.</p>
+  <p><strong>When it fires:</strong> High-engagement events — order placed, rep assigned, pickup, delivery, assignment broadcasts, payout approved. WhatsApp has ~98% open rates in Nigeria.</p>
+  <p class="mb-0"><strong>Phone format:</strong> Numbers must be in E.164 format (e.g. <code>+2348012345678</code>). The system auto-prefixes <code>whatsapp:</code> for Twilio.</p>
+</div>
+
+<!-- ════════════════════════════════ §3 MATRIX ════ -->
+<div class="section-header chapter-break" id="matrix">
+  <div class="num">3</div>
+  <div>
+    <h2>Event &amp; Channel Matrix</h2>
+    <p>Which channels fire for each platform event</p>
+  </div>
+</div>
+
+<p>The table below shows every event the notification system handles and which channels are used. ✅ = fires for this channel, — = not used.</p>
+
+<div class="matrix-wrap">
+<table>
+  <tr>
+    <th style="min-width:200px">Event</th>
+    <th>Audience</th>
+    <th>📧 Email</th>
+    <th>💬 SMS</th>
+    <th>🔔 Push</th>
+    <th>📱 In-App</th>
+    <th>🟢 WA</th>
+  </tr>
+  <!-- ORDER EVENTS -->
+  <tr><td colspan="7" style="background:#f0f4f8;font-weight:700;color:#1a1a2e;padding:8px 14px;">📦 Order Events</td></tr>
+  <tr>
+    <td>Order Placed</td><td>Customer</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Rep Assigned</td><td>Customer</td>
+    <td class="cross">—</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Laundry Picked Up</td><td>Customer</td>
+    <td class="cross">—</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Laundry Picked Up</td><td>Vendor</td>
+    <td class="cross">—</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Order Delivered</td><td>Customer</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Order Completed (Customer)</td><td>Customer</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Earning Credited</td><td>Vendor</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Earning Credited</td><td>Rep</td>
+    <td class="cross">—</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Order Cancelled</td><td>Customer</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <!-- ASSIGNMENT EVENTS -->
+  <tr><td colspan="7" style="background:#f0f4f8;font-weight:700;color:#1a1a2e;padding:8px 14px;">🛵 Assignment Events</td></tr>
+  <tr>
+    <td>Assignment Broadcast</td><td>Rep</td>
+    <td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Assignment Confirmed</td><td>Rep</td>
+    <td class="cross">—</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Assignment Broadcast</td><td>Vendor</td>
+    <td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>No Reps Available (Escalation)</td><td>Admin</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td>
+  </tr>
+  <!-- VENDOR EVENTS -->
+  <tr><td colspan="7" style="background:#f0f4f8;font-weight:700;color:#1a1a2e;padding:8px 14px;">🏪 Vendor Events</td></tr>
+  <tr>
+    <td>Vendor Account Verified</td><td>Vendor</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Vendor Pending Verification</td><td>Admin</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Pricing Approved</td><td>Vendor</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <!-- REP EVENTS -->
+  <tr><td colspan="7" style="background:#f0f4f8;font-weight:700;color:#1a1a2e;padding:8px 14px;">🚴 Rep Events</td></tr>
+  <tr>
+    <td>Rep Flagged for Review</td><td>Rep</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+  <!-- PAYOUT EVENTS -->
+  <tr><td colspan="7" style="background:#f0f4f8;font-weight:700;color:#1a1a2e;padding:8px 14px;">💰 Payout Events</td></tr>
+  <tr>
+    <td>New Payout Request</td><td>Admin</td>
+    <td class="check">✅</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td>
+  </tr>
+  <tr>
+    <td>Payout Approved</td><td>Vendor</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td>
+  </tr>
+  <tr>
+    <td>Payout Failed</td><td>Vendor</td>
+    <td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="cross">—</td>
+  </tr>
+</table>
+</div>
+
+<!-- ════════════════════════════════ §4 IN-APP API ════ -->
+<div class="section-header chapter-break" id="in-app-api">
+  <div class="num">4</div>
+  <div>
+    <h2>In-App Inbox API</h2>
+    <p>REST endpoints for the user notification inbox</p>
+  </div>
+</div>
+
+<p>These endpoints power the notification bell / inbox feature in the mobile and web app. All require a valid JWT Bearer token.</p>
+
+<!-- GET /notifications/me -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-get">GET</span>
+    <span class="endpoint-path">/notifications/me</span>
+    <span class="badge badge-user">User</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Returns the authenticated user's in-app notification inbox, newest first. Paginated.</div>
+    <h4>Query Parameters</h4>
+    <table class="params-table">
+      <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+      <tr><td><code>page</code></td><td>integer</td><td>1</td><td>Page number (1-based)</td></tr>
+      <tr><td><code>limit</code></td><td>integer</td><td>20</td><td>Items per page (max 50)</td></tr>
+    </table>
+    <h4>Response</h4>
+    <pre><code>{
+  <span class="key">"data"</span>: [
+    {
+      <span class="key">"id"</span>:        <span class="str">"550e8400-e29b-41d4-a716-446655440000"</span>,
+      <span class="key">"userId"</span>:    <span class="str">"d7e3b8c2-..."</span>,
+      <span class="key">"title"</span>:     <span class="str">"Order Confirmed"</span>,
+      <span class="key">"body"</span>:      <span class="str">"Your order WM-20240501-001 has been placed (1200 WP)."</span>,
+      <span class="key">"type"</span>:      <span class="str">"order"</span>,
+      <span class="key">"isRead"</span>:    <span class="kw">false</span>,
+      <span class="key">"readAt"</span>:    <span class="kw">null</span>,
+      <span class="key">"metadata"</span>:  { <span class="key">"orderRef"</span>: <span class="str">"WM-20240501-001"</span> },
+      <span class="key">"createdAt"</span>: <span class="str">"2024-05-01T10:30:00Z"</span>
+    }
+  ],
+  <span class="key">"meta"</span>: {
+    <span class="key">"total"</span>:  <span class="num">42</span>,
+    <span class="key">"page"</span>:   <span class="num">1</span>,
+    <span class="key">"limit"</span>:  <span class="num">20</span>,
+    <span class="key">"pages"</span>:  <span class="num">3</span>
+  }
+}</code></pre>
+  </div>
+</div>
+
+<!-- GET /notifications/me/unread-count -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-get">GET</span>
+    <span class="endpoint-path">/notifications/me/unread-count</span>
+    <span class="badge badge-user">User</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Returns the count of unread notifications for the current user. Intended for badge indicators — call this on app launch and after marking reads.</div>
+    <h4>Response</h4>
+    <pre><code>{ <span class="key">"count"</span>: <span class="num">7</span> }</code></pre>
+  </div>
+</div>
+
+<!-- POST /notifications/me/:id/read -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-post">POST</span>
+    <span class="endpoint-path">/notifications/me/:id/read</span>
+    <span class="badge badge-user">User</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Marks a single notification as read. Idempotent — calling on an already-read notification is safe.</div>
+    <h4>Path Parameters</h4>
+    <table class="params-table">
+      <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+      <tr><td><code>id</code></td><td>UUID</td><td>The notification ID to mark read</td></tr>
+    </table>
+    <h4>Response</h4>
+    <pre><code>{
+  <span class="key">"id"</span>:      <span class="str">"550e8400-..."</span>,
+  <span class="key">"isRead"</span>:  <span class="kw">true</span>,
+  <span class="key">"readAt"</span>:  <span class="str">"2024-05-01T11:00:00Z"</span>
+}</code></pre>
+  </div>
+</div>
+
+<!-- POST /notifications/me/read-all -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-post">POST</span>
+    <span class="endpoint-path">/notifications/me/read-all</span>
+    <span class="badge badge-user">User</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Marks all of the current user's unread notifications as read in a single batch update. Ideal for a "Mark all as read" button.</div>
+    <h4>Response</h4>
+    <pre><code>{ <span class="key">"updated"</span>: <span class="num">7</span> }</code></pre>
+  </div>
+</div>
+
+<!-- ════════════════════════════ §5 TEMPLATE API ════ -->
+<div class="section-header chapter-break" id="template-api">
+  <div class="num">5</div>
+  <div>
+    <h2>Admin Template Management API</h2>
+    <p>Manage notification content, styling, and branding without redeployment</p>
+  </div>
+</div>
+
+<p>All endpoints under <code>/admin/notification-templates</code> require <strong>Admin role</strong>. Templates are keyed by <code>(key, channel)</code> pairs — e.g. <code>order.placed.customer</code> + <code>email</code>.</p>
+
+<h3>Template Object Structure</h3>
+<pre><code>{
+  <span class="key">"id"</span>:         <span class="str">"uuid"</span>,
+  <span class="key">"key"</span>:        <span class="str">"order.placed.customer"</span>,   <span class="comment">// event identifier</span>
+  <span class="key">"channel"</span>:    <span class="str">"email"</span>,                   <span class="comment">// email | sms | push | in_app | whatsapp</span>
+  <span class="key">"name"</span>:       <span class="str">"Order Placed — Customer Email"</span>,
+  <span class="key">"subject"</span>:    <span class="str">"Order Confirmed: {{orderRef}} 🧺"</span>,
+  <span class="key">"body"</span>:       <span class="str">"Hi {{customerName}}, your order {{orderRef}} has been placed..."</span>,
+  <span class="key">"htmlBody"</span>:   <span class="str">"&lt;!DOCTYPE html&gt;..."</span>,       <span class="comment">// full email HTML (nullable)</span>
+  <span class="key">"emailStyle"</span>: {                               <span class="comment">// JSONB — email only</span>
+    <span class="key">"primaryColor"</span>:  <span class="str">"#1a1a2e"</span>,
+    <span class="key">"accentColor"</span>:   <span class="str">"#4fc3f7"</span>,
+    <span class="key">"bodyBgColor"</span>:   <span class="str">"#f5f5f5"</span>,
+    <span class="key">"cardBgColor"</span>:   <span class="str">"#ffffff"</span>,
+    <span class="key">"textColor"</span>:     <span class="str">"#444444"</span>,
+    <span class="key">"logoUrl"</span>:       <span class="str">"https://cdn.washermann.com/logo.png"</span>,
+    <span class="key">"logoAlt"</span>:       <span class="str">"Washermann"</span>,
+    <span class="key">"footerText"</span>:    <span class="str">"© {{year}} Washermann. All rights reserved."</span>,
+    <span class="key">"fontFamily"</span>:    <span class="str">"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"</span>
+  },
+  <span class="key">"variables"</span>:   [<span class="str">"customerName"</span>, <span class="str">"orderRef"</span>, <span class="str">"totalWP"</span>],
+  <span class="key">"isActive"</span>:    <span class="kw">true</span>,
+  <span class="key">"updatedBy"</span>:   <span class="str">"admin-uuid"</span>,
+  <span class="key">"createdAt"</span>:   <span class="str">"2024-01-01T00:00:00Z"</span>,
+  <span class="key">"updatedAt"</span>:   <span class="str">"2024-05-01T10:00:00Z"</span>
+}</code></pre>
+
+<!-- GET /admin/notification-templates -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-get">GET</span>
+    <span class="endpoint-path">/admin/notification-templates</span>
+    <span class="badge badge-admin">Admin</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">List all notification templates. Filter by channel or event key.</div>
+    <h4>Query Parameters</h4>
+    <table class="params-table">
+      <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+      <tr><td><code>channel</code></td><td>string</td><td><code>email</code> | <code>sms</code> | <code>push</code> | <code>in_app</code> | <code>whatsapp</code></td></tr>
+      <tr><td><code>key</code></td><td>string</td><td>Exact event key, e.g. <code>order.placed.customer</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- GET /admin/notification-templates/:id -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-get">GET</span>
+    <span class="endpoint-path">/admin/notification-templates/:id</span>
+    <span class="badge badge-admin">Admin</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Retrieve a single template by UUID including full HTML body and email style.</div>
+  </div>
+</div>
+
+<!-- PATCH /admin/notification-templates/:id -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-patch">PATCH</span>
+    <span class="endpoint-path">/admin/notification-templates/:id</span>
+    <span class="badge badge-admin">Admin</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Update any field on a template. All fields are optional — only include what you want to change.</div>
+    <h4>Request Body</h4>
+    <table class="params-table">
+      <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+      <tr><td><code>name</code></td><td>string</td><td>Human-readable template name</td></tr>
+      <tr><td><code>subject</code></td><td>string</td><td>Email subject line (Handlebars variables supported)</td></tr>
+      <tr><td><code>body</code></td><td>string</td><td>Plain-text body (used for SMS, push, in-app, WhatsApp)</td></tr>
+      <tr><td><code>htmlBody</code></td><td>string</td><td>Full HTML email body. Set to <code>null</code> to revert to auto-generated layout</td></tr>
+      <tr><td><code>emailStyle</code></td><td>object</td><td>Partial style overrides (merged with existing). See EmailStyle schema above</td></tr>
+      <tr><td><code>isActive</code></td><td>boolean</td><td>Set <code>false</code> to disable without deleting (falls back to hardcoded default)</td></tr>
+      <tr><td><code>variables</code></td><td>string[]</td><td>List of available Handlebars variables (informational for docs)</td></tr>
+    </table>
+    <h4>Example — Update brand colours</h4>
+    <pre><code>{
+  <span class="key">"emailStyle"</span>: {
+    <span class="key">"primaryColor"</span>: <span class="str">"#0d47a1"</span>,
+    <span class="key">"accentColor"</span>:  <span class="str">"#ffab40"</span>,
+    <span class="key">"logoUrl"</span>:      <span class="str">"https://cdn.washermann.com/logo-v2.png"</span>,
+    <span class="key">"footerText"</span>:   <span class="str">"© {{year}} Washermann Ltd. Lagos, Nigeria."</span>
+  }
+}</code></pre>
+  </div>
+</div>
+
+<!-- POST /admin/notification-templates/:id/preview -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-post">POST</span>
+    <span class="endpoint-path">/admin/notification-templates/:id/preview</span>
+    <span class="badge badge-admin">Admin</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Renders the template with placeholder values (variable names shown as <code>{{variableName}}</code>). Returns <code>subject</code>, <code>body</code>, and <code>htmlBody</code>. Use this to verify email rendering before going live.</div>
+    <h4>Request Body (optional)</h4>
+    <pre><code>{
+  <span class="key">"emailStyle"</span>: {
+    <span class="key">"primaryColor"</span>: <span class="str">"#0d47a1"</span>
+  }
+}</code></pre>
+    <h4>Response</h4>
+    <pre><code>{
+  <span class="key">"subject"</span>: <span class="str">"Order Confirmed: {{orderRef}} 🧺"</span>,
+  <span class="key">"body"</span>:    <span class="str">"Hi {{customerName}}, your order {{orderRef}} has been placed..."</span>,
+  <span class="key">"htmlBody"</span>: <span class="str">"&lt;!DOCTYPE html&gt;&lt;html&gt;...full rendered HTML...&lt;/html&gt;"</span>
+}</code></pre>
+  </div>
+</div>
+
+<!-- POST /admin/notification-templates/:id/reset -->
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-post">POST</span>
+    <span class="endpoint-path">/admin/notification-templates/:id/reset</span>
+    <span class="badge badge-admin">Admin</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Resets the template to the original hardcoded defaults. Clears all admin customisations. Non-destructive — the UUID remains the same.</div>
+  </div>
+</div>
+
+<h3>All Event Keys Reference</h3>
+<table>
+  <tr><th>Key</th><th>Audience</th><th>Available Channels</th></tr>
+  <tr><td><code>order.placed.customer</code></td><td>Customer</td><td>email, sms, push, in_app, whatsapp</td></tr>
+  <tr><td><code>order.rep_assigned.customer</code></td><td>Customer</td><td>push, in_app, whatsapp</td></tr>
+  <tr><td><code>order.picked_up.customer</code></td><td>Customer</td><td>push, in_app, whatsapp</td></tr>
+  <tr><td><code>order.picked_up.vendor</code></td><td>Vendor</td><td>push, in_app, whatsapp</td></tr>
+  <tr><td><code>order.delivered.customer</code></td><td>Customer</td><td>email, sms, push, in_app, whatsapp</td></tr>
+  <tr><td><code>order.completed.customer</code></td><td>Customer</td><td>email, push, in_app</td></tr>
+  <tr><td><code>order.cancelled.customer</code></td><td>Customer</td><td>email, sms, push, in_app</td></tr>
+  <tr><td><code>order.earning_credited.vendor</code></td><td>Vendor</td><td>email, push, in_app</td></tr>
+  <tr><td><code>order.earning_credited.rep</code></td><td>Rep</td><td>push, in_app</td></tr>
+  <tr><td><code>assignment.broadcast.rep</code></td><td>Rep</td><td>sms, push, in_app, whatsapp</td></tr>
+  <tr><td><code>assignment.confirmed.rep</code></td><td>Rep</td><td>push, in_app</td></tr>
+  <tr><td><code>assignment.broadcast.vendor</code></td><td>Vendor</td><td>sms, push, in_app, whatsapp</td></tr>
+  <tr><td><code>assignment.no_reps.admin</code></td><td>Admin</td><td>email</td></tr>
+  <tr><td><code>vendor.account_verified</code></td><td>Vendor</td><td>email, sms, push, in_app</td></tr>
+  <tr><td><code>vendor.pending_verification.admin</code></td><td>Admin</td><td>email</td></tr>
+  <tr><td><code>pricing.approved.vendor</code></td><td>Vendor</td><td>email, push, in_app</td></tr>
+  <tr><td><code>rep.flagged_for_review</code></td><td>Rep</td><td>email, push, in_app</td></tr>
+  <tr><td><code>payout.new_request.admin</code></td><td>Admin</td><td>email</td></tr>
+  <tr><td><code>payout.approved.vendor</code></td><td>Vendor</td><td>email, sms, push, in_app, whatsapp</td></tr>
+  <tr><td><code>payout.failed.vendor</code></td><td>Vendor</td><td>email, sms, push, in_app</td></tr>
+</table>
+
+<!-- ════════════════════════════ §6 FCM TOKEN ════ -->
+<div class="section-header" id="fcm-token">
+  <div class="num">6</div>
+  <div>
+    <h2>FCM Token Registration</h2>
+    <p>Register and refresh device tokens for push notifications</p>
+  </div>
+</div>
+
+<div class="endpoint">
+  <div class="endpoint-header">
+    <span class="badge badge-patch">PATCH</span>
+    <span class="endpoint-path">/users/me/fcm-token</span>
+    <span class="badge badge-user">User</span>
+  </div>
+  <div class="endpoint-body">
+    <div class="endpoint-desc">Registers or updates the authenticated user's FCM device token. Call this at login and whenever <code>onTokenRefresh</code> fires in the mobile app.</div>
+    <h4>Request Body</h4>
+    <pre><code>{ <span class="key">"token"</span>: <span class="str">"fcm_device_token_from_firebase_sdk"</span> }</code></pre>
+    <h4>Response</h4>
+    <pre><code>{ <span class="key">"message"</span>: <span class="str">"FCM token updated"</span> }</code></pre>
+    <div class="info-box warning mt-8">
+      <div class="icon">⚠️</div>
+      <div>Pass <code>"token": ""</code> (empty string) or <code>"token": null</code> to clear the token (e.g. on logout). This prevents push delivery to a signed-out device.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════ §7 TESTING ════ -->
+<div class="section-header chapter-break" id="testing">
+  <div class="num">7</div>
+  <div>
+    <h2>Direct API Testing</h2>
+    <p>cURL examples for every notification-related endpoint</p>
+  </div>
+</div>
+
+<p>Replace <code>{{BASE_URL}}</code> with your server address (e.g. <code>http://localhost:3000</code>) and <code>{{TOKEN}}</code> with a valid JWT from a login response.</p>
+
+<h3>Step 0 — Get a Token</h3>
+<pre><code><span class="comment"># Login as customer</span>
+curl -s -X POST {{BASE_URL}}/auth/login \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{"email":"customer@test.com","password":"Test1234!"}'</span> \
+  | jq <span class="str">'.access_token'</span>
+
+<span class="comment"># Save to shell variable</span>
+<span class="kw">export</span> TOKEN=<span class="str">"eyJhbGciOiJ..."</span>
+<span class="kw">export</span> BASE_URL=<span class="str">"http://localhost:3000"</span></code></pre>
+
+<h3>Step 1 — Register FCM Token (Mobile App Required)</h3>
+<pre><code>curl -X PATCH ${BASE_URL}/users/me/fcm-token \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{"token":"dJHGk1...FCMTokenFromFirebase"}'</span></code></pre>
+
+<h3>Step 2 — Trigger a Notification (Place an Order)</h3>
+<p>Placing an order fires: email + SMS + push + in-app + WhatsApp to the customer simultaneously.</p>
+<pre><code>curl -X POST ${BASE_URL}/orders \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "areaId":          "area-uuid-here",
+    "serviceType":     "wash_and_fold",
+    "bagSize":         "medium",
+    "pickupAddress":   "15 Admiralty Way, Lekki Phase 1",
+    "scheduledPickupAt": "2024-05-10T09:00:00Z"
+  }'</span>
+
+<span class="comment"># Expected: 201 Created</span>
+<span class="comment"># Side effects: 5 notification channels fire in background (fire-and-forget)</span></code></pre>
+
+<h3>Step 3 — Check the In-App Inbox</h3>
+<pre><code><span class="comment"># Get all notifications (page 1)</span>
+curl -s ${BASE_URL}/notifications/me \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span> | jq <span class="str">'.data[0]'</span>
+
+<span class="comment"># Get unread count (for badge)</span>
+curl -s ${BASE_URL}/notifications/me/unread-count \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span>
+<span class="comment"># → {"count": 1}</span></code></pre>
+
+<h3>Step 4 — Mark Notifications Read</h3>
+<pre><code><span class="comment"># Mark single notification read</span>
+<span class="kw">export</span> NOTIF_ID=<span class="str">"550e8400-e29b-41d4-a716-446655440000"</span>
+curl -X POST ${BASE_URL}/notifications/me/${NOTIF_ID}/read \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span>
+
+<span class="comment"># Mark ALL read</span>
+curl -X POST ${BASE_URL}/notifications/me/read-all \
+  -H <span class="str">"Authorization: Bearer ${TOKEN}"</span>
+<span class="comment"># → {"updated": 1}</span></code></pre>
+
+<h3>Step 5 — Admin: List Notification Templates</h3>
+<pre><code><span class="comment"># Get admin token first</span>
+<span class="kw">export</span> ADMIN_TOKEN=<span class="str">"eyJhbGci..."</span>
+
+<span class="comment"># List all templates</span>
+curl -s ${BASE_URL}/admin/notification-templates \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> | jq <span class="str">'.[0]'</span>
+
+<span class="comment"># Filter by channel</span>
+curl -s "${BASE_URL}/admin/notification-templates?channel=email" \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> | jq <span class="str">'length'</span>
+
+<span class="comment"># Filter by event key</span>
+curl -s "${BASE_URL}/admin/notification-templates?key=order.placed.customer" \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span></code></pre>
+
+<h3>Step 6 — Admin: Update a Template's Brand Colours</h3>
+<pre><code><span class="kw">export</span> TEMPLATE_ID=<span class="str">"uuid-of-template"</span>
+
+curl -X PATCH ${BASE_URL}/admin/notification-templates/${TEMPLATE_ID} \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "emailStyle": {
+      "primaryColor": "#0d47a1",
+      "accentColor":  "#ffab40",
+      "logoUrl":      "https://cdn.washermann.com/logo-v2.png",
+      "footerText":   "© {{year}} Washermann Ltd. All rights reserved."
+    }
+  }'</span></code></pre>
+
+<h3>Step 7 — Admin: Update SMS Body</h3>
+<pre><code><span class="comment"># Find the SMS template for order.placed.customer</span>
+curl -s "${BASE_URL}/admin/notification-templates?key=order.placed.customer&amp;channel=sms" \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> | jq <span class="str">'.[0].id'</span>
+
+<span class="comment"># Update the body</span>
+curl -X PATCH ${BASE_URL}/admin/notification-templates/${TEMPLATE_ID} \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "body": "Hi {{customerName}}! ✅ Order {{orderRef}} confirmed. {{totalWP}} WP charged. A rep is on the way!"
+  }'</span></code></pre>
+
+<h3>Step 8 — Admin: Preview Template Rendering</h3>
+<pre><code>curl -X POST ${BASE_URL}/admin/notification-templates/${TEMPLATE_ID}/preview \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span> \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "emailStyle": { "primaryColor": "#0d47a1" }
+  }'</span>
+
+<span class="comment"># Returns: { subject, body, htmlBody }</span>
+<span class="comment"># Copy htmlBody into a browser to inspect email rendering</span></code></pre>
+
+<h3>Step 9 — Admin: Reset Template to Default</h3>
+<pre><code>curl -X POST ${BASE_URL}/admin/notification-templates/${TEMPLATE_ID}/reset \
+  -H <span class="str">"Authorization: Bearer ${ADMIN_TOKEN}"</span>
+
+<span class="comment"># Reverts all content to hardcoded defaults</span></code></pre>
+
+<h3>Postman Quick Setup</h3>
+<div class="card">
+  <p>Import the collection at <code>/postman/washermann.postman_collection.json</code>. Set the following collection variables:</p>
+  <table class="params-table">
+    <tr><th>Variable</th><th>Description</th></tr>
+    <tr><td><code>baseUrl</code></td><td><code>http://localhost:3000</code></td></tr>
+    <tr><td><code>authToken</code></td><td>JWT from POST /auth/login</td></tr>
+    <tr><td><code>adminToken</code></td><td>JWT from POST /auth/login (admin user)</td></tr>
+  </table>
+  <p class="mb-0">The <strong>In-App Notifications</strong> and <strong>Admin Notification Templates</strong> folders contain all requests pre-configured.</p>
+</div>
+
+<!-- ════════════════════════════ §8 USE CASES ════ -->
+<div class="section-header chapter-break" id="usecases">
+  <div class="num">8</div>
+  <div>
+    <h2>Use Cases &amp; Scenario Walkthroughs</h2>
+    <p>Real-world scenarios showing how notifications flow end-to-end</p>
+  </div>
+</div>
+
+<h3>Scenario A: Complete Order Lifecycle</h3>
+<p>Shows every notification a customer receives from order placement to completion.</p>
+
+<div class="card">
+  <div class="card-title">👤 Customer: Chioma places a laundry order</div>
+  <table>
+    <tr><th>Step</th><th>Trigger</th><th>Channels</th><th>Message Preview</th></tr>
+    <tr>
+      <td>1</td>
+      <td>Order placed (POST /orders)</td>
+      <td><span class="badge badge-email">Email</span> <span class="badge badge-sms">SMS</span> <span class="badge badge-push">Push</span> <span class="badge badge-inapp">In-App</span> <span class="badge badge-whatsapp">WA</span></td>
+      <td>"Order WM-001 confirmed. 1200 WP charged."</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Rep accepts assignment</td>
+      <td><span class="badge badge-push">Push</span> <span class="badge badge-inapp">In-App</span> <span class="badge badge-whatsapp">WA</span></td>
+      <td>"Emeka has been assigned to your order."</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Rep marks order PICKED_UP</td>
+      <td><span class="badge badge-push">Push</span> <span class="badge badge-inapp">In-App</span> <span class="badge badge-whatsapp">WA</span></td>
+      <td>"Your laundry is on its way to the vendor."</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Rep marks order DELIVERED</td>
+      <td><span class="badge badge-email">Email</span> <span class="badge badge-sms">SMS</span> <span class="badge badge-push">Push</span> <span class="badge badge-inapp">In-App</span> <span class="badge badge-whatsapp">WA</span></td>
+      <td>"Your laundry has been delivered! Please confirm."</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Customer confirms / 24h auto-complete</td>
+      <td><span class="badge badge-email">Email</span> <span class="badge badge-push">Push</span> <span class="badge badge-inapp">In-App</span></td>
+      <td>"Order WM-001 complete. Thank you for using Washermann!"</td>
+    </tr>
+  </table>
+</div>
+
+<h3>Scenario B: Rep Assignment Broadcast</h3>
+<p>Shows what happens when the system broadcasts a job to reps.</p>
+
+<div class="card">
+  <div class="card-title">🛵 Reps: Batch broadcast → first accepts wins</div>
+  <ol style="padding-left: 20px;">
+    <li style="margin-bottom: 8px;"><strong>System</strong> scores available reps in the area → picks top 3.</li>
+    <li style="margin-bottom: 8px;"><strong>All 3 reps</strong> receive: SMS + Push + In-App + WhatsApp simultaneously. "New job available! Order WM-001 — 15 Admiralty Way. Tap to accept!"</li>
+    <li style="margin-bottom: 8px;"><strong>First rep to accept</strong> (within 90-second window) gets the job. System cancels all other pending broadcasts.</li>
+    <li style="margin-bottom: 8px;"><strong>Winning rep</strong> receives Push + In-App: "Job confirmed ✅ — head to pickup."</li>
+    <li style="margin-bottom: 8px;"><strong>Customer</strong> receives Push + In-App + WhatsApp: "Emeka has been assigned to your order."</li>
+    <li style="margin-bottom: 8px;">If nobody accepts → system re-broadcasts to next batch. If all batches exhausted → admin email alert.</li>
+  </ol>
+</div>
+
+<h3>Scenario C: Vendor Payout Flow</h3>
+
+<div class="card">
+  <div class="card-title">💰 Vendor requests a payout — admin approves</div>
+  <table>
+    <tr><th>Actor</th><th>Action</th><th>Notification Sent To</th></tr>
+    <tr>
+      <td>Vendor</td>
+      <td>Submits payout request (POST /payouts)</td>
+      <td><span class="badge badge-email">Email</span> → Admin: "Folake requested ₦45,000 payout."</td>
+    </tr>
+    <tr>
+      <td>Admin</td>
+      <td>Approves (POST /admin/payouts/:id/approve)</td>
+      <td>Vendor gets: Email + SMS + Push + In-App + WhatsApp: "₦45,000 payout approved. Bank transfer initiated."</td>
+    </tr>
+    <tr>
+      <td>Paystack</td>
+      <td>Transfer fails (bank issue)</td>
+      <td>Vendor gets: Email + SMS + Push + In-App: "Payout of ₦45,000 failed. Balance unchanged. Contact support."</td>
+    </tr>
+  </table>
+</div>
+
+<h3>Scenario D: Vendor Onboarding</h3>
+
+<div class="card">
+  <div class="card-title">🏪 New vendor submits documents</div>
+  <ol style="padding-left: 20px;">
+    <li style="margin-bottom: 8px;"><strong>Admin team</strong> receives email: "New vendor 'Clean Crisp Laundry' awaiting verification. Vendor ID: xxx."</li>
+    <li style="margin-bottom: 8px;"><strong>Admin verifies</strong> → <strong>Vendor</strong> receives: Email + SMS + Push + In-App — "Congratulations! Your account is verified. Turn on availability to start receiving orders."</li>
+    <li style="margin-bottom: 8px;"><strong>Vendor submits pricing</strong> → Admin reviews → <strong>Vendor</strong> receives: Email + Push + In-App — "Your pricing has been approved. New rates are live."</li>
+  </ol>
+</div>
+
+<h3>Scenario E: Changing Brand Colours (No Redeployment)</h3>
+
+<div class="card">
+  <div class="card-title">🎨 Marketing wants to update email colours for a campaign</div>
+  <ol style="padding-left: 20px;">
+    <li style="margin-bottom: 8px;">Admin calls <code>GET /admin/notification-templates?channel=email</code> → gets all 10 email template IDs.</li>
+    <li style="margin-bottom: 8px;">Admin calls <code>PATCH /admin/notification-templates/:id</code> for each with <code>emailStyle: { primaryColor: "#e91e63", accentColor: "#fff176" }</code>.</li>
+    <li style="margin-bottom: 8px;">Admin uses <code>POST /admin/notification-templates/:id/preview</code> to verify the HTML rendering before committing.</li>
+    <li style="margin-bottom: 8px;">New colours take effect immediately for all subsequent emails — no code change, no restart.</li>
+    <li style="margin-bottom: 8px;">After the campaign, <code>POST /admin/notification-templates/:id/reset</code> reverts to defaults.</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════ §9 JUSTIFICATION ════ -->
+<div class="section-header chapter-break" id="justification">
+  <div class="num">9</div>
+  <div>
+    <h2>Design Decisions &amp; Justification</h2>
+    <p>Why the system is built this way</p>
+  </div>
+</div>
+
+<h3>1. Why five channels instead of one or two?</h3>
+<div class="card">
+  <p>Different channels serve different functions and user contexts:</p>
+  <table>
+    <tr><th>Channel</th><th>Strength</th><th>Limitation</th></tr>
+    <tr><td><strong>Email</strong></td><td>Rich formatting, permanent record, works offline</td><td>Not seen immediately; low urgency</td></tr>
+    <tr><td><strong>SMS</strong></td><td>Works on feature phones; high open rate even without data</td><td>Per-message cost; 160-char limit</td></tr>
+    <tr><td><strong>Push</strong></td><td>Instant; app badge; works when app is closed</td><td>Requires app install + token</td></tr>
+    <tr><td><strong>In-App</strong></td><td>Always available; searchable history; no cost</td><td>Only seen when app is open/refreshed</td></tr>
+    <tr><td><strong>WhatsApp</strong></td><td>98%+ open rate in Nigeria; conversational context</td><td>Requires Twilio WABA approval</td></tr>
+  </table>
+  <p class="mb-0">A customer without the app still gets SMS + WhatsApp. A customer with the app gets Push + In-App for instant feedback. Email provides a paper trail for financial events. This redundancy ensures no critical notification is missed regardless of device or connectivity state.</p>
+</div>
+
+<h3>2. Why fire-and-forget?</h3>
+<div class="card">
+  <p>Notification delivery is non-critical to the transaction outcome. A failed email must never roll back an order or payout. The <code>fire(fn, logger, label)</code> wrapper ensures:</p>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li>The business operation returns immediately (low latency for the user)</li>
+    <li>Notification errors are logged for observability but suppressed from the HTTP response</li>
+    <li>Temporary provider outages (Resend/Termii/FCM/Twilio) don't cause user-facing 500 errors</li>
+  </ul>
+  <p class="mb-0">In a future production hardening, failed notifications would be written to a retry queue (Redis/BullMQ) for at-least-once delivery. The current implementation is appropriate for initial launch.</p>
+</div>
+
+<h3>3. Why DB-backed templates with code fallbacks?</h3>
+<div class="card">
+  <p>Hardcoding templates in source files means every copy change requires a code review, build, and deployment — an unnecessary engineering bottleneck for marketing/operations teams. The DB-backed system allows:</p>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li>Non-engineers to update copy, subject lines, and colours via the admin API (or future UI)</li>
+    <li>A/B testing of different message variants</li>
+    <li>Seasonal branding changes without touching code</li>
+    <li>Per-template enable/disable without deployment</li>
+  </ul>
+  <p class="mb-0">The hardcoded <code>DEFAULT_TEMPLATES</code> array serves as the safety net — if a DB record is corrupted or missing, the system falls back to working defaults and continues operating.</p>
+</div>
+
+<h3>4. Why Handlebars for variable substitution?</h3>
+<div class="card">
+  <p>Handlebars was chosen over simple string interpolation because:</p>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li><strong>Familiar syntax</strong> — <code>{{variableName}}</code> is readable by non-developers who edit templates in the admin UI</li>
+    <li><strong>Safe compilation</strong> — malformed templates don't crash the process; the service falls back to the raw string</li>
+    <li><strong>Extensible</strong> — Handlebars supports helpers for date formatting, conditionals, loops if needed in future</li>
+    <li><strong>No eval</strong> — unlike template literal tags, Handlebars does not expose arbitrary code execution</li>
+  </ul>
+</div>
+
+<h3>5. Why is the module @Global()?</h3>
+<div class="card">
+  <p>NotificationsService needs to be called from <code>OrdersService</code>, <code>AssignmentService</code>, <code>PayoutsService</code>, and <code>VendorsService</code> — which are in completely separate modules. Without <code>@Global()</code>, every module would need to explicitly import <code>NotificationsModule</code>, adding boilerplate and potential for circular import issues. Making it global is the NestJS-idiomatic pattern for cross-cutting concerns like logging, notifications, and analytics.</p>
+</div>
+
+<h3>6. Why seed templates on startup?</h3>
+<div class="card">
+  <p>The <code>TemplateService.seedDefaults()</code> method runs on <code>OnModuleInit</code>. It only inserts rows that don't already exist (idempotent). This means:</p>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li>A fresh environment gets all 50+ templates automatically — zero manual setup</li>
+    <li>New templates added in a code update are automatically provisioned on next deploy</li>
+    <li>Existing admin customisations are never overwritten (the check is <code>findOne() → skip if exists</code>)</li>
+    <li>Safe to run on every server restart</li>
+  </ul>
+</div>
+
+<h3>7. Channel selection logic per event</h3>
+<div class="card">
+  <p>Not all channels fire for every event — the selection is deliberate:</p>
+  <ul style="padding-left: 20px; margin: 8px 0;">
+    <li><strong>High-value financial events</strong> (payout approved, order placed) → all 5 channels. These are the most important touchpoints and warrant maximum reach.</li>
+    <li><strong>Real-time status updates</strong> (rep assigned, picked up) → push + in-app + WhatsApp. These are transient state changes; email would be noise.</li>
+    <li><strong>Internal admin alerts</strong> (no reps, new payout request) → email only. Admin checks email; push/WhatsApp to a generic admin address isn't meaningful without a dedicated device.</li>
+    <li><strong>Rep earnings</strong> → push + in-app only. Reps use the app; SMS costs money and isn't needed for every earning event.</li>
+  </ul>
+</div>
+
+<!-- ════════════════════════════ §10 ENV ════ -->
+<div class="section-header chapter-break" id="env">
+  <div class="num">10</div>
+  <div>
+    <h2>Environment Variables Reference</h2>
+    <p>Complete .env configuration for all notification channels</p>
+  </div>
+</div>
+
+<pre><code><span class="comment"># ─── Email (Resend) ─────────────────────────────────────────────</span>
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=no-reply@washermann.com
+RESEND_FROM_NAME=Washermann
+
+<span class="comment"># ─── SMS (Termii) ───────────────────────────────────────────────</span>
+TERMII_API_KEY=TLyour_api_key_here
+TERMII_SENDER_ID=Washermann          <span class="comment"># Must be approved in Termii dashboard</span>
+
+<span class="comment"># ─── Firebase FCM (Push Notifications) ──────────────────────────</span>
+FIREBASE_PROJECT_ID=washermann-prod
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxx@washermann-prod.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\nMIIEo...\n-----END RSA PRIVATE KEY-----
+<span class="comment"># ↑ Use literal \n for newlines in .env; the config restores real newlines</span>
+
+<span class="comment"># ─── WhatsApp (Twilio) ───────────────────────────────────────────</span>
+TWILIO_ACCOUNT_SID=ACyour_account_sid_here
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886   <span class="comment"># Sandbox or approved number</span>
+
+<span class="comment"># ─── Admin notifications ─────────────────────────────────────────</span>
+ADMIN_NOTIFICATION_EMAIL=ops@washermann.com  <span class="comment"># Receives payout/escalation alerts</span>
+
+<span class="comment"># ─── Deep link (used in invite emails) ──────────────────────────</span>
+DEEP_LINK_BASE=washermann://app</code></pre>
+
+<h3>Obtaining Credentials</h3>
+<table>
+  <tr><th>Service</th><th>Where to Get</th><th>Notes</th></tr>
+  <tr>
+    <td><strong>Resend</strong></td>
+    <td><a href="https://resend.com/api-keys">resend.com/api-keys</a></td>
+    <td>Verify your sending domain in the Resend dashboard for best deliverability.</td>
+  </tr>
+  <tr>
+    <td><strong>Termii</strong></td>
+    <td><a href="https://termii.com">termii.com</a> → Dashboard → API</td>
+    <td>Register your Sender ID. DND (Do Not Disturb) lists are automatically respected.</td>
+  </tr>
+  <tr>
+    <td><strong>Firebase</strong></td>
+    <td>Firebase Console → Project Settings → Service Accounts → Generate Key</td>
+    <td>Download the JSON file; extract <code>project_id</code>, <code>client_email</code>, <code>private_key</code>.</td>
+  </tr>
+  <tr>
+    <td><strong>Twilio WhatsApp</strong></td>
+    <td><a href="https://console.twilio.com">console.twilio.com</a> → Messaging → WhatsApp</td>
+    <td>Use sandbox for testing. Production requires WABA approval from Meta (1-2 weeks).</td>
+  </tr>
+</table>
+
+<div class="info-box success" style="margin-top:32px;">
+  <div class="icon">✅</div>
+  <div>
+    <strong>Testing checklist:</strong>
+    <ol style="margin-top: 8px; padding-left: 20px;">
+      <li>Verify all env vars are set in your <code>.env</code> file</li>
+      <li>Start the server and check logs for "initialised" messages from each provider</li>
+      <li>Register FCM token via <code>PATCH /users/me/fcm-token</code></li>
+      <li>Place a test order and check all 5 channels within 10 seconds</li>
+      <li>Verify in-app inbox via <code>GET /notifications/me</code></li>
+      <li>Test admin template update → preview → verify email changed</li>
+    </ol>
+  </div>
+</div>
+
+<div class="divider" style="margin-top: 48px;"></div>
+<p style="text-align:center; color: var(--muted); font-size: 12px; margin-top: 24px;">
+  Washermann Notifications API Documentation · v4.0.0 · May 2026<br/>
+  Generated from source: <code>src/modules/notifications/</code>
+</p>
+
+</div>
+</body>
+</html>

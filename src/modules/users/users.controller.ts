@@ -61,6 +61,18 @@ export class UsersController {
     return this.usersService.updateProfile(userId, dto);
   }
 
+  // ─── FCM token registration ───────────────────────────────────────────────────
+
+  @Patch('me/fcm-token')
+  @ApiOperation({ summary: 'Register or update FCM device token for push notifications' })
+  @ApiResponse({ status: 200, description: 'FCM token saved' })
+  updateFcmToken(
+    @CurrentUser('id') userId: string,
+    @Body('token') token: string,
+  ) {
+    return this.usersService.updateFcmToken(userId, token);
+  }
+
   // ─── Addresses ────────────────────────────────────────────────────────────────
 
   @Get('me/addresses')
