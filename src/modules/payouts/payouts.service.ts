@@ -17,6 +17,7 @@ import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { PaystackService } from '../payments/paystack.service';
 
 @Injectable()
 export class PayoutsService {
@@ -41,6 +42,7 @@ export class PayoutsService {
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
+    private paystackService: PaystackService,
   ) {}
 
   // ─── Vendor: request payout ───────────────────────────────────────────────────
@@ -78,13 +80,14 @@ export class PayoutsService {
       throw new BadRequestException('Only pending payouts can be approved');
     }
 
-    payout.status     = PayoutStatus.PROCESSING;
-    payout.approvedBy = adminId;
-    payout.approvedAt = new Date();
+    // Move to PROCESSING and record approval
+    payout.status      = PayoutStatus.PROCESSING;
+    payout.approvedBy  = adminId;
+    payout.approvedAt  = new Date();
     payout.processedAt = new Date();
     await this.payoutRepository.save(payout);
 
-    // Debit vendor wallet
+    // Debit vendor wallet first (atomic commitment before hitting Paystack)
     await this.vendorsService.debitWallet(
       payout.vendorId,
       payout.amountWP,
@@ -93,12 +96,42 @@ export class PayoutsService {
       { reference: payout.id },
     );
 
-    // In production: call Paystack Transfer API here
-    // For now: mark as completed directly
-    payout.status      = PayoutStatus.COMPLETED;
-    payout.completedAt = new Date();
-    await this.payoutRepository.save(payout);
+    try {
+      // 1. Create a Paystack transfer recipient for this bank account
+      const recipientCode = await this.paystackService.createTransferRecipient({
+        name:          payout.accountName,
+        accountNumber: payout.accountNumber,
+        bankCode:      payout.bankCode,
+      });
 
+      // 2. Initiate the transfer
+      const paystackRef = `wm-payout-${payout.id}`;
+      const { transferCode, status } = await this.paystackService.initiateTransfer({
+        amountNaira:   payout.nairaAmount,
+        recipientCode,
+        reason:        `Washermann vendor payout: ${payout.id}`,
+        reference:     paystackRef,
+      });
+
+      // 3. Record transfer details and mark completed
+      //    Paystack transfers with OTP disabled complete immediately (status='success' or 'pending').
+      //    A 'pending' status means it's queued — Paystack sends a transfer.success webhook.
+      payout.paystackReference    = paystackRef;
+      payout.paystackTransferCode = transferCode;
+      payout.status               = status === 'success' ? PayoutStatus.COMPLETED : PayoutStatus.PROCESSING;
+      if (status === 'success') payout.completedAt = new Date();
+
+      this.logger.log(
+        `Payout ${payout.id}: Paystack transfer initiated — code=${transferCode}, status=${status}`,
+      );
+    } catch (err) {
+      // Transfer call failed — revert to FAILED so admin can retry
+      this.logger.error(`Payout ${payout.id}: Paystack transfer failed — ${(err as Error).message}`);
+      payout.status        = PayoutStatus.FAILED;
+      payout.failureReason = (err as Error).message;
+    }
+
+    await this.payoutRepository.save(payout);
     return payout;
   }
 

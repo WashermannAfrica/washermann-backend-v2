@@ -10,6 +10,7 @@ import { PayoutsService } from './payouts.service';
 import { VendorsModule } from '../vendors/vendors.module';
 import { RepsModule } from '../reps/reps.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PlatformConfigModule } from '../platform-config/platform-config.module'
     VendorsModule,
     RepsModule,
     PlatformConfigModule,
+    PaymentsModule,
   ],
   controllers: [PayoutsController],
   providers: [PayoutsService],
