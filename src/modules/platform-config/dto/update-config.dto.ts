@@ -47,4 +47,18 @@ export class UpdatePlatformConfigDto {
   @Min(1)
   @Max(168)
   orderAutoCompleteHours?: number;
+
+  @ApiPropertyOptional({ description: 'VAT percentage (0 = disabled)', example: 7.5, minimum: 0, maximum: 30 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(30)
+  vatPercent?: number;
+
+  @ApiPropertyOptional({ description: 'Percentile of vendor prices used for platform price suggestions (50–95)', example: 70, minimum: 50, maximum: 95 })
+  @IsOptional()
+  @IsInt()
+  @Min(50)
+  @Max(95)
+  priceSuggestionPercentile?: number;
 }

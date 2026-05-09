@@ -112,6 +112,32 @@ export class PlatformConfig {
   })
   orderAutoCompleteHours: number;
 
+  @ApiProperty({
+    description: 'VAT percentage applied on top of subtotal (0 = disabled)',
+    example: 7.5,
+  })
+  @Column({
+    name: 'vat_percent',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    transformer: DecimalTransformer,
+  })
+  vatPercent: number;
+
+  @ApiProperty({
+    description: 'Percentile of vendor prices used when suggesting platform prices (0-100). ' +
+                 'P70 means the suggestion is above 70% of vendors, protecting margin.',
+    example: 70,
+  })
+  @Column({
+    name: 'price_suggestion_percentile',
+    type: 'int',
+    default: 70,
+  })
+  priceSuggestionPercentile: number;
+
   @ApiProperty({ nullable: true })
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })
   updatedBy: string | null;

@@ -84,6 +84,8 @@ export class VendorsService {
         areaIds: dto.areaIds ?? [],
         verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
         isAvailable: false,
+        rating: 0,
+        ratingCount: 0,
       });
       await manager.save(vendor);
 

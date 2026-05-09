@@ -33,51 +33,134 @@ export class PricingService {
     return PricingEngine.calculate(inputs, config);
   }
 
-  // ─── Public: get config for client-side real-time preview ────────────────────
+  // ─── Public: get full pricing model for client-side display ─────────────────
 
   /**
-   * Returns the full price config so the mobile/web client can run local calculations
-   * without an API call on every cart change.
+   * Returns the complete pricing model for the given area.
    *
-   * The client fetches this once and caches it until a TTL (e.g. 5 min) expires.
-   * The server always runs the canonical calculation at order placement regardless.
+   * Every base price is returned in two forms:
+   *   - `rawWP`   — the platform base price before fees
+   *   - `totalWP` — base + service charge + VAT (fees folded in; transport excluded)
+   *
+   * Transport is a flat per-order fee shown separately.
+   * The effective fee multiplier is returned so the client can derive all-in prices
+   * for items not explicitly listed.
+   *
+   * The client caches this response (~5 min TTL) and uses it for live cart previews.
+   * The server always re-runs the canonical calculation at order placement.
    */
   async getClientConfig(areaId: string) {
-    const config = await this.platformConfigService.getConfig();
-    const rate   = await this.getActiveConversionRate();
-    const area   = await this.areasService.findOne(areaId);
+    const [platformConfig, rate, area] = await Promise.all([
+      this.platformConfigService.getConfig(),
+      this.getActiveConversionRate(),
+      this.areasService.findOne(areaId),
+    ]);
 
-    // Load bag prices for all combinations
     const bagSizes     = ['small', 'medium', 'large', 'xl'] as const;
     const serviceTypes = ['wash_fold', 'wash_iron'] as const;
-    const bagPrices: Record<string, Record<string, number>> = {};
+
+    // ── Load all raw prices in parallel ──────────────────────────────────────
+    const bagPricePromises: Promise<void>[] = [];
+    const rawBagPrices: Record<string, Record<string, number>> = {
+      wash_fold: { small: 0, medium: 0, large: 0, xl: 0 },
+      wash_iron: { small: 0, medium: 0, large: 0, xl: 0 },
+    };
 
     for (const st of serviceTypes) {
-      bagPrices[st] = {};
       for (const bs of bagSizes) {
-        try {
-          bagPrices[st][bs] = await this.platformConfigService.getActiveBagPrice(st, bs);
-        } catch {
-          bagPrices[st][bs] = 0;
-        }
+        bagPricePromises.push(
+          this.platformConfigService.getActiveBagPrice(st, bs)
+            .then(p => { rawBagPrices[st][bs] = p; })
+            .catch(() => { /* stays 0 if not configured */ }),
+        );
       }
     }
 
-    // Load ironing unit price
+    const [, rawSpecialItemPrices] = await Promise.all([
+      Promise.all(bagPricePromises),
+      this.platformConfigService.getAllActiveSpecialItemPrices(),
+    ]);
+
     let ironingUnitPriceWP = 0;
     try {
       ironingUnitPriceWP = await this.platformConfigService.getActiveIroningPrice();
-    } catch {
-      ironingUnitPriceWP = 0;
+    } catch { /* stays 0 */ }
+
+    // ── Compute fee multiplier (service charge × VAT — excludes transport) ───
+    // e.g. serviceCharge = 5%, vat = 7.5%  →  multiplier = 1.05 × 1.075 ≈ 1.12875
+    const scMultiplier  = 1 + (platformConfig.serviceChargePercent / 100);
+    const vatMultiplier = platformConfig.vatPercent > 0
+      ? 1 + (platformConfig.vatPercent / 100)
+      : 1;
+    const feeMultiplier = scMultiplier * vatMultiplier;
+
+    // Helper: apply fees and return rounded total
+    const withFees = (rawWP: number) => Math.round(rawWP * feeMultiplier);
+
+    // ── Build all-in bag prices ───────────────────────────────────────────────
+    const allInBagPrices: Record<string, Record<string, { rawWP: number; totalWP: number }>> = {};
+    for (const st of serviceTypes) {
+      allInBagPrices[st] = {};
+      for (const bs of bagSizes) {
+        const raw = rawBagPrices[st][bs];
+        allInBagPrices[st][bs] = { rawWP: raw, totalWP: withFees(raw) };
+      }
     }
 
+    // ── Build all-in special item prices ─────────────────────────────────────
+    const allInSpecialItemPrices: Record<string, { rawWP: number; totalWP: number }> = {};
+    for (const [itemType, rawWP] of Object.entries(rawSpecialItemPrices)) {
+      allInSpecialItemPrices[itemType] = { rawWP, totalWP: withFees(rawWP) };
+    }
+
+    // ── Ironing all-in ────────────────────────────────────────────────────────
+    const ironing = {
+      rawWP:   ironingUnitPriceWP,
+      totalWP: withFees(ironingUnitPriceWP),
+    };
+
+    // ── Naira conversion helpers ──────────────────────────────────────────────
+    const nairaPerWP = rate.pointsPerUnit > 0
+      ? Math.round((1 / rate.pointsPerUnit) * 10000) / 10000
+      : 0;
+
     return {
-      bagPrices,
-      ironingUnitPriceWP,
-      serviceChargePercent: config.serviceChargePercent,
+      /**
+       * Per-item prices with all percentage fees (service charge + VAT) folded in.
+       * Transport is shown separately below — it is a flat per-order fee.
+       * Use `totalWP` for all customer-facing display labels.
+       */
+      bagPrices:        allInBagPrices,
+      specialItemPrices: allInSpecialItemPrices,
+      ironing,
+
+      /**
+       * Per-order flat fees (not folded into per-item prices above).
+       */
       transportFeeWP: area.transportFeeWP,
-      conversionRateId: rate.id,
-      pointsPerUnit: rate.pointsPerUnit,
+
+      /**
+       * Fee breakdown — for transparency and client-side calculation of custom items.
+       *  feeMultiplier  = multiply any base price by this to get the all-in display price.
+       *  e.g. customRawPrice × feeMultiplier + transportFeeWP = what the customer pays.
+       */
+      fees: {
+        serviceChargePercent: platformConfig.serviceChargePercent,
+        vatPercent:           platformConfig.vatPercent,
+        repSharePercent:      platformConfig.repSharePercent,   // informational (not charged to customer)
+        feeMultiplier:        Math.round(feeMultiplier * 100000) / 100000,
+        effectivePercentage:  Math.round((feeMultiplier - 1) * 10000) / 100,  // e.g. 12.88
+      },
+
+      /**
+       * WashPoints ↔ Naira conversion snapshot.
+       */
+      conversion: {
+        conversionRateId: rate.id,
+        pointsPerUnit:    rate.pointsPerUnit,   // WP per ₦1
+        nairaPerWP,                             // ₦ per 1 WP (display only)
+      },
+
       cachedAt: new Date().toISOString(),
     };
   }
@@ -127,9 +210,10 @@ export class PricingService {
       specialItemPrices,
       ironingUnitPriceWP,
       serviceChargePercent: platformConfig.serviceChargePercent,
-      transportFeeWP: area.transportFeeWP,
-      conversionRateId: rate.id,
-      pointsPerUnit: rate.pointsPerUnit,
+      vatPercent:           platformConfig.vatPercent,
+      transportFeeWP:       area.transportFeeWP,
+      conversionRateId:     rate.id,
+      pointsPerUnit:        rate.pointsPerUnit,
     };
   }
 

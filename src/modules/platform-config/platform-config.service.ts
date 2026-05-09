@@ -50,6 +50,8 @@ export class PlatformConfigService {
     if (dto.lowRatingThreshold         != null) config.lowRatingThreshold         = dto.lowRatingThreshold;
     if (dto.bonusCyclePeriod           != null) config.bonusCyclePeriod           = dto.bonusCyclePeriod;
     if (dto.orderAutoCompleteHours     != null) config.orderAutoCompleteHours     = dto.orderAutoCompleteHours;
+    if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
+    if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
     config.updatedBy = adminId;
 
     return this.configRepository.save(config);
@@ -113,6 +115,31 @@ export class PlatformConfigService {
       .orderBy('p.effectiveFrom', 'DESC')
       .getOne();
     return entry?.priceWP ?? null;
+  }
+
+  /**
+   * Return a map of itemType → priceWP for ALL currently active special items.
+   * Used by getClientConfig to build the full pricing model in one pass.
+   */
+  async getAllActiveSpecialItemPrices(): Promise<Record<string, number>> {
+    // Use a subquery-style approach: for each distinct itemType, pick the latest approved entry.
+    // We do it in-process after a single query for simplicity (item count is small).
+    const rows = await this.priceListRepository
+      .createQueryBuilder('p')
+      .where('p.priceType = :t', { t: 'special_item' })
+      .andWhere('p.approvedAt IS NOT NULL')
+      .andWhere('p.effectiveFrom <= NOW()')
+      .andWhere('p.itemType IS NOT NULL')
+      .orderBy('p.effectiveFrom', 'DESC')
+      .getMany();
+
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.itemType && !(row.itemType in result)) {
+        result[row.itemType] = row.priceWP;
+      }
+    }
+    return result;
   }
 
   /**

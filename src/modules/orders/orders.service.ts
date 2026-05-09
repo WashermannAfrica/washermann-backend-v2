@@ -26,6 +26,7 @@ import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrdersService {
@@ -62,6 +63,7 @@ export class OrdersService {
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
     private notificationsService: NotificationsService,
+    private usersService: UsersService,
     private dataSource: DataSource,
     private configService: ConfigService,
   ) {}
@@ -69,6 +71,9 @@ export class OrdersService {
   // ─── Place order ─────────────────────────────────────────────────────────────
 
   async placeOrder(customerId: string, dto: PlaceOrderDto) {
+    // 0. Profile-completion gate — customer must have phone + saved address
+    await this.usersService.assertOrderEligibility(customerId);
+
     // 1. Run authoritative pricing calculation
     const pricing = await this.pricingService.calculateForOrder({
       serviceType:  dto.serviceType,
@@ -93,9 +98,16 @@ export class OrdersService {
     const ref = await this.generateReference();
 
     return this.dataSource.transaction(async (manager) => {
-      // 4. Debit user wallet
-      const balanceBefore = wallet.balance;
-      wallet.balance -= pricing.totalWP;
+      // 4. Debit user wallet — also proportionally reduce fiatBalanceKobo (WACB method)
+      const balanceBefore     = wallet.balance;
+      const fiatBefore        = wallet.fiatBalanceKobo ?? 0;
+      const debitWP           = pricing.totalWP;
+      // Proportional fiat deduction: (debitWP / balanceBefore) × fiatBefore
+      const fiatDeductKobo    = balanceBefore > 0
+        ? Math.round((debitWP / balanceBefore) * fiatBefore)
+        : 0;
+      wallet.balance         -= debitWP;
+      wallet.fiatBalanceKobo  = Math.max(0, fiatBefore - fiatDeductKobo);
       await manager.save(wallet);
 
       // 5. Write ledger entry

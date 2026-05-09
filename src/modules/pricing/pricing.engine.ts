@@ -81,7 +81,22 @@ export class PricingEngine {
       });
     }
 
-    // ── 6. Transport fee ──────────────────────────────────────────────────────
+    // ── 6. VAT (applied on subtotal + service charge) ─────────────────────────
+    const vatBase = subtotalWP + serviceChargeWP;
+    const vatWP   = config.vatPercent > 0
+      ? Math.round(vatBase * (config.vatPercent / 100))
+      : 0;
+    if (vatWP > 0) {
+      lineItems.push({
+        label:       `VAT (${config.vatPercent}%)`,
+        category:    'service_charge',   // grouped under service_charge category
+        unitPriceWP: null,
+        qty:         null,
+        subtotalWP:  vatWP,
+      });
+    }
+
+    // ── 7. Transport fee ──────────────────────────────────────────────────────
     const transportWP = config.transportFeeWP;
     if (transportWP > 0) {
       lineItems.push({
@@ -93,14 +108,14 @@ export class PricingEngine {
       });
     }
 
-    // ── 7. Future optional charges (placeholders) ─────────────────────────────
+    // ── 8. Future optional charges (placeholders) ─────────────────────────────
     // isRushOrder, insuranceRequested, promoCode, membershipLevel go here.
     // Each is a new named computation that appends a line item.
 
-    // ── 8. Total ──────────────────────────────────────────────────────────────
-    const totalWP = subtotalWP + serviceChargeWP + transportWP;
+    // ── 9. Total ──────────────────────────────────────────────────────────────
+    const totalWP = subtotalWP + serviceChargeWP + vatWP + transportWP;
 
-    // ── 9. Naira equivalent (display only — not source of truth) ─────────────
+    // ── 10. Naira equivalent (display only — not source of truth) ────────────
     // nairaEquivalent = totalWP ÷ pointsPerUnit
     const nairaEquivalent = config.pointsPerUnit > 0
       ? Math.round((totalWP / config.pointsPerUnit) * 100) / 100
@@ -110,6 +125,7 @@ export class PricingEngine {
       lineItems,
       subtotalWP,
       serviceChargeWP,
+      vatWP,
       transportWP,
       totalWP,
       nairaEquivalent,

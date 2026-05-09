@@ -6,8 +6,16 @@ import { BigIntTransformer } from '../../common/transformers/column.transformers
 
 /**
  * One wallet per user. Balance is stored in WashPoints (integer).
- * Fiat is never stored here — convert at top-up time, forget the raw Naira.
- * Total fiat spent is derivable from paystack_transactions.
+ *
+ * fiatBalanceKobo tracks the actual Naira value (in kobo) of the WP currently
+ * in this wallet, based on what the user PAID for each batch — not the current
+ * platform conversion rate. This is the "cost basis" of the wallet.
+ *
+ * Rules:
+ *  - TOP_UP credit:  fiatBalanceKobo += fiatAmountKobo paid for that batch
+ *  - ORDER debit:    fiatBalanceKobo -= round((amountDebited / balanceBefore) × fiatBalanceBefore)
+ *  - REFUND credit:  fiatBalanceKobo += round((amountRefunded / balanceBeforeRefund) × ...)
+ *    (uses the same proportional weighted-average approach)
  */
 @Entity('wallets')
 export class Wallet extends BaseEntity {
@@ -25,6 +33,21 @@ export class Wallet extends BaseEntity {
     transformer: BigIntTransformer,
   })
   balance: number;
+
+  @ApiProperty({
+    description:
+      'Actual fiat cost-basis of the current WP balance, in Naira kobo. ' +
+      'Reflects the sum of real money paid for each WP batch, proportionally ' +
+      'reduced as WPs are spent. Divide by 100 for Naira.',
+    example: 35000,
+  })
+  @Column({
+    name: 'fiat_balance_kobo',
+    type: 'bigint',
+    default: 0,
+    transformer: BigIntTransformer,
+  })
+  fiatBalanceKobo: number;
 
   @ApiProperty({ default: true })
   @Column({ name: 'is_active', type: 'boolean', default: true })
