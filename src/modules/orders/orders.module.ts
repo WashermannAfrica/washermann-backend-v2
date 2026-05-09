@@ -15,6 +15,7 @@ import { PricingModule } from '../pricing/pricing.module';
 import { VendorsModule } from '../vendors/vendors.module';
 import { RepsModule } from '../reps/reps.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PlatformConfigModule } from '../platform-config/platform-config.module'
     VendorsModule,
     RepsModule,
     PlatformConfigModule,
+    UsersModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

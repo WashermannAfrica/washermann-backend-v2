@@ -48,6 +48,7 @@ export interface PricingConfig {
   specialItemPrices:   Record<string, number>;  // itemType → WP
   ironingUnitPriceWP:  number;
   serviceChargePercent: number;  // e.g. 5 = 5%
+  vatPercent:          number;   // e.g. 7.5 = 7.5%, 0 = disabled
   transportFeeWP:      number;
   conversionRateId:    string;
   pointsPerUnit:       number;   // WP per ₦1 (for nairaEquivalent calc)
@@ -74,8 +75,9 @@ export interface PricingLineItem {
 /** The canonical output of every PricingEngine.calculate() call */
 export interface PricingResult {
   lineItems:              PricingLineItem[];
-  subtotalWP:             number;   // sum before service charge and transport
+  subtotalWP:             number;   // sum before service charge, VAT, and transport
   serviceChargeWP:        number;
+  vatWP:                  number;   // 0 when vatPercent = 0
   transportWP:            number;
   totalWP:                number;   // what the customer pays
   nairaEquivalent:        number;   // totalWP ÷ pointsPerUnit (display only, not stored)

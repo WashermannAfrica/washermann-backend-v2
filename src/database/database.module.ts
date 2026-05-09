@@ -39,6 +39,7 @@ import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
 import { InAppNotification } from './entities/in-app-notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
+import { PricingPackage } from './entities/pricing-package.entity';
 
 @Module({
   imports: [
@@ -67,6 +68,8 @@ import { NotificationTemplate } from './entities/notification-template.entity';
             Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast,
             // Notifications
             InAppNotification, NotificationTemplate,
+            // Packages
+            PricingPackage,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

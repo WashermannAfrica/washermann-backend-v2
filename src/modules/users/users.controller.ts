@@ -61,6 +61,16 @@ export class UsersController {
     return this.usersService.updateProfile(userId, dto);
   }
 
+  @Get('me/profile-completion')
+  @ApiOperation({
+    summary: 'Check profile completion',
+    description: 'Returns a checklist of what is required before the customer can place orders (phone + saved address).',
+  })
+  @ApiResponse({ status: 200, description: 'Profile completion status' })
+  getProfileCompletion(@CurrentUser('id') userId: string) {
+    return this.usersService.getProfileCompletion(userId);
+  }
+
   // ─── FCM token registration ───────────────────────────────────────────────────
 
   @Patch('me/fcm-token')

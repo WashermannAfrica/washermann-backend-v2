@@ -152,6 +152,57 @@ export class UsersService {
     return { data: updated, message: 'Default address updated' };
   }
 
+  // ─── Profile completion ───────────────────────────────────────────────────────
+
+  /**
+   * Returns a structured checklist of what is required before a customer can
+   * place an order.  `isComplete` is the single gate condition.
+   */
+  async getProfileCompletion(userId: string) {
+    const [user, addressCount] = await Promise.all([
+      this.userRepository.findOne({ where: { id: userId } }),
+      this.addressRepository.count({ where: { userId } }),
+    ]);
+
+    if (!user) throw new NotFoundException('User not found');
+
+    const hasPhone   = !!user.phone && user.phone.trim().length > 0;
+    const hasAddress = addressCount > 0;
+
+    const missingFields: string[] = [];
+    if (!hasPhone)   missingFields.push('phone');
+    if (!hasAddress) missingFields.push('address');
+
+    const isComplete = hasPhone && hasAddress;
+
+    return {
+      isComplete,
+      checks: {
+        phone:   hasPhone,
+        address: hasAddress,
+      },
+      missingFields,
+      message: isComplete
+        ? 'Profile complete — ready to place orders'
+        : `Complete your profile to place orders. Missing: ${missingFields.join(', ')}`,
+    };
+  }
+
+  /**
+   * Throws a structured `BadRequestException` when the user's profile is incomplete.
+   * Called by OrdersService before accepting any order placement.
+   */
+  async assertOrderEligibility(userId: string): Promise<void> {
+    const completion = await this.getProfileCompletion(userId);
+    if (!completion.isComplete) {
+      throw new BadRequestException({
+        message: 'Profile incomplete — cannot place order',
+        missingFields: completion.missingFields,
+        hint: 'Add a phone number and at least one delivery address to your profile.',
+      });
+    }
+  }
+
   // ─── Admin ───────────────────────────────────────────────────────────────────
 
   async getUserById(userId: string) {
