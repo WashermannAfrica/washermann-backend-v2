@@ -152,6 +152,34 @@ export const employeeInviteTemplate = (data: {
   `),
 });
 
+// ─── Invite: Vendor Account ──────────────────────────────────────────────────
+export const vendorInviteTemplate = (data: {
+  fullName: string;
+  businessName: string;
+  inviteLink: string;
+}) => ({
+  subject: `You've been added as a vendor on Washermann`,
+  html: baseLayout(`
+    <p>Hi <strong>${data.fullName}</strong>,</p>
+    <p>A vendor account has been created for <strong>${data.businessName}</strong> on the Washermann platform.</p>
+    <p>Click the button below to set your password and activate your account:</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${data.inviteLink}"
+         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
+        Activate My Vendor Account
+      </a>
+    </div>
+    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
+    <p style="font-size: 13px; color: #888;">
+      Button not working? Copy this link into your browser:<br/>
+      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
+    </p>
+    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
+      This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.
+    </div>
+  `),
+});
+
 // ─── Invite: Platform Staff ───────────────────────────────────────────────────
 export const staffInviteTemplate = (data: {
   fullName: string;

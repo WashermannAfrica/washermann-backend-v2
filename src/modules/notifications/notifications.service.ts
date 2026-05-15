@@ -19,6 +19,7 @@ import {
   companyInviteTemplate,
   employeeInviteTemplate,
   staffInviteTemplate,
+  vendorInviteTemplate,
 } from './templates';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -181,6 +182,12 @@ export class NotificationsService {
   async sendStaffInvite(data: { fullName: string; email: string; role: string; inviteToken: string; deepLinkBase: string }) {
     const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
     const template   = staffInviteTemplate({ fullName: data.fullName, role: data.role, inviteLink });
+    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+  }
+
+  async sendVendorInvite(data: { fullName: string; email: string; businessName: string; inviteToken: string; deepLinkBase: string }) {
+    const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
+    const template   = vendorInviteTemplate({ fullName: data.fullName, businessName: data.businessName, inviteLink });
     await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
   }
 
