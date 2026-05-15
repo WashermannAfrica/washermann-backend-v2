@@ -3,12 +3,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, ILike, Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
+import { DataSource, Repository } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorDocument } from '../../database/entities/vendor-document.entity';
 import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
@@ -24,9 +25,12 @@ import { VendorVerificationStatus } from '../../common/enums/vendor-verification
 import { Role } from '../../common/enums/roles.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class VendorsService {
+  private readonly logger = new Logger(VendorsService.name);
+
   constructor(
     @InjectRepository(Vendor)
     private vendorRepository: Repository<Vendor>,
@@ -49,6 +53,7 @@ export class VendorsService {
     private dataSource: DataSource,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
+    private redisService: RedisService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -61,22 +66,17 @@ export class VendorsService {
       throw new ConflictException('A user with this email or phone already exists');
     }
 
-    return this.dataSource.transaction(async (manager) => {
-      // Create user account
-      const tempPassword = Math.random().toString(36).slice(-8);
-      const passwordHash = await bcrypt.hash(tempPassword, 12);
-
+    const result = await this.dataSource.transaction(async (manager) => {
       const user = manager.create(User, {
         fullName: dto.fullName.trim(),
         email: dto.email.toLowerCase().trim(),
         phone: dto.phone.trim(),
-        passwordHash,
+        passwordHash: null,
         roles: [Role.VENDOR],
         emailVerified: false,
       });
       await manager.save(user);
 
-      // Create vendor record
       const vendor = manager.create(Vendor, {
         userId: user.id,
         businessName: dto.businessName.trim(),
@@ -89,7 +89,6 @@ export class VendorsService {
       });
       await manager.save(vendor);
 
-      // Create earnings wallet
       const wallet = manager.create(VendorEarningsWallet, {
         vendorId: vendor.id,
         balance: 0,
@@ -98,8 +97,34 @@ export class VendorsService {
       });
       await manager.save(wallet);
 
-      return { vendor, user: this.sanitizeUser(user) };
+      return { vendor, user };
     });
+
+    // Generate invite token and send email outside the transaction
+    const inviteToken = uuidv4();
+    const INVITE_TTL = 7 * 24 * 60 * 60;
+    await this.redisService.setEx(
+      `invite:${inviteToken}`,
+      INVITE_TTL,
+      result.user.id,
+    );
+
+    const deepLinkBase =
+      this.configService.get<string>('app.deepLinkBase') ??
+      'https://app.washermann.com';
+    const sendInvite = () =>
+      this.notificationsService.sendVendorInvite({
+        fullName: result.user.fullName,
+        email: result.user.email,
+        businessName: result.vendor.businessName,
+        inviteToken,
+        deepLinkBase,
+      });
+    sendInvite().catch((err: Error) =>
+      this.logger.error(`Vendor invite email failed: ${err.message}`),
+    );
+
+    return { vendor: result.vendor, user: this.sanitizeUser(result.user) };
   }
 
   // ─── List vendors (admin) ─────────────────────────────────────────────────────
