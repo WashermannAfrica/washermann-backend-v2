@@ -26,15 +26,22 @@ export class PushService implements OnModuleInit {
       return;
     }
 
-    // Only initialise once even if module is re-instantiated
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-      });
+    // Only initialise once even if module is re-instantiated.
+    // A malformed key must not crash the whole app — disable push and warn.
+    try {
+      if (!admin.apps.length) {
+        admin.initializeApp({
+          credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+        });
+      }
+      this.initialized = true;
+      this.logger.log('Firebase Admin initialised — push notifications enabled');
+    } catch (err) {
+      this.initialized = false;
+      this.logger.warn(
+        `Firebase Admin failed to initialise — push notifications disabled (${(err as Error).message})`,
+      );
     }
-
-    this.initialized = true;
-    this.logger.log('Firebase Admin initialised — push notifications enabled');
   }
 
   async send(options: SendPushOptions): Promise<boolean> {

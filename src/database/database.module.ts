@@ -40,6 +40,9 @@ import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
 import { InAppNotification } from './entities/in-app-notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { PricingPackage } from './entities/pricing-package.entity';
+// ─── Marketing ──────────────────────────────────────────────────────────────────
+import { WaitlistSignup } from './entities/waitlist-signup.entity';
+import { WashRepApplication } from './entities/wash-rep-application.entity';
 
 @Module({
   imports: [
@@ -70,6 +73,8 @@ import { PricingPackage } from './entities/pricing-package.entity';
             InAppNotification, NotificationTemplate,
             // Packages
             PricingPackage,
+            // Marketing
+            WaitlistSignup, WashRepApplication,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

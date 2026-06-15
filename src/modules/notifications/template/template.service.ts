@@ -27,7 +27,15 @@ export class TemplateService implements OnModuleInit {
   // ─── Seed default templates on startup ───────────────────────────────────────
 
   async onModuleInit() {
-    await this.seedDefaults();
+    // Seeding must never crash app boot — e.g. on a fresh DB where the
+    // notification_templates table has not been migrated yet.
+    try {
+      await this.seedDefaults();
+    } catch (err) {
+      this.logger.warn(
+        `Skipped default template seeding (${(err as Error).message})`,
+      );
+    }
   }
 
   async seedDefaults(): Promise<void> {

@@ -14,8 +14,16 @@ export class Phase6VaultsGiftCardsAndStaffRoles1775780000000 implements Migratio
     // 3. Add DISPUTE_RESOLVER and FINANCE to roles enum
     // roles column is simple-array (varchar), no enum type to alter
 
-    // 4. Add GIFT_CARD to ledger_source enum
-    await queryRunner.query(`ALTER TYPE "ledger_source_enum" ADD VALUE IF NOT EXISTS 'gift_card'`);
+    // 4. Add GIFT_CARD to ledger_source enum (only where that enum exists).
+    // ledger_entries.source is a VARCHAR on fresh schemas, so this type may not
+    // exist — guard it so the migration is safe on both old and new databases.
+    await queryRunner.query(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ledger_source_enum') THEN
+          ALTER TYPE "ledger_source_enum" ADD VALUE IF NOT EXISTS 'gift_card';
+        END IF;
+      END $$;
+    `);
 
     // 5. Create vaults table
     await queryRunner.query(`

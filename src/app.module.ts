@@ -49,6 +49,7 @@ import { AssignmentModule } from './modules/assignment/assignment.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { MarketingModule } from './modules/marketing/marketing.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { UploadModule } from './modules/upload/upload.module';
     PayoutsModule,
     TasksModule,
     UploadModule,
+    MarketingModule,
   ],
 
   providers: [

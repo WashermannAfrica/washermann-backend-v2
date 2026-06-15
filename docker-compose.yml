@@ -28,7 +28,7 @@ services:
     image: postgres:16-alpine
     container_name: washermann-postgres
     ports:
-      - '5433:5432'
+      - '5436:5432'
     environment:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
