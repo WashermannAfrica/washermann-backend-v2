@@ -288,8 +288,15 @@ export class AuthService {
   async resendOtp(identifier: string, purpose: 'verification' | 'reset') {
     const user = await this.findByIdentifier(identifier);
 
-    // Always return 200 to prevent enumeration
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    // Always return 200 to prevent enumeration.
+    // PENDING users (company self-registrants, invited users awaiting activation)
+    // legitimately need to (re)verify their email — allow them through for the
+    // 'verification' purpose; password reset stays locked to active accounts.
+    const canResend =
+      !!user &&
+      (user.status === UserStatus.ACTIVE ||
+        (purpose === 'verification' && user.status === UserStatus.PENDING));
+    if (!canResend) {
       return {
         data: null,
         message: 'If an account exists, a new OTP has been sent.',
