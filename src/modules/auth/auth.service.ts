@@ -513,8 +513,10 @@ export class AuthService {
       await this.userRepository.save(user);
     }
 
-    // Send OTP for contact person email verification (fire-and-forget)
-    this.sendVerificationOtp(user).catch((err) =>
+    // Send the verification OTP to the official company email (not the contact
+    // person's personal email). Keyed by user.id, so verification still uses the
+    // contact's identifier via /auth/verify-otp. Fire-and-forget.
+    this.sendVerificationOtp(user, company.ownerEmail).catch((err) =>
       this.logger.error(`Company registration OTP failed: ${err.message}`),
     );
 
@@ -525,7 +527,8 @@ export class AuthService {
     return {
       data: {
         companyId: company.id,
-        message: 'Company registration submitted. Pending admin approval. Please verify your email.',
+        verificationEmail: company.ownerEmail,
+        message: `Company registration submitted. Pending admin approval. We sent a verification code to your company email (${company.ownerEmail}).`,
       },
     };
   }
@@ -620,8 +623,18 @@ export class AuthService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  private async sendVerificationOtp(user: User): Promise<void> {
-    if (user.email && !user.emailVerified) {
+  /**
+   * Sends verification OTP(s) for a user.
+   *
+   * @param emailOverride  Deliver the email OTP to this address instead of
+   *   user.email (used by company self-registration, where the code goes to the
+   *   official company email rather than the contact person's personal email).
+   *   The OTP is still keyed by user.id, so verification continues to use the
+   *   user's own identifier (email/phone) via /auth/verify-otp.
+   */
+  private async sendVerificationOtp(user: User, emailOverride?: string): Promise<void> {
+    const targetEmail = emailOverride ?? user.email;
+    if (targetEmail && !user.emailVerified) {
       const otp = this.generateOtp();
       await this.redisService.setEx(
         `${OTP_VERIFY_EMAIL_PREFIX}${user.id}`,
@@ -630,7 +643,7 @@ export class AuthService {
       );
       await this.notificationsService.sendEmailVerificationOtp({
         fullName: user.fullName,
-        email: user.email,
+        email: targetEmail,
         otp,
       });
     }
