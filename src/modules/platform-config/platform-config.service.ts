@@ -26,7 +26,10 @@ export class PlatformConfigService {
     const config = await this.configRepository.findOne({ where: {} });
     if (config) return config;
 
-    // Bootstrap default row
+    // Bootstrap default row. Every non-nullable column must be set explicitly —
+    // TypeORM includes them in the INSERT, so an omitted field becomes NULL and
+    // violates the NOT NULL constraint (the DB-level DEFAULT only applies when
+    // the column is absent from the INSERT statement).
     const defaults = this.configRepository.create({
       platformPriceOffsetPercent: 25,
       repSharePercent: 15,
@@ -35,6 +38,8 @@ export class PlatformConfigService {
       lowRatingThreshold: 3.5,
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
+      vatPercent: 0,
+      priceSuggestionPercentile: 70,
       updatedBy: null,
     });
     return this.configRepository.save(defaults);
