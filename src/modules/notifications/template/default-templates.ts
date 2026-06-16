@@ -1,15 +1,16 @@
 import { NotificationChannel, EmailStyle } from '../../../database/entities/notification-template.entity';
 
+// Washermann brand palette — see also notifications/templates/index.ts
 const DEFAULT_EMAIL_STYLE: EmailStyle = {
-  primaryColor:  '#1a1a2e',
-  accentColor:   '#4fc3f7',
-  bodyBgColor:   '#f5f5f5',
+  primaryColor:  '#00281c', // deep green — header background, emphasis
+  accentColor:   '#13c490', // mint-green — buttons, links, highlights
+  bodyBgColor:   '#eef2f0', // soft green-gray page background
   cardBgColor:   '#ffffff',
-  textColor:     '#444444',
+  textColor:     '#2c3a33',
   logoUrl:       null,
   logoAlt:       'Washermann',
   footerText:    '© {{year}} Washermann. All rights reserved.',
-  fontFamily:    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  fontFamily:    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 };
 
 /**
@@ -27,37 +28,37 @@ export const buildEmailHtml = (contentBlock: string, style: EmailStyle = DEFAULT
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{background:${style.bodyBgColor};font-family:${style.fontFamily};color:${style.textColor};}
-    .wrapper{max-width:560px;margin:40px auto;background:${style.cardBgColor};border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
-    .header{background:${style.primaryColor};padding:28px 32px;text-align:center;}
-    .header-logo{max-height:48px;margin-bottom:8px;}
-    .header h1{color:#fff;font-size:22px;font-weight:700;letter-spacing:-.3px;}
-    .header h1 span{color:${style.accentColor};}
+    a{color:${style.accentColor};}
+    .wrapper{max-width:560px;margin:40px auto;background:${style.cardBgColor};border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(0,40,28,.08);}
+    .header{background:${style.primaryColor};padding:32px;text-align:center;}
+    .header-logo{width:170px;max-width:62%;height:auto;display:block;margin:0 auto;border:0;}
+    .header h1{color:#fff;font-size:24px;font-weight:800;letter-spacing:-.4px;}
+    .header h1 span{color:#3bf4be;}
+    .header .tagline{color:rgba(255,255,255,.55);font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-top:8px;}
     .body{padding:36px 32px;}
     .body p{font-size:15px;line-height:1.7;color:${style.textColor};margin-bottom:16px;}
-    .highlight-box{background:#f0f7ff;border:2px dashed ${style.accentColor};border-radius:10px;padding:20px;text-align:center;margin:24px 0;}
+    .body strong{color:${style.primaryColor};}
+    .highlight-box{background:#e8faf2;border:2px dashed ${style.accentColor};border-radius:12px;padding:22px;text-align:center;margin:24px 0;}
     .highlight-value{font-size:28px;font-weight:800;color:${style.primaryColor};}
-    .highlight-label{font-size:13px;color:#888;margin-top:6px;}
-    .btn{display:inline-block;background:${style.primaryColor};color:#fff!important;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;margin:8px 0;}
-    .divider{height:1px;background:#f0f0f0;margin:24px 0;}
-    .info-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5;font-size:14px;}
-    .info-row span:first-child{color:#888;}
+    .highlight-label{font-size:13px;color:#7c8b83;margin-top:6px;}
+    .btn{display:inline-block;background:${style.accentColor};color:#fff!important;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;margin:8px 0;}
+    .divider{height:1px;background:#e7ece9;margin:24px 0;}
+    .info-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f3f1;font-size:14px;}
+    .info-row span:first-child{color:#7c8b83;}
     .info-row span:last-child{font-weight:600;color:${style.primaryColor};}
     .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;}
     .badge-success{background:#e8f5e9;color:#2e7d32;}
     .badge-warning{background:#fff8e1;color:#f57f17;}
     .badge-danger{background:#ffebee;color:#c62828;}
-    .warning{background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;}
-    .footer{background:#fafafa;padding:20px 32px;text-align:center;border-top:1px solid #f0f0f0;}
-    .footer p{font-size:12px;color:#aaa;line-height:1.6;}
+    .warning{background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#7a6a3a;margin-top:16px;}
+    .footer{background:#f6f9f7;padding:22px 32px;text-align:center;border-top:1px solid #e7ece9;}
+    .footer p{font-size:12px;color:#7c8b83;line-height:1.6;}
   </style>
 </head>
 <body>
   <div class="wrapper">
     <div class="header">
-      ${style.logoUrl
-        ? `<img src="${style.logoUrl}" alt="${style.logoAlt}" class="header-logo"/>`
-        : `<h1>Washer<span>mann</span></h1>`
-      }
+      {{#if logoUrl}}<img src="{{logoUrl}}" alt="Washermann" class="header-logo" width="170"/>{{else}}<h1>Washer<span>mann</span></h1><div class="tagline">Laundry, handled</div>{{/if}}
     </div>
     <div class="body">${contentBlock}</div>
     <div class="footer">

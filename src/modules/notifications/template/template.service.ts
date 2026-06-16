@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as Handlebars from 'handlebars';
@@ -22,7 +23,13 @@ export class TemplateService implements OnModuleInit {
   constructor(
     @InjectRepository(NotificationTemplate)
     private repo: Repository<NotificationTemplate>,
+    private configService: ConfigService,
   ) {}
+
+  /** Publicly-hosted email header logo URL (empty → text-wordmark fallback). */
+  private get logoUrl(): string {
+    return this.configService.get<string>('notifications.emailLogoUrl') || '';
+  }
 
   // ─── Seed default templates on startup ───────────────────────────────────────
 
@@ -82,6 +89,7 @@ export class TemplateService implements OnModuleInit {
     // 1. Add handy computed variables
     const ctx = {
       year: new Date().getFullYear().toString(),
+      logoUrl: this.logoUrl,
       ...variables,
     };
 
@@ -119,6 +127,7 @@ export class TemplateService implements OnModuleInit {
       sampleVars[v] = `{{${v}}}`;   // echo variable names as placeholders
     }
     sampleVars['year'] = new Date().getFullYear().toString();
+    sampleVars['logoUrl'] = this.logoUrl;
 
     return this.compile(tpl, sampleVars, style);
   }

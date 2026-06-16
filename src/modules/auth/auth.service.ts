@@ -12,12 +12,15 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHmac } from 'crypto';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
+import { Vendor } from '../../database/entities/vendor.entity';
+import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { Role } from '../../common/enums/roles.enum';
+import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { CompanyActivationStatus } from '../../common/enums/company-activation-status.enum';
 import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { RedisService } from '../redis/redis.service';
@@ -30,6 +33,7 @@ import { SetPasswordDto } from './dto/set-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SetupAdminDto } from './dto/setup-admin.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+import { VendorSignupDto } from './dto/vendor-signup.dto';
 
 const SALT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 600;       // 10 minutes
@@ -55,6 +59,7 @@ export class AuthService {
     private configService: ConfigService,
     private redisService: RedisService,
     private notificationsService: NotificationsService,
+    private dataSource: DataSource,
   ) {}
 
   // ─── Registration ────────────────────────────────────────────────────────────
@@ -515,6 +520,79 @@ export class AuthService {
         companyId: company.id,
         message: 'Company registration submitted. Pending admin approval. Please verify your email.',
       },
+    };
+  }
+
+  // ─── Vendor Self-Registration ─────────────────────────────────────────────────
+
+  /**
+   * Public vendor signup. Coexists with the admin-create/invite flow.
+   *
+   * Creates the User (VENDOR role, ACTIVE so they can log in), an empty Vendor
+   * profile in PENDING_REVIEW (businessName/phone/etc. filled later in KYC) and
+   * the earnings wallet — all atomically. A verification OTP is sent; the vendor
+   * verifies via /auth/verify-otp, then completes KYC. The account cannot go
+   * available / receive orders until an admin verifies it.
+   */
+  async registerVendor(dto: VendorSignupDto) {
+    await this.assertIdentifierNotTaken(dto.email, undefined);
+
+    const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+
+    const user = await this.dataSource.transaction(async (manager) => {
+      const newUser = manager.create(User, {
+        fullName: dto.fullName.trim(),
+        email: dto.email.toLowerCase().trim(),
+        phone: null,
+        passwordHash,
+        roles: [Role.VENDOR],
+        status: UserStatus.ACTIVE,
+        emailVerified: false,
+        phoneVerified: false,
+      });
+      await manager.save(newUser);
+
+      const vendor = manager.create(Vendor, {
+        userId: newUser.id,
+        businessName: null,
+        phone: null,
+        areaIds: [],
+        verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
+        isAvailable: false,
+        rating: 0,
+        ratingCount: 0,
+      });
+      await manager.save(vendor);
+
+      const wallet = manager.create(VendorEarningsWallet, {
+        vendorId: vendor.id,
+        balance: 0,
+        totalEarned: 0,
+        status: 'active',
+      });
+      await manager.save(wallet);
+
+      return newUser;
+    });
+
+    this.logger.log(`Vendor self-registered: ${user.id}`);
+
+    // Send verification OTP — welcome email is sent after OTP is verified
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Vendor registration OTP failed: ${err.message}`),
+    );
+
+    const tokens = await this.generateTokenPair(user);
+
+    return {
+      data: {
+        user: this.sanitizeUser(user),
+        ...tokens,
+        verificationSent: true,
+      },
+      message:
+        'Vendor registration successful. A verification code has been sent. ' +
+        'Verify your email, then complete your business profile.',
     };
   }
 
