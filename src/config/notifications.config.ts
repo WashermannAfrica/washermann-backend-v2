@@ -5,6 +5,10 @@ export default registerAs('notifications', () => ({
   resendApiKey:   process.env.RESEND_API_KEY    || '',
   fromEmail:      process.env.RESEND_FROM_EMAIL || 'no-reply@washermann.com',
   fromName:       process.env.RESEND_FROM_NAME  || 'Washermann',
+  // Absolute, publicly-hosted PNG of the white wordmark shown in the email header.
+  // Email clients can't render local files or SVG — host on R2/CDN and set this.
+  // When unset, emails fall back to the styled text wordmark (no broken image).
+  emailLogoUrl:   process.env.EMAIL_LOGO_URL || '',
 
   // ─── Termii (SMS) ─────────────────────────────────────────────────────────────
   termiiApiKey:   process.env.TERMII_API_KEY    || '',

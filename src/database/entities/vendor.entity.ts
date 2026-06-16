@@ -20,9 +20,9 @@ export class Vendor extends BaseEntity {
   @Column({ name: 'user_id', type: 'uuid', unique: true })
   userId: string;
 
-  @ApiProperty({ example: 'Sparkle Cleaners' })
-  @Column({ name: 'business_name', type: 'varchar', length: 255 })
-  businessName: string;
+  @ApiProperty({ example: 'Sparkle Cleaners', nullable: true })
+  @Column({ name: 'business_name', type: 'varchar', length: 255, nullable: true })
+  businessName: string | null;
 
   @ApiProperty({ nullable: true })
   @Column({ type: 'varchar', length: 50, nullable: true })

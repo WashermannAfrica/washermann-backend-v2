@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
+import { Vendor } from '../../database/entities/vendor.entity';
+import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -11,7 +13,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Company]),
+    TypeOrmModule.forFeature([User, Company, Vendor, VendorEarningsWallet]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
