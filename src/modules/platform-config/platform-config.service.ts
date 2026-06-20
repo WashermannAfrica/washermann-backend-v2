@@ -40,6 +40,13 @@ export class PlatformConfigService {
       orderAutoCompleteHours: 24,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
+      ironingPercent: 15,
+      chargeStack: [
+        { key: 'platform_margin',     label: 'Platform margin',     kind: 'percent', value: 25 },
+        { key: 'service_charge',      label: 'Service charge',      kind: 'percent', value: 5 },
+        { key: 'wash_rep_commission', label: 'Wash-rep commission', kind: 'percent', value: 15 },
+        { key: 'vat',                 label: 'VAT',                 kind: 'percent', value: 7.5 },
+      ],
       updatedBy: null,
     });
     return this.configRepository.save(defaults);
