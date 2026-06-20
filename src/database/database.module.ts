@@ -43,6 +43,14 @@ import { PricingPackage } from './entities/pricing-package.entity';
 // ─── Marketing ──────────────────────────────────────────────────────────────────
 import { WaitlistSignup } from './entities/waitlist-signup.entity';
 import { WashRepApplication } from './entities/wash-rep-application.entity';
+// ─── Catalogue ────────────────────────────────────────────────────────────────
+import { CatalogueCategory } from './entities/catalogue-category.entity';
+import { CatalogueSubCategory } from './entities/catalogue-subcategory.entity';
+import { CatalogueItem } from './entities/catalogue-item.entity';
+import { VendorItemSuggestion } from './entities/vendor-item-suggestion.entity';
+import { Bag } from './entities/bag.entity';
+import { Bundle } from './entities/bundle.entity';
+import { BundleLine } from './entities/bundle-line.entity';
 
 @Module({
   imports: [
@@ -75,6 +83,9 @@ import { WashRepApplication } from './entities/wash-rep-application.entity';
             PricingPackage,
             // Marketing
             WaitlistSignup, WashRepApplication,
+            // Catalogue
+            CatalogueCategory, CatalogueSubCategory, CatalogueItem, VendorItemSuggestion, Bag,
+            Bundle, BundleLine,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

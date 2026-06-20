@@ -22,6 +22,7 @@ import { RateOrderDto } from './dto/rate-order.dto';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { PricingService } from '../pricing/pricing.service';
+import { OrderQuoteService, Quote } from '../pricing/order-quote.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
@@ -59,6 +60,7 @@ export class OrdersService {
     private conversionRateRepository: Repository<ConversionRate>,
 
     private pricingService: PricingService,
+    private orderQuoteService: OrderQuoteService,
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
@@ -70,20 +72,78 @@ export class OrdersService {
 
   // ─── Place order ─────────────────────────────────────────────────────────────
 
+  /** Resolve the authoritative quote for the order's flow, validating its required fields. */
+  private async quoteForFlow(dto: PlaceOrderDto): Promise<Quote> {
+    if (dto.flow === 'wash_iron') {
+      if (!dto.selections?.length) {
+        throw new BadRequestException('selections are required for a wash_iron order');
+      }
+      return this.orderQuoteService.quoteWashIron(dto.selections);
+    }
+    if (dto.flow === 'wash_fold') {
+      if (!dto.bagId) throw new BadRequestException('bagId is required for a wash_fold order');
+      return this.orderQuoteService.quoteBag(dto.bagId);
+    }
+    if (!dto.bundleId) throw new BadRequestException('bundleId is required for a bundle order');
+    return this.orderQuoteService.quoteBundle(dto.bundleId);
+  }
+
+  /**
+   * Decompose an order total into its charge components for escrow reconciliation.
+   *
+   * Every catalogue item price = base × (1 + Σ charge%), and wash_iron adds a
+   * uniform ironing layer on top, so the base and each percentage charge can be
+   * recovered by ratio. Fixed (non-percent) charges aren't decomposed here — they
+   * fold into the platform remainder. Snapshotted at placement so later config
+   * changes never alter a placed order's split.
+   */
+  private decomposeCharges(
+    totalWp: number,
+    flow: PlaceOrderDto['flow'],
+    config: { chargeStack?: { key: string; kind: string; value: number }[]; ironingPercent?: number },
+  ): { baseWP: number; commissionWP: number; vatWP: number } {
+    const stack = config.chargeStack ?? [];
+    const sumPct = stack.filter((c) => c.kind === 'percent').reduce((s, c) => s + Number(c.value), 0);
+    const commissionPct = Number(stack.find((c) => c.key === 'wash_rep_commission')?.value ?? 0);
+    const vatPct = Number(stack.find((c) => c.key === 'vat')?.value ?? 0);
+    const I = flow === 'wash_iron' ? Number(config.ironingPercent ?? 0) / 100 : 0;
+    const S = sumPct / 100;
+    const baseWP = Math.round(totalWp / ((1 + S) * (1 + I)));
+    return {
+      baseWP,
+      commissionWP: Math.round(baseWP * (commissionPct / 100)),
+      vatWP: Math.round(baseWP * (vatPct / 100)),
+    };
+  }
+
   async placeOrder(customerId: string, dto: PlaceOrderDto) {
     // 0. Profile-completion gate — customer must have phone + saved address
     await this.usersService.assertOrderEligibility(customerId);
 
-    // 1. Run authoritative pricing calculation
-    const pricing = await this.pricingService.calculateForOrder({
-      serviceType:  dto.serviceType,
-      bagSize:      dto.bagSize,
-      specialItems: dto.specialItems ?? [],
-      ironingCount: dto.ironingCount ?? 0,
-      areaId:       dto.areaId,
-    });
+    // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
+    const quote = await this.quoteForFlow(dto);
 
-    const platformConfig = await this.platformConfigService.getConfig();
+    // Shape the quote into the pricing snapshot the rest of the method consumes.
+    const pricing = {
+      lineItems: quote.lines.map((l) => ({
+        label:       l.name,
+        category:    (dto.flow === 'wash_fold' ? 'bag' : 'special_item') as 'bag' | 'special_item',
+        unitPriceWP: Math.round(l.unitNgn * quote.conversionRateSnapshot),
+        qty:         l.qty,
+        subtotalWP:  Math.round(l.subtotalNgn * quote.conversionRateSnapshot),
+      })),
+      subtotalWP:             quote.totalWp,
+      serviceChargeWP:        0,
+      vatWP:                  0,
+      transportWP:            0,
+      totalWP:                quote.totalWp,
+      nairaEquivalent:        quote.totalNgn,
+      conversionRateId:       quote.conversionRateId,
+      conversionRateSnapshot: quote.conversionRateSnapshot,
+      calculatedAt:           quote.calculatedAt,
+      // Charge decomposition, frozen for escrow reconciliation at completion.
+      charges:                this.decomposeCharges(quote.totalWp, dto.flow, await this.platformConfigService.getConfig()),
+    };
 
     // 2. Check wallet has enough WP
     const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
@@ -138,10 +198,14 @@ export class OrdersService {
         repId:                   null,
         vendorId:                null,
         areaId:                  dto.areaId,
-        serviceType:             dto.serviceType,
-        bagSize:                 dto.bagSize,
-        specialItems:            dto.specialItems ?? [],
-        ironingCount:            dto.ironingCount ?? 0,
+        flow:                    dto.flow,
+        bagId:                   dto.flow === 'wash_fold' ? dto.bagId ?? null : null,
+        itemSelections:          dto.flow === 'wash_iron' ? (dto.selections ?? null) : null,
+        bundleId:                dto.flow === 'bundle' ? dto.bundleId ?? null : null,
+        serviceType:             dto.flow === 'bundle' ? 'wash_fold' : dto.flow,
+        bagSize:                 null,
+        specialItems:            [],
+        ironingCount:            0,
         pickupAddress:           dto.pickupAddress,
         pickupLatitude:          dto.pickupLatitude ?? null,
         pickupLongitude:         dto.pickupLongitude ?? null,
@@ -329,7 +393,12 @@ export class OrdersService {
 
     const vendorShareWP          = vendorShareCalc.totalWP;
     const vendorShareNairaSnapshot = vendorShareCalc.totalNaira;
-    const repShareWP             = Math.floor(order.totalWP * (config.repSharePercent / 100));
+    // Rep share = the wash-rep commission baked into the price (the charge funds the
+    // rep). Falls back to the legacy flat repSharePercent for pre-catalogue orders.
+    const snapCharges            = (order.pricingSnapshot as any).charges;
+    const repShareWP             = snapCharges?.commissionWP != null
+      ? snapCharges.commissionWP
+      : Math.floor(order.totalWP * (config.repSharePercent / 100));
     const transportWP            = (order.pricingSnapshot as any).transportWP ?? 0;
     const platformShareWP        = order.totalWP - vendorShareWP - repShareWP - transportWP;
 

@@ -11,7 +11,12 @@ import { Vendor } from './vendor.entity';
 
 /** A single garment price entry inside VendorPricing.items */
 export interface GarmentPriceItem {
-  /** e.g. 'shirt', 'trouser', 'agbada', 'duvet' */
+  /**
+   * Canonical catalogue item this price is for (the P70 join key).
+   * Optional during the catalogue transition; new pricing should always set it.
+   */
+  itemId?: string;
+  /** e.g. 'shirt', 'trouser', 'agbada', 'duvet' — legacy free-text, retained until fully migrated */
   garmentType: string;
   /** Price in Naira (stored as number, e.g. 800 = ₦800) */
   priceNaira: number;

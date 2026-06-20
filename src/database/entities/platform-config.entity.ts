@@ -3,6 +3,20 @@ import { ApiProperty } from '@nestjs/swagger';
 import { DecimalTransformer } from '../../common/transformers/column.transformers';
 
 /**
+ * A single charge in the stackable charge stack applied on top of an item's
+ * P70 base to form its platform price. Reserved keys carry escrow meaning:
+ *  - 'wash_rep_commission' funds the rep's escrow share
+ *  - 'vat' is a pass-through remittance
+ *  - 'platform_margin' / 'service_charge' are platform margin
+ */
+export interface ChargeStackItem {
+  key:   string;
+  label: string;
+  kind:  'percent' | 'fixed';
+  value: number;
+}
+
+/**
  * Single-row table (key/value store) for platform-wide configuration.
  *
  * All values here can be updated live by admin with immediate effect.
@@ -137,6 +151,27 @@ export class PlatformConfig {
     default: 70,
   })
   priceSuggestionPercentile: number;
+
+  @ApiProperty({
+    description: 'Stackable charges added on top of an item P70 base to form its platform price.',
+    type: 'array',
+  })
+  @Column({ name: 'charge_stack', type: 'jsonb', default: '[]' })
+  chargeStack: ChargeStackItem[];
+
+  @ApiProperty({
+    description: 'Ironing surcharge as a percentage of item price — applied only in Wash & Iron.',
+    example: 15,
+  })
+  @Column({
+    name: 'ironing_percent',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 15,
+    transformer: DecimalTransformer,
+  })
+  ironingPercent: number;
 
   @ApiProperty({ nullable: true })
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })

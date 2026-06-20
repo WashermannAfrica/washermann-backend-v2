@@ -1,0 +1,387 @@
+### =====================================================================
+### Washermann — Order Engine Smoke Test (VS Code REST Client / Postman)
+### Run top-to-bottom. Each "# @name X" response feeds later requests.
+### Prereqs (see order-engine-qa-runbook.md):
+###   - API running on {{API}}
+###   - An ACTIVE conversion_rate row exists (seed/DB — the POST endpoint is
+###     guarded by a security answer). SQL fallback in the runbook.
+###   - Seeded admin: admin@washermann.com / Admin@1234
+### =====================================================================
+
+@API = http://localhost:3009/api/v1
+@adminEmail = admin@washermann.com
+@adminPass = Admin@1234
+
+### ---------------------------------------------------------------------
+### STAGE 0 — Admin + area
+### ---------------------------------------------------------------------
+
+# @name adminLogin
+POST {{API}}/auth/login
+Content-Type: application/json
+
+{ "identifier": "{{adminEmail}}", "password": "{{adminPass}}" }
+
+###
+@adminTok = {{adminLogin.response.body.data.accessToken}}
+
+# @name createArea
+POST {{API}}/areas
+Authorization: Bearer {{adminTok}}
+Content-Type: application/json
+
+{ "name": "Smoke VI", "state": "Lagos" }
+
+###
+@areaId = {{createArea.response.body.data.id}}
+
+### Confirm an active conversion rate exists (must NOT 404)
+GET {{API}}/conversion-rates/active
+Authorization: Bearer {{adminTok}}
+
+### ---------------------------------------------------------------------
+### STAGE 1 — Catalogue (capture 3 everyday item ids)
+### ---------------------------------------------------------------------
+
+# @name everydayItems
+GET {{API}}/catalogue/items?everyday=true
+Authorization: Bearer {{adminTok}}
+
+###
+@itemA = {{everydayItems.response.body.data[0].id}}
+@itemB = {{everydayItems.response.body.data[1].id}}
+@itemC = {{everydayItems.response.body.data[2].id}}
+
+### ---------------------------------------------------------------------
+### STAGE 2 — Three verified vendors price items A/B/C (feeds P70)
+### ---------------------------------------------------------------------
+
+# --- Vendor 1 (A=800, B=1000, C=3000) ---
+# @name vendor1
+POST {{API}}/auth/vendor/register
+Content-Type: application/json
+
+{ "fullName": "Smoke Vendor 1", "email": "smoke-v1-{{$timestamp}}@test.io", "password": "StrongP@ssw0rd" }
+
+###
+@v1Tok = {{vendor1.response.body.data.accessToken}}
+
+# @name v1Profile
+GET {{API}}/vendors/me/profile
+Authorization: Bearer {{v1Tok}}
+
+###
+POST {{API}}/vendors/{{v1Profile.response.body.data.id}}/verify
+Authorization: Bearer {{adminTok}}
+
+# @name v1Pricing
+POST {{API}}/vendors/me/pricing
+Authorization: Bearer {{v1Tok}}
+Content-Type: application/json
+
+{ "items": [
+  { "itemId": "{{itemA}}", "garmentType": "item-a", "priceNaira": 800 },
+  { "itemId": "{{itemB}}", "garmentType": "item-b", "priceNaira": 1000 },
+  { "itemId": "{{itemC}}", "garmentType": "item-c", "priceNaira": 3000 }
+] }
+
+###
+POST {{API}}/vendors/pricing/{{v1Pricing.response.body.data.id}}/approve
+Authorization: Bearer {{adminTok}}
+
+# --- Vendor 2 (A=1200, B=1500, C=4000) ---
+# @name vendor2
+POST {{API}}/auth/vendor/register
+Content-Type: application/json
+
+{ "fullName": "Smoke Vendor 2", "email": "smoke-v2-{{$timestamp}}@test.io", "password": "StrongP@ssw0rd" }
+
+###
+@v2Tok = {{vendor2.response.body.data.accessToken}}
+
+# @name v2Profile
+GET {{API}}/vendors/me/profile
+Authorization: Bearer {{v2Tok}}
+
+###
+POST {{API}}/vendors/{{v2Profile.response.body.data.id}}/verify
+Authorization: Bearer {{adminTok}}
+
+# @name v2Pricing
+POST {{API}}/vendors/me/pricing
+Authorization: Bearer {{v2Tok}}
+Content-Type: application/json
+
+{ "items": [
+  { "itemId": "{{itemA}}", "garmentType": "item-a", "priceNaira": 1200 },
+  { "itemId": "{{itemB}}", "garmentType": "item-b", "priceNaira": 1500 },
+  { "itemId": "{{itemC}}", "garmentType": "item-c", "priceNaira": 4000 }
+] }
+
+###
+POST {{API}}/vendors/pricing/{{v2Pricing.response.body.data.id}}/approve
+Authorization: Bearer {{adminTok}}
+
+# --- Vendor 3 (A=2000, B=2500, C=5000) ---
+# @name vendor3
+POST {{API}}/auth/vendor/register
+Content-Type: application/json
+
+{ "fullName": "Smoke Vendor 3", "email": "smoke-v3-{{$timestamp}}@test.io", "password": "StrongP@ssw0rd" }
+
+###
+@v3Tok = {{vendor3.response.body.data.accessToken}}
+
+# @name v3Profile
+GET {{API}}/vendors/me/profile
+Authorization: Bearer {{v3Tok}}
+
+###
+POST {{API}}/vendors/{{v3Profile.response.body.data.id}}/verify
+Authorization: Bearer {{adminTok}}
+
+# @name v3Pricing
+POST {{API}}/vendors/me/pricing
+Authorization: Bearer {{v3Tok}}
+Content-Type: application/json
+
+{ "items": [
+  { "itemId": "{{itemA}}", "garmentType": "item-a", "priceNaira": 2000 },
+  { "itemId": "{{itemB}}", "garmentType": "item-b", "priceNaira": 2500 },
+  { "itemId": "{{itemC}}", "garmentType": "item-c", "priceNaira": 5000 }
+] }
+
+###
+POST {{API}}/vendors/pricing/{{v3Pricing.response.body.data.id}}/approve
+Authorization: Bearer {{adminTok}}
+
+### ---------------------------------------------------------------------
+### STAGE 3 — Compute platform prices (P70 + charges)
+### ---------------------------------------------------------------------
+
+### Expect: priced >= 3, items A/B/C now isAvailable
+POST {{API}}/pricing/items/recompute
+Authorization: Bearer {{adminTok}}
+
+### Inspect item A breakdown (base P70 ~1520 for A + charge stack)
+GET {{API}}/pricing/items/{{itemA}}/breakdown
+Authorization: Bearer {{adminTok}}
+
+### ---------------------------------------------------------------------
+### STAGE 4 — Bags + Bundles (auto-priced)
+### ---------------------------------------------------------------------
+
+# @name createBag
+POST {{API}}/bags
+Authorization: Bearer {{adminTok}}
+Content-Type: application/json
+
+{ "name": "Smoke Medium Bag", "allowedItemCount": 10 }
+
+###
+@bagId = {{createBag.response.body.data.id}}
+
+# @name createBundle
+POST {{API}}/bundles
+Authorization: Bearer {{adminTok}}
+Content-Type: application/json
+
+{ "name": "Smoke Family Pack", "lines": [
+  { "lineType": "item", "itemId": "{{itemA}}", "quantity": 2 },
+  { "lineType": "item", "itemId": "{{itemB}}", "quantity": 3 },
+  { "lineType": "item", "itemId": "{{itemC}}", "quantity": 1 }
+] }
+
+###
+@bundleId = {{createBundle.response.body.data.id}}
+
+### Optional: apply a 10% promo
+PATCH {{API}}/bundles/{{bundleId}}
+Authorization: Bearer {{adminTok}}
+Content-Type: application/json
+
+{ "isPromo": true, "promoType": "percentage", "promoValue": 10 }
+
+### ---------------------------------------------------------------------
+### STAGE 5 — Customer setup, browse, quote
+### ---------------------------------------------------------------------
+
+# @name customer
+POST {{API}}/auth/register
+Content-Type: application/json
+
+{ "fullName": "Smoke Customer", "email": "smoke-cust-{{$timestamp}}@test.io", "phone": "+23480{{$randomInt 10000000 99999999}}", "password": "StrongP@ssw0rd" }
+
+###
+@custTok = {{customer.response.body.data.accessToken}}
+@custId = {{customer.response.body.data.user.id}}
+
+### saved address (order-eligibility gate needs phone + 1 address)
+POST {{API}}/users/me/addresses
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "addressText": "12 Smoke Street, Victoria Island, Lagos" }
+
+### fund the WP wallet (admin credit)
+POST {{API}}/wallets/{{custId}}/credit
+Authorization: Bearer {{adminTok}}
+Content-Type: application/json
+
+{ "amount": 200000, "description": "Smoke test funding" }
+
+### eligibility should be complete
+GET {{API}}/users/me/profile-completion
+Authorization: Bearer {{custTok}}
+
+### live quote — wash & iron
+POST {{API}}/quote/wash-iron
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "selections": [ { "itemId": "{{itemA}}", "qty": 2 }, { "itemId": "{{itemB}}", "qty": 1 } ] }
+
+### live quote — bag
+GET {{API}}/quote/bag/{{bagId}}
+Authorization: Bearer {{custTok}}
+
+### ---------------------------------------------------------------------
+### STAGE 6 — Place one order per flow
+### ---------------------------------------------------------------------
+
+# @name orderIron
+POST {{API}}/orders
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "flow": "wash_iron", "selections": [ { "itemId": "{{itemA}}", "qty": 2 }, { "itemId": "{{itemB}}", "qty": 1 } ],
+  "areaId": "{{areaId}}", "pickupAddress": "12 Smoke Street, VI", "scheduledPickupAt": "2026-07-01T10:00:00Z" }
+
+###
+@orderIronId = {{orderIron.response.body.data.order.id}}
+
+# @name orderFold
+POST {{API}}/orders
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "flow": "wash_fold", "bagId": "{{bagId}}",
+  "areaId": "{{areaId}}", "pickupAddress": "12 Smoke Street, VI", "scheduledPickupAt": "2026-07-01T10:00:00Z" }
+
+###
+@orderFoldId = {{orderFold.response.body.data.order.id}}
+
+# @name orderBundle
+POST {{API}}/orders
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "flow": "bundle", "bundleId": "{{bundleId}}",
+  "areaId": "{{areaId}}", "pickupAddress": "12 Smoke Street, VI", "scheduledPickupAt": "2026-07-01T10:00:00Z" }
+
+### ---------------------------------------------------------------------
+### STAGE 7 — Lifecycle (needs a REP token + a VENDOR token)
+### Set @repTok to an active rep's token; reuse @v1Tok for the vendor.
+### Use {{orderIronId}} as the order under test.
+### ---------------------------------------------------------------------
+@repTok = PASTE_REP_TOKEN
+
+### admin starts rep broadcast
+POST {{API}}/assignment/orders/{{orderIronId}}/start-rep
+Authorization: Bearer {{adminTok}}
+
+### rep accepts
+POST {{API}}/assignment/orders/{{orderIronId}}/accept/rep
+Authorization: Bearer {{repTok}}
+
+### vendor accepts
+POST {{API}}/assignment/orders/{{orderIronId}}/accept/vendor
+Authorization: Bearer {{v1Tok}}
+
+### rep: picked up
+POST {{API}}/orders/{{orderIronId}}/status/picked-up
+Authorization: Bearer {{repTok}}
+
+### rep: log garment count → sets escrow split (rep share = wash-rep commission)
+POST {{API}}/orders/{{orderIronId}}/garment-log
+Authorization: Bearer {{repTok}}
+Content-Type: application/json
+
+{ "garmentLog": { "item-a": 2, "item-b": 1 } }
+
+### vendor stages
+POST {{API}}/orders/{{orderIronId}}/status/in-progress
+Authorization: Bearer {{v1Tok}}
+
+###
+POST {{API}}/orders/{{orderIronId}}/status/quality-check
+Authorization: Bearer {{v1Tok}}
+
+###
+POST {{API}}/orders/{{orderIronId}}/status/ready-for-delivery
+Authorization: Bearer {{v1Tok}}
+
+### rep stages
+POST {{API}}/orders/{{orderIronId}}/status/rep-collected
+Authorization: Bearer {{repTok}}
+
+###
+POST {{API}}/orders/{{orderIronId}}/status/out-for-delivery
+Authorization: Bearer {{repTok}}
+
+###
+POST {{API}}/orders/{{orderIronId}}/status/delivered
+Authorization: Bearer {{repTok}}
+
+### customer confirms → completes → releases escrow
+POST {{API}}/orders/{{orderIronId}}/confirm-delivery
+Authorization: Bearer {{custTok}}
+
+### customer rates
+POST {{API}}/orders/{{orderIronId}}/rate
+Authorization: Bearer {{custTok}}
+Content-Type: application/json
+
+{ "vendorScore": 5, "repScore": 5, "comment": "Smoke OK" }
+
+### admin fallback complete (if confirm path blocked)
+# POST {{API}}/orders/{{orderIronId}}/admin/complete
+# Authorization: Bearer {{adminTok}}
+
+### ---------------------------------------------------------------------
+### STAGE 8 — Verify
+### ---------------------------------------------------------------------
+
+GET {{API}}/orders/me
+Authorization: Bearer {{custTok}}
+
+###
+GET {{API}}/orders/{{orderIronId}}/history
+Authorization: Bearer {{custTok}}
+
+###
+GET {{API}}/wallets/me
+Authorization: Bearer {{custTok}}
+
+###
+GET {{API}}/vendors/me/wallet
+Authorization: Bearer {{v1Tok}}
+
+### ---------------------------------------------------------------------
+### SUPPORTING — Suggestions + legacy migration
+### ---------------------------------------------------------------------
+
+### vendor suggests a missing item
+POST {{API}}/catalogue/suggestions
+Authorization: Bearer {{v1Tok}}
+Content-Type: application/json
+
+{ "rawText": "Ankara Gown", "proposedPriceNaira": 3500 }
+
+### admin lists pending
+GET {{API}}/catalogue/suggestions?status=pending
+Authorization: Bearer {{adminTok}}
+
+### admin migrates legacy free-text → suggestions (idempotent)
+POST {{API}}/catalogue/migrate-legacy
+Authorization: Bearer {{adminTok}}
