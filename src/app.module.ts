@@ -53,6 +53,10 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { BagsModule } from './modules/bags/bags.module';
 import { BundlesModule } from './modules/bundles/bundles.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
+import { SalesRepModule } from './modules/sales-rep/sales-rep.module';
+import { RateEngineModule } from './modules/rate-engine/rate-engine.module';
+import { GamesModule } from './modules/games/games.module';
 
 @Module({
   imports: [
@@ -104,6 +108,10 @@ import { BundlesModule } from './modules/bundles/bundles.module';
     CatalogueModule,
     BagsModule,
     BundlesModule,
+    ReferralsModule,
+    SalesRepModule,
+    RateEngineModule,
+    GamesModule,
   ],
 
   providers: [

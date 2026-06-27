@@ -18,6 +18,7 @@ import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
+import { Wallet } from '../../database/entities/wallet.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { Role } from '../../common/enums/roles.enum';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
@@ -25,6 +26,7 @@ import { CompanyActivationStatus } from '../../common/enums/company-activation-s
 import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ActivateDto } from './dto/activate.dto';
@@ -59,6 +61,7 @@ export class AuthService {
     private configService: ConfigService,
     private redisService: RedisService,
     private notificationsService: NotificationsService,
+    private referralsService: ReferralsService,
     private dataSource: DataSource,
   ) {}
 
@@ -86,6 +89,19 @@ export class AuthService {
 
     await this.userRepository.save(user);
     this.logger.log(`New user registered: ${user.id}`);
+
+    // Provision the customer's WashPoints wallet up-front so reads never 404
+    // before the first top-up. Idempotent; must never break signup.
+    await this.ensureUserWallet(user.id);
+
+    // Referral: issue this customer's own code + record any code they signed up with.
+    // Must never break signup.
+    try {
+      await this.referralsService.issueCode(user.id, 'customer');
+      await this.referralsService.attribute(dto.referralCode, user.id, 'customer');
+    } catch (err) {
+      this.logger.warn(`Referral attribution skipped: ${(err as Error).message}`);
+    }
 
     // Send verification OTP only — welcome email is sent after OTP is verified
     this.sendVerificationOtp(user).catch((err) =>
@@ -218,15 +234,14 @@ export class AuthService {
 
     user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     user.status = UserStatus.ACTIVE;
+    // Clicking the invite link (sent to their email) already proves ownership —
+    // no verification OTP needed.
+    if (user.email) user.emailVerified = true;
 
     await this.userRepository.save(user);
     await this.redisService.del(`${INVITE_TOKEN_PREFIX}${dto.inviteToken}`);
 
     this.logger.log(`User activated via invite token: ${user.id}`);
-
-    this.sendVerificationOtp(user).catch((err) =>
-      this.logger.error(`Post-set-password OTP failed: ${err.message}`),
-    );
 
     const tokens = await this.generateTokenPair(user);
 
@@ -587,6 +602,14 @@ export class AuthService {
 
     this.logger.log(`Vendor self-registered: ${user.id}`);
 
+    // Referral: issue this vendor's own code + record any code they signed up with.
+    try {
+      await this.referralsService.issueCode(user.id, 'vendor');
+      await this.referralsService.attribute(dto.referralCode, user.id, 'vendor');
+    } catch (err) {
+      this.logger.warn(`Vendor referral attribution skipped: ${(err as Error).message}`);
+    }
+
     // Send verification OTP — welcome email is sent after OTP is verified
     this.sendVerificationOtp(user).catch((err) =>
       this.logger.error(`Vendor registration OTP failed: ${err.message}`),
@@ -607,6 +630,20 @@ export class AuthService {
   }
 
   // ─── Helpers used by other modules ───────────────────────────────────────────
+
+  /** Idempotently provision a user's WashPoints wallet. Never throws into the caller. */
+  private async ensureUserWallet(userId: string): Promise<void> {
+    try {
+      const walletRepo = this.dataSource.getRepository(Wallet);
+      const existing = await walletRepo.findOne({ where: { userId } });
+      if (!existing) {
+        await walletRepo.save(walletRepo.create({ userId, balance: 0, fiatBalanceKobo: 0, isActive: true }));
+        this.logger.log(`Wallet provisioned for user ${userId}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Wallet provisioning skipped for ${userId}: ${(err as Error).message}`);
+    }
+  }
 
   async createInviteToken(userId: string): Promise<string> {
     const token = uuidv4();

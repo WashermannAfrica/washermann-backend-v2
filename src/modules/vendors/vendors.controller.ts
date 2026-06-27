@@ -16,7 +16,7 @@ import { VendorsService } from './vendors.service';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
-import { ApprovePricingDto, RejectPricingDto } from './dto/approve-pricing.dto';
+import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
@@ -90,6 +90,14 @@ export class VendorsController {
     return this.vendorsService.update(vendor.id, dto);
   }
 
+  @Get('me/pricing')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Own latest pricing proposal (vendor) — for pre-filling the editor' })
+  async getMyPricing(@Request() req: { user: { sub: string } }) {
+    const vendor = await this.vendorsService.findByUserId(req.user.sub);
+    return this.vendorsService.getLatestPricing(vendor.id);
+  }
+
   // ─── Admin: Update vendor ─────────────────────────────────────────────────────
 
   @Patch(':id')
@@ -132,6 +140,13 @@ export class VendorsController {
 
   // ─── Pricing ──────────────────────────────────────────────────────────────────
 
+  @Get('pricing/pending')
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'List all pending vendor pricing proposals across vendors (review queue)' })
+  listPendingPricing() {
+    return this.vendorsService.listPendingPricing();
+  }
+
   @Get(':id/pricing')
   @Roles(Role.ADMIN, Role.FINANCE)
   @ApiOperation({ summary: 'Get vendor pricing history (admin/finance)' })
@@ -159,11 +174,24 @@ export class VendorsController {
     return this.vendorsService.proposePricing(vendor.id, dto);
   }
 
-  // ─── Admin: Approve pricing ───────────────────────────────────────────────────
+  // ─── Admin: Per-item decision ─────────────────────────────────────────────────
+
+  @Post('pricing/:pricingId/item-decision')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Approve/reject a single price line in a proposal — immediate, no email (admin)' })
+  decidePricingItem(
+    @Param('pricingId', ParseUUIDPipe) pricingId: string,
+    @Body() dto: DecidePricingItemDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.vendorsService.decidePricingItem(pricingId, dto, req.user.sub);
+  }
+
+  // ─── Admin: Approve pricing (finalize — approve all remaining) ──────────────────
 
   @Post('pricing/:pricingId/approve')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Approve a vendor pricing proposal (admin)' })
+  @ApiOperation({ summary: 'Finalize: approve all remaining lines + email vendor summary (admin)' })
   approvePricing(
     @Param('pricingId', ParseUUIDPipe) pricingId: string,
     @Body() dto: ApprovePricingDto,

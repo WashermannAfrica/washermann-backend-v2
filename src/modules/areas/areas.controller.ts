@@ -17,7 +17,9 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AreasService } from './areas.service';
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
+import { AddAreaLocationDto, DeactivateAreaDto } from './dto/area-location.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { Role } from '../../common/enums/roles.enum';
 
 @ApiTags('Areas')
@@ -59,12 +61,21 @@ export class AreasController {
     });
   }
 
+  // ─── Public: curated service areas + locations (for landing forms) ───────────
+
+  @Get('public')
+  @Public()
+  @ApiOperation({ summary: 'Public: active service areas with their locations (curated dropdown)' })
+  publicAreas() {
+    return this.areasService.publicServiceAreas();
+  }
+
   // ─── Get one ─────────────────────────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get area by ID' })
+  @ApiOperation({ summary: 'Get area by ID (detailed: locations, KPIs, recent orders)' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.areasService.findOne(id);
+    return this.areasService.findOneDetailed(id);
   }
 
   // ─── Update (admin only) ─────────────────────────────────────────────────────
@@ -84,8 +95,33 @@ export class AreasController {
 
   @Delete(':id')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Deactivate an area (admin)' })
-  deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    return this.areasService.deactivate(id);
+  @ApiOperation({ summary: 'Deactivate an area (admin), optionally with a reason' })
+  deactivate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DeactivateAreaDto) {
+    return this.areasService.deactivate(id, dto);
+  }
+
+  // ─── Locations (admin only) ──────────────────────────────────────────────────
+
+  @Get(':id/locations')
+  @ApiOperation({ summary: 'List locations/towns for an area' })
+  listLocations(@Param('id', ParseUUIDPipe) id: string) {
+    return this.areasService.listLocations(id);
+  }
+
+  @Post(':id/locations')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Add a location/town to an area (admin)' })
+  addLocation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddAreaLocationDto) {
+    return this.areasService.addLocation(id, dto.name);
+  }
+
+  @Delete(':id/locations/:locationId')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Remove a location/town from an area (admin)' })
+  removeLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+  ) {
+    return this.areasService.removeLocation(id, locationId);
   }
 }

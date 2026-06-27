@@ -30,4 +30,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   password: string;
+
+  @ApiProperty({ example: 'WM-AB12CD', required: false, description: 'Referral code (optional)' })
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }

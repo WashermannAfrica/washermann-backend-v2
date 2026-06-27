@@ -16,6 +16,7 @@ import { VendorsModule } from '../vendors/vendors.module';
 import { RepsModule } from '../reps/reps.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
 import { UsersModule } from '../users/users.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { UsersModule } from '../users/users.module';
     RepsModule,
     PlatformConfigModule,
     UsersModule,
+    ReferralsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
+import { VendorPricing, isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { PricingService } from './pricing.service';
 import { CreatePriceListEntryDto } from '../platform-config/dto/price-list.dto';
@@ -94,6 +94,7 @@ export class PricingIntelligenceService {
     const pricesByType = new Map<string, number[]>();
     for (const vp of latestPerVendor.values()) {
       for (const item of vp.items) {
+        if (!isPriceItemLive(item)) continue; // approved/legacy lines only
         if (!item.garmentType || item.priceNaira <= 0) continue;
         const key = item.garmentType.toLowerCase().trim();
         if (!pricesByType.has(key)) pricesByType.set(key, []);

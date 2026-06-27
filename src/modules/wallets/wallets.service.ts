@@ -56,7 +56,7 @@ export class WalletsService {
   async getOrCreateWallet(userId: string): Promise<Wallet> {
     let wallet = await this.walletRepo.findOne({ where: { userId } });
     if (!wallet) {
-      wallet = this.walletRepo.create({ userId, balance: 0, isActive: true });
+      wallet = this.walletRepo.create({ userId, balance: 0, fiatBalanceKobo: 0, isActive: true });
       await this.walletRepo.save(wallet);
       this.logger.log(`Wallet created for user ${userId}`);
     }

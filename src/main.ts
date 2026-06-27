@@ -21,7 +21,10 @@ async function bootstrap() {
 
   // ─── CORS ───────────────────────────────────────────────────────────────────
   app.enableCors({
-    origin: configService.get<string>('app.frontendUrl') || '*',
+    origin:
+      configService.get<string[]>('app.corsOrigins') ||
+      configService.get<string>('app.frontendUrl') ||
+      '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret', 'X-WM-Topup-Code'],
     credentials: true,
