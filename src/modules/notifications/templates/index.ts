@@ -213,3 +213,23 @@ export const staffInviteTemplate = (data: {
     ${expiryNote('This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.')}
   `),
 });
+
+export const salesRepRejectionTemplate = (data: {
+  fullName: string;
+  reason?: string | null;
+}) => ({
+  subject: `Update on your Washermann Sales Rep application`,
+  html: baseLayout(`
+    <p>Hi <strong>${data.fullName}</strong>,</p>
+    <p>Thank you for applying to become a <strong>Washermann Sales Rep</strong>. After reviewing your application, we're unable to move forward with it at this time.</p>
+    ${
+      data.reason
+        ? `<div style="background:${BRAND.mintSoft};border-radius:8px;padding:14px 16px;margin:16px 0;font-size:14px;color:${BRAND.text};">
+             <strong>Reason:</strong> ${data.reason}
+           </div>`
+        : ''
+    }
+    <p>You're welcome to apply again in the future. If you think this was a mistake, just reply to this email and we'll take another look.</p>
+    <p style="margin-top:20px;">— The Washermann Team</p>
+  `),
+});

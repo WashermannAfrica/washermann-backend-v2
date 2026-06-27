@@ -542,6 +542,40 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'Your pricing proposal has been approved. Your new rates are now live for all new orders.',
   },
 
+  // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────
+
+  {
+    key: 'pricing.reviewed.vendor', channel: 'email',
+    name: 'Pricing Reviewed — Vendor Email',
+    subject: 'Your pricing has been reviewed — {{approvedCount}} approved, {{rejectedCount}} need changes',
+    variables: ['vendorName', 'approvedCount', 'rejectedCount', 'approvedRowsHtml', 'rejectedRowsHtml'],
+    body: 'Hi {{vendorName}}, your pricing has been reviewed. Approved: {{approvedText}}. Needs changes: {{rejectedText}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Our team has reviewed your pricing. Here's the outcome:</p>
+      <p style="font-weight:700;color:#2e7d32;margin-top:20px;">✅ Approved ({{approvedCount}}) — now live</p>
+      {{approvedRowsHtml}}
+      <p style="font-weight:700;color:#c62828;margin-top:20px;">✕ Needs changes ({{rejectedCount}})</p>
+      {{rejectedRowsHtml}}
+      <div class="divider"></div>
+      <p>Approved prices are already live for new orders. For the lines that need changes, please review the reasons above and submit updated prices from your vendor dashboard.</p>
+    `),
+  },
+  {
+    key: 'pricing.reviewed.vendor', channel: 'push',
+    name: 'Pricing Reviewed — Vendor Push',
+    variables: ['approvedCount', 'rejectedCount'],
+    subject: 'Pricing reviewed',
+    body: '{{approvedCount}} price(s) approved, {{rejectedCount}} need changes. Tap to view.',
+  },
+  {
+    key: 'pricing.reviewed.vendor', channel: 'in_app',
+    name: 'Pricing Reviewed — Vendor In-App',
+    variables: ['approvedCount', 'rejectedCount'],
+    subject: 'Pricing reviewed',
+    body: 'Your pricing was reviewed: {{approvedCount}} approved (now live), {{rejectedCount}} need changes. Approved: {{approvedText}}. Needs changes: {{rejectedText}}.',
+  },
+
   // ── Payout Approved ───────────────────────────────────────────────────────────
 
   {

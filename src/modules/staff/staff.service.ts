@@ -89,7 +89,9 @@ export class StaffService {
   async listStaff(page: number, limit: number): Promise<{ data: object[]; meta: object }> {
     const [users, total] = await this.userRepo
       .createQueryBuilder('user')
-      .where(`user.roles && ARRAY[:...roles]::varchar[]`, { roles: STAFF_ROLES })
+      // roles is a simple-array (comma-separated text); split then overlap so we
+      // match whole roles exactly (avoids 'admin' matching 'company_admin').
+      .where(`string_to_array(user.roles, ',') && ARRAY[:...roles]::text[]`, { roles: STAFF_ROLES })
       .orderBy('user.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)

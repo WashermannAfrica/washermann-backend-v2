@@ -73,6 +73,41 @@ export class TemplateService implements OnModuleInit {
     }
   }
 
+  /**
+   * Re-apply ALL in-code defaults to existing rows (and insert any missing) so the
+   * stored content/branding matches the current code. Overwrites name/subject/body/
+   * htmlBody/variables and clears per-template style overrides. Admin-triggered:
+   * use to roll out a rebrand or copy changes. Returns counts.
+   */
+  async resyncDefaults(updatedBy: string | null = null): Promise<{ updated: number; inserted: number }> {
+    let updated = 0;
+    let inserted = 0;
+    for (const tpl of DEFAULT_TEMPLATES) {
+      const existing = await this.repo.findOne({ where: { key: tpl.key, channel: tpl.channel } });
+      if (existing) {
+        existing.name      = tpl.name;
+        existing.subject   = tpl.subject ?? null;
+        existing.body      = tpl.body;
+        existing.htmlBody  = tpl.htmlBody ?? null;
+        existing.variables = tpl.variables;
+        existing.emailStyle = null;
+        existing.isActive  = true;
+        existing.updatedBy = updatedBy;
+        await this.repo.save(existing);
+        updated++;
+      } else {
+        await this.repo.save(this.repo.create({
+          key: tpl.key, channel: tpl.channel, name: tpl.name,
+          subject: tpl.subject ?? null, body: tpl.body, htmlBody: tpl.htmlBody ?? null,
+          variables: tpl.variables, isActive: true, updatedBy,
+        }));
+        inserted++;
+      }
+    }
+    this.logger.log(`Re-synced templates from defaults: ${updated} updated, ${inserted} inserted`);
+    return { updated, inserted };
+  }
+
   // ─── Render a template ───────────────────────────────────────────────────────
 
   /**

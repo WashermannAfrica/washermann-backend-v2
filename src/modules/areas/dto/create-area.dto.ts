@@ -55,4 +55,22 @@ export class CreateAreaDto {
   @IsInt()
   @Min(0)
   transportFeeWP: number;
+
+  @ApiPropertyOptional({ description: 'Target number of users for this area', example: 500, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  targetUsers?: number;
+
+  @ApiPropertyOptional({
+    description: 'Named towns/locations within the area (added as chips)',
+    type: [String],
+    example: ['VI', 'Oniru'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @MaxLength(150, { each: true })
+  locations?: string[];
 }

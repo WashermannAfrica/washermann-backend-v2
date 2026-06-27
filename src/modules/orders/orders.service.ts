@@ -2,11 +2,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { Order } from '../../database/entities/order.entity';
 import { OrderEscrow } from '../../database/entities/order-escrow.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
@@ -23,6 +25,7 @@ import { OrderStatus } from '../../common/enums/order-status.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { PricingService } from '../pricing/pricing.service';
 import { OrderQuoteService, Quote } from '../pricing/order-quote.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
@@ -31,6 +34,8 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
@@ -61,6 +66,7 @@ export class OrdersService {
 
     private pricingService: PricingService,
     private orderQuoteService: OrderQuoteService,
+    private referralsService: ReferralsService,
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
@@ -486,6 +492,11 @@ export class OrdersService {
         nairaEquivalent: order.vendorShareNairaSnapshot ?? 0,
       });
 
+      // Referral: a completed order is the customer-leg unlock trigger (fire-and-forget).
+      this.referralsService
+        .onRefereeQualified(order.customerId, 'customer', { wp: order.totalWP, ngn: order.nairaEquivalentSnapshot ?? 0 })
+        .catch((err) => this.logger.error(`Referral unlock (order) failed: ${err.message}`));
+
       return order;
     });
   }
@@ -631,6 +642,7 @@ export class OrdersService {
     if (activePricing) {
       const priceMap: Record<string, number> = {};
       for (const item of activePricing.items) {
+        if (!isPriceItemLive(item)) continue; // skip pending/rejected price lines
         priceMap[item.garmentType] = item.priceNaira;
       }
       for (const [garmentType, count] of Object.entries(garmentLog)) {

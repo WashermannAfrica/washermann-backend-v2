@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { User } from '../../database/entities/user.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
+import { GarmentPriceItem } from '../../database/entities/vendor-pricing.entity';
 import { Rep } from '../../database/entities/rep.entity';
 import { EmailService } from './email/email.service';
 import { SmsService } from './sms/sms.service';
@@ -12,6 +13,7 @@ import { WhatsappService } from './whatsapp/whatsapp.service';
 import { InAppService } from './in-app/in-app.service';
 import { TemplateService } from './template/template.service';
 import { InAppNotificationType } from '../../database/entities/in-app-notification.entity';
+import { Role } from '../../common/enums/roles.enum';
 import {
   welcomeTemplate,
   emailVerificationOtpTemplate,
@@ -20,6 +22,7 @@ import {
   employeeInviteTemplate,
   staffInviteTemplate,
   vendorInviteTemplate,
+  salesRepRejectionTemplate,
 } from './templates';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -84,6 +87,45 @@ export class NotificationsService {
     const tpl = await this.templateService.render(key, 'email', vars);
     if (!tpl) return;
     await this.emailService.send({ to, subject: tpl.subject ?? '', html: tpl.htmlBody ?? tpl.body });
+  }
+
+  /**
+   * Notify all admins/finance that a WashPoint rate review is due — in-app
+   * (dashboard) + email. The engine never changes the rate itself; an admin must
+   * input the live economic values and approve the advised V.
+   */
+  async sendRateReviewPrompt(trigger: 'scheduled' | 'manual' = 'scheduled') {
+    const all = await this.userRepo.find();
+    const admins = all.filter(
+      (u) => Array.isArray(u.roles) && (u.roles.includes(Role.ADMIN) || u.roles.includes(Role.FINANCE)),
+    );
+    const title = 'WashPoint rate review due';
+    const body =
+      'Open the rate console, enter the current economic indicators (USD/NGN, diesel, median vendor cost), run the calculation and approve or hold the advised WashPoint rate.';
+    for (const a of admins) {
+      try {
+        await this.inAppService.create({ userId: a.id, title, body, type: 'account', metadata: { kind: 'wp_rate_review', trigger } });
+      } catch (err) {
+        this.logger.warn(`In-app rate prompt failed for ${a.id}: ${(err as Error).message}`);
+      }
+      if (a.email) {
+        try {
+          await this.emailService.send({
+            to: a.email,
+            subject: 'Action needed: WashPoint rate review',
+            html:
+              `<p>Hi ${a.fullName ?? 'Admin'},</p>` +
+              `<p>A WashPoint conversion-rate (V) review is due (${trigger}). Please open the admin rate console, ` +
+              `enter the current economic indicators, run the calculation, and approve or hold the advised rate. ` +
+              `Every calculation is logged whether approved or not.</p>`,
+          });
+        } catch (err) {
+          this.logger.warn(`Email rate prompt failed for ${a.email}: ${(err as Error).message}`);
+        }
+      }
+    }
+    this.logger.log(`Rate review prompt (${trigger}) sent to ${admins.length} admin(s)`);
+    return { notified: admins.length };
   }
 
   private async sendSms(key: string, to: string, vars: Record<string, string | number>) {
@@ -182,6 +224,11 @@ export class NotificationsService {
   async sendStaffInvite(data: { fullName: string; email: string; role: string; inviteToken: string; deepLinkBase: string }) {
     const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
     const template   = staffInviteTemplate({ fullName: data.fullName, role: data.role, inviteLink });
+    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+  }
+
+  async sendSalesRepRejection(data: { fullName: string; email: string; reason?: string | null }) {
+    const template = salesRepRejectionTemplate({ fullName: data.fullName, reason: data.reason });
     await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
   }
 
@@ -625,6 +672,57 @@ export class NotificationsService {
         this.sendInApp('pricing.approved.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.approved.vendor');
+  }
+
+  /**
+   * Fire ONCE when an admin finalizes a pricing review — summarises which lines
+   * were approved and which were rejected (with reasons) in a single message.
+   */
+  async notifyPricingReviewed(params: { vendorId: string; items: GarmentPriceItem[] }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const label = (i: GarmentPriceItem) =>
+      (i.garmentType ?? '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim() || 'Item';
+    const naira = (n: number) => `₦${Number(n).toLocaleString()}`;
+
+    const approved = params.items.filter((i) => i.status === 'approved');
+    const rejected = params.items.filter((i) => i.status === 'rejected');
+
+    const approvedRowsHtml = approved
+      .map((i) => `<div class="info-row"><span>${label(i)}</span><span>${naira(i.priceNaira)}</span></div>`)
+      .join('') || '<p style="color:#7c8b83;font-size:14px;">None this time.</p>';
+    const rejectedRowsHtml = rejected
+      .map((i) => `<div class="info-row"><span>${label(i)} — <em>${i.rejectionReason ?? 'not approved'}</em></span><span>${naira(i.priceNaira)}</span></div>`)
+      .join('') || '<p style="color:#7c8b83;font-size:14px;">None — everything was approved. 🎉</p>';
+
+    const approvedText = approved.length
+      ? approved.map((i) => `${label(i)}: ${naira(i.priceNaira)}`).join('; ')
+      : 'None this time.';
+    const rejectedText = rejected.length
+      ? rejected.map((i) => `${label(i)} (${i.rejectionReason ?? 'not approved'})`).join('; ')
+      : 'None — everything was approved.';
+
+    const vars: Record<string, string | number> = {
+      vendorName:    vendor.businessName,
+      approvedCount: approved.length,
+      rejectedCount: rejected.length,
+      approvedRowsHtml,
+      rejectedRowsHtml,
+      approvedText,
+      rejectedText,
+    };
+
+    fire(async () => {
+      await Promise.all([
+        user.email    && this.sendEmail('pricing.reviewed.vendor', user.email, vars),
+        user.fcmToken && this.sendPush('pricing.reviewed.vendor', user.fcmToken, vars),
+        this.sendInApp('pricing.reviewed.vendor', vendor.userId, vars, 'account'),
+      ]);
+    }, this.logger, 'pricing.reviewed.vendor');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

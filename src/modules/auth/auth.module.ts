@@ -6,6 +6,7 @@ import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
+import { ReferralsModule } from '../referrals/referrals.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -25,6 +26,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
         },
       }),
     }),
+    ReferralsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, JwtRefreshStrategy],

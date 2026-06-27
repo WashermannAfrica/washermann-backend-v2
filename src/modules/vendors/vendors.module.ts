@@ -8,6 +8,7 @@ import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.e
 import { User } from '../../database/entities/user.entity';
 import { VendorsController } from './vendors.controller';
 import { VendorsService } from './vendors.service';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { VendorsService } from './vendors.service';
       VendorLedgerEntry,
       User,
     ]),
+    ReferralsModule,
   ],
   controllers: [VendorsController],
   providers: [VendorsService],

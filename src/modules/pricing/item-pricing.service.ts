@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
-import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
+import { VendorPricing, isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { PlatformPriceList } from '../../database/entities/platform-price-list.entity';
 import { Bag } from '../../database/entities/bag.entity';
@@ -277,6 +277,7 @@ export class ItemPricingService {
     const map = new Map<string, number[]>();
     for (const vp of latest.values()) {
       for (const item of vp.items) {
+        if (!isPriceItemLive(item)) continue; // approved/legacy lines only
         if (!item.itemId || !(item.priceNaira > 0)) continue; // only catalogue-referenced prices
         if (!map.has(item.itemId)) map.set(item.itemId, []);
         map.get(item.itemId)!.push(item.priceNaira);

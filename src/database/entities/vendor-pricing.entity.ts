@@ -9,6 +9,9 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { Vendor } from './vendor.entity';
 
+/** Per-item review decision inside a pricing proposal. */
+export type PriceItemStatus = 'pending' | 'approved' | 'rejected';
+
 /** A single garment price entry inside VendorPricing.items */
 export interface GarmentPriceItem {
   /**
@@ -20,6 +23,29 @@ export interface GarmentPriceItem {
   garmentType: string;
   /** Price in Naira (stored as number, e.g. 800 = ₦800) */
   priceNaira: number;
+  /**
+   * Per-item review decision. Absent on legacy proposals approved before per-item
+   * review existed — those count as live (see {@link isPriceItemLive}).
+   */
+  status?: PriceItemStatus;
+  /** Admin's reason when this line was rejected. */
+  rejectionReason?: string | null;
+  /** ISO timestamp of the per-item decision. */
+  decidedAt?: string | null;
+}
+
+/**
+ * A price line is "live" (usable for charging/order math) when it is explicitly
+ * approved, OR has no status at all (legacy proposals where the whole proposal
+ * was approved before per-item review). Pending/rejected lines are never live.
+ */
+export function isPriceItemLive(item: GarmentPriceItem): boolean {
+  return item.status == null || item.status === 'approved';
+}
+
+/** Stable key for matching a price line across requests (catalogue id, else garment type). */
+export function priceItemKey(item: GarmentPriceItem): string {
+  return item.itemId ?? `gt:${item.garmentType}`;
 }
 
 /**

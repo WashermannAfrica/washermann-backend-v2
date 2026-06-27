@@ -1,7 +1,8 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, OneToMany } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from './base.entity';
 import { BigIntTransformer } from '../../common/transformers/column.transformers';
+import { AreaLocation } from './area-location.entity';
 
 /**
  * Geographic area record.
@@ -51,11 +52,23 @@ export class Area extends BaseEntity {
   })
   transportFeeWP: number;
 
+  @ApiProperty({ description: 'Target number of users for this area', example: 500 })
+  @Column({ name: 'target_users', type: 'int', default: 0 })
+  targetUsers: number;
+
   @ApiProperty({ default: true })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @ApiProperty({ nullable: true, description: 'Reason recorded when the area was deactivated' })
+  @Column({ name: 'deactivation_reason', type: 'varchar', length: 1000, nullable: true })
+  deactivationReason: string | null;
+
   @ApiProperty({ nullable: true, description: 'Admin who created this area' })
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;
+
+  @ApiProperty({ type: () => [AreaLocation], description: 'Named towns/locations within this area' })
+  @OneToMany(() => AreaLocation, (location) => location.area, { cascade: false })
+  locations?: AreaLocation[];
 }
