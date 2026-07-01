@@ -27,11 +27,11 @@ import { ApiProperty } from '@nestjs/swagger';
 
 class UploadDocumentDto {
   @ApiProperty({
-    enum: ['nin', 'cac', 'address_proof', 'photo', 'other'],
+    enum: ['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'],
     description: 'Type of KYC document being uploaded',
   })
   @IsString()
-  @IsIn(['nin', 'cac', 'address_proof', 'photo', 'other'])
+  @IsIn(['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'])
   documentType: VendorDocumentType;
 }
 
@@ -114,7 +114,7 @@ export class UploadController {
       type: 'object',
       properties: {
         file:         { type: 'string', format: 'binary', description: 'Document file (image or PDF, max 10 MB)' },
-        documentType: { type: 'string', enum: ['nin', 'cac', 'address_proof', 'photo', 'other'] },
+        documentType: { type: 'string', enum: ['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'] },
       },
       required: ['file', 'documentType'],
     },

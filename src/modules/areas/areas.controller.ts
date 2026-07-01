@@ -108,6 +108,31 @@ export class AreasController {
     return this.areasService.listLocations(id);
   }
 
+  @Get(':id/reps')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Reps serving an area, with pickup/delivery counts (admin)' })
+  areaReps(@Param('id', ParseUUIDPipe) id: string) {
+    return this.areasService.areaReps(id);
+  }
+
+  @Get(':id/vendors')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Vendors (washermen) serving an area, with order counts (admin)' })
+  areaVendors(@Param('id', ParseUUIDPipe) id: string) {
+    return this.areasService.areaVendors(id);
+  }
+
+  @Get(':id/orders')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Paginated orders in an area (admin)' })
+  areaOrders(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.areasService.areaOrders(id, page ? Number(page) : 1, limit ? Number(limit) : 20);
+  }
+
   @Post(':id/locations')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Add a location/town to an area (admin)' })

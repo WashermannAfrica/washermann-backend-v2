@@ -98,6 +98,14 @@ export class VendorsController {
     return this.vendorsService.getLatestPricing(vendor.id);
   }
 
+  @Get('me/documents')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Own uploaded KYC documents (vendor) — for the onboarding checklist' })
+  async getMyDocuments(@Request() req: { user: { sub: string } }) {
+    const vendor = await this.vendorsService.findByUserId(req.user.sub);
+    return this.vendorsService.getDocuments(vendor.id);
+  }
+
   // ─── Admin: Update vendor ─────────────────────────────────────────────────────
 
   @Patch(':id')
