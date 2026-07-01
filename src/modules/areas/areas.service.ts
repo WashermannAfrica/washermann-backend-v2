@@ -138,18 +138,24 @@ export class AreasService {
     const area = await this.areaRepository.findOne({ where: { id }, relations: ['locations'] });
     if (!area) throw new NotFoundException('Area not found');
 
-    const [repsCount, vendorsCount, orderStats, recentOrders] = await Promise.all([
+    const [repsCount, activeRepsCount, vendorsCount, orderStats, recentOrders] = await Promise.all([
       this.countServing(this.repRepository, 'rep', id),
+      this.repRepository
+        .createQueryBuilder('rep')
+        .where('rep.area_ids @> :a::jsonb', { a: JSON.stringify([id]) })
+        .andWhere('rep.status = :active', { active: 'active' })
+        .getCount(),
       this.countServing(this.vendorRepository, 'vendor', id),
       this.orderRepository
         .createQueryBuilder('o')
         .select('COUNT(*)', 'total')
         .addSelect(`COUNT(*) FILTER (WHERE o.status NOT IN (:...terminal))`, 'active')
+        .addSelect(`COUNT(*) FILTER (WHERE o.status = 'completed')`, 'completed')
         .addSelect('COALESCE(SUM(o.total_wp), 0)', 'revenueWp')
         .addSelect('COALESCE(SUM(o.naira_equivalent_snapshot), 0)', 'revenueNaira')
         .where('o.area_id = :id', { id })
         .setParameter('terminal', TERMINAL_ORDER_STATUSES)
-        .getRawOne<{ total: string; active: string; revenueWp: string; revenueNaira: string }>(),
+        .getRawOne<{ total: string; active: string; completed: string; revenueWp: string; revenueNaira: string }>(),
       this.orderRepository.find({ where: { areaId: id }, order: { createdAt: 'DESC' }, take: 10 }),
     ]);
 
@@ -157,14 +163,104 @@ export class AreasService {
       ...area,
       stats: {
         reps: repsCount,
+        activeReps: activeRepsCount,
         vendors: vendorsCount,
         totalOrders: Number(orderStats?.total ?? 0),
         activeOrders: Number(orderStats?.active ?? 0),
+        completedOrders: Number(orderStats?.completed ?? 0),
         revenueWP: Number(orderStats?.revenueWp ?? 0),
         revenueNaira: Number(orderStats?.revenueNaira ?? 0),
       },
       recentOrders,
     };
+  }
+
+  // ─── Area detail tabs: reps / vendors / orders serving this area ────────────────
+
+  /** Reps serving this area, with their pickup/delivery counts inside it. */
+  async areaReps(id: string) {
+    await this.findOne(id);
+    const reps = await this.repRepository
+      .createQueryBuilder('rep')
+      .leftJoinAndSelect('rep.user', 'user')
+      .where('rep.area_ids @> :a::jsonb', { a: JSON.stringify([id]) })
+      .orderBy('rep.rating', 'DESC')
+      .getMany();
+    const counts = await this.orderRepository
+      .createQueryBuilder('o')
+      .select('o.rep_id', 'refId')
+      .addSelect('COUNT(*)', 'pickups')
+      .addSelect(`COUNT(*) FILTER (WHERE o.status IN ('delivered','completed'))`, 'deliveries')
+      .where('o.area_id = :id AND o.rep_id IS NOT NULL', { id })
+      .groupBy('o.rep_id')
+      .getRawMany<{ refId: string; pickups: string; deliveries: string }>();
+    const by = new Map(counts.map((c) => [c.refId, c]));
+    return reps.map((r) => ({
+      id: r.id,
+      name: (r as any).user?.fullName ?? '—',
+      phone: r.phone,
+      rating: Number(r.rating),
+      ratingCount: r.ratingCount,
+      status: r.status,
+      isAvailable: r.isAvailable,
+      pickups: Number(by.get(r.id)?.pickups ?? 0),
+      deliveries: Number(by.get(r.id)?.deliveries ?? 0),
+    }));
+  }
+
+  /** Vendors (washermen) serving this area, with their order counts inside it. */
+  async areaVendors(id: string) {
+    await this.findOne(id);
+    const vendors = await this.vendorRepository
+      .createQueryBuilder('vendor')
+      .leftJoinAndSelect('vendor.user', 'user')
+      .where('vendor.area_ids @> :a::jsonb', { a: JSON.stringify([id]) })
+      .orderBy('vendor.rating', 'DESC')
+      .getMany();
+    const counts = await this.orderRepository
+      .createQueryBuilder('o')
+      .select('o.vendor_id', 'refId')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect(`COUNT(*) FILTER (WHERE o.status IN ('delivered','completed'))`, 'delivered')
+      .where('o.area_id = :id AND o.vendor_id IS NOT NULL', { id })
+      .groupBy('o.vendor_id')
+      .getRawMany<{ refId: string; orders: string; delivered: string }>();
+    const by = new Map(counts.map((c) => [c.refId, c]));
+    return vendors.map((v) => ({
+      id: v.id,
+      name: v.businessName ?? (v as any).user?.fullName ?? '—',
+      phone: v.phone,
+      rating: Number(v.rating),
+      ratingCount: v.ratingCount,
+      status: v.verificationStatus,
+      isAvailable: v.isAvailable,
+      orders: Number(by.get(v.id)?.orders ?? 0),
+      delivered: Number(by.get(v.id)?.delivered ?? 0),
+    }));
+  }
+
+  /** Paginated orders in this area (with customer name) for the Orders tab. */
+  async areaOrders(id: string, page = 1, limit = 20) {
+    await this.findOne(id);
+    const p = Math.max(1, page);
+    const l = Math.min(100, Math.max(1, limit));
+    const [rows, total] = await this.orderRepository
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.customer', 'customer')
+      .where('o.area_id = :id', { id })
+      .orderBy('o.createdAt', 'DESC')
+      .skip((p - 1) * l)
+      .take(l)
+      .getManyAndCount();
+    const data = rows.map((o) => ({
+      id: o.id,
+      reference: o.reference,
+      customerName: (o as any).customer?.fullName ?? '—',
+      totalWP: o.totalWP,
+      status: o.status,
+      createdAt: o.createdAt,
+    }));
+    return { data, meta: { total, page: p, limit: l, pages: Math.ceil(total / l) } };
   }
 
   // ─── Update ──────────────────────────────────────────────────────────────────
