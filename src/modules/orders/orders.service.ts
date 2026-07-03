@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -18,6 +20,7 @@ import { Vendor } from '../../database/entities/vendor.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
+import { AssignmentBroadcast } from '../../database/entities/assignment-broadcast.entity';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { LogGarmentCountDto } from './dto/garment-log.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
@@ -31,6 +34,40 @@ import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { AreasService } from '../areas/areas.service';
+import { AssignmentService } from '../assignment/assignment.service';
+
+/**
+ * The order state machine. `transition()` only allows a move that appears here
+ * (plus same-state no-ops). REP_ASSIGNED / VENDOR_ASSIGNED / COMPLETED / CANCELLED
+ * are set by their own guarded methods (assignment.accept, completeOrder, cancelOrder),
+ * not through transition(). REP_EN_ROUTE_PICKUP is optional — a rep may go straight
+ * SCHEDULED → PICKED_UP since there's no en-route endpoint yet.
+ */
+const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING_PAYMENT]:     [OrderStatus.PAID, OrderStatus.CANCELLED],
+  [OrderStatus.PAID]:                [OrderStatus.BROADCASTING_REP, OrderStatus.CANCELLED],
+  [OrderStatus.BROADCASTING_REP]:    [OrderStatus.REP_ASSIGNED, OrderStatus.CANCELLED],
+  [OrderStatus.REP_ASSIGNED]:        [OrderStatus.BROADCASTING_VENDOR, OrderStatus.CANCELLED],
+  [OrderStatus.BROADCASTING_VENDOR]: [OrderStatus.VENDOR_ASSIGNED, OrderStatus.CANCELLED],
+  [OrderStatus.VENDOR_ASSIGNED]:     [OrderStatus.SCHEDULED, OrderStatus.CANCELLED],
+  [OrderStatus.SCHEDULED]:           [OrderStatus.REP_EN_ROUTE_PICKUP, OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
+  [OrderStatus.REP_EN_ROUTE_PICKUP]: [OrderStatus.PICKED_UP],
+  [OrderStatus.PICKED_UP]:           [OrderStatus.WITH_VENDOR],
+  [OrderStatus.WITH_VENDOR]:         [OrderStatus.IN_PROGRESS],
+  [OrderStatus.IN_PROGRESS]:         [OrderStatus.READY_FOR_DELIVERY],
+  [OrderStatus.READY_FOR_DELIVERY]:  [OrderStatus.REP_COLLECTED],
+  [OrderStatus.REP_COLLECTED]:       [OrderStatus.OUT_FOR_DELIVERY],
+  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED],
+  [OrderStatus.DELIVERED]:           [OrderStatus.COMPLETED],
+  [OrderStatus.COMPLETED]:           [],
+  [OrderStatus.DISPUTED]:            [],
+  [OrderStatus.CANCELLED]:           [],
+};
+
+/** Statuses from which a customer may still cancel (derived from the machine). */
+export const CANCELLABLE_STATUSES: OrderStatus[] = (Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[])
+  .filter((s) => ALLOWED_TRANSITIONS[s].includes(OrderStatus.CANCELLED));
 
 @Injectable()
 export class OrdersService {
@@ -72,6 +109,10 @@ export class OrdersService {
     private platformConfigService: PlatformConfigService,
     private notificationsService: NotificationsService,
     private usersService: UsersService,
+    private areasService: AreasService,
+    // forwardRef: AssignmentModule already depends on OrdersModule (accept flow).
+    @Inject(forwardRef(() => AssignmentService))
+    private assignmentService: AssignmentService,
     private dataSource: DataSource,
     private configService: ConfigService,
   ) {}
@@ -126,8 +167,29 @@ export class OrdersService {
     // 0. Profile-completion gate — customer must have phone + saved address
     await this.usersService.assertOrderEligibility(customerId);
 
+    // 0. Geofence resolution — when pickup coordinates are provided, the AREA IS
+    //    DERIVED SERVER-SIDE (client areaId is only a legacy fallback for orders
+    //    without coordinates). Outside all circles → route to the nearest covered
+    //    area (never reject); the resolver logs the miss as a coverage gap.
+    let areaId = dto.areaId;
+    let areaLocationId: string | null = null;
+    let coverageMatched = true;
+    if (dto.pickupLatitude != null && dto.pickupLongitude != null) {
+      const resolution = await this.areasService.resolveAreaForPoint(
+        dto.pickupLatitude,
+        dto.pickupLongitude,
+        { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
+      );
+      if (resolution) {
+        areaId = resolution.area.id;
+        areaLocationId = resolution.covered ? resolution.location.id : null;
+        coverageMatched = resolution.covered;
+      }
+    }
+
     // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
     const quote = await this.quoteForFlow(dto);
+    const cfg = await this.platformConfigService.getConfig();
 
     // Shape the quote into the pricing snapshot the rest of the method consumes.
     const pricing = {
@@ -148,7 +210,7 @@ export class OrdersService {
       conversionRateSnapshot: quote.conversionRateSnapshot,
       calculatedAt:           quote.calculatedAt,
       // Charge decomposition, frozen for escrow reconciliation at completion.
-      charges:                this.decomposeCharges(quote.totalWp, dto.flow, await this.platformConfigService.getConfig()),
+      charges:                this.decomposeCharges(quote.totalWp, dto.flow, cfg),
     };
 
     // 2. Check wallet has enough WP
@@ -163,7 +225,7 @@ export class OrdersService {
     // 3. Generate order reference
     const ref = await this.generateReference();
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // 4. Debit user wallet — also proportionally reduce fiatBalanceKobo (WACB method)
       const balanceBefore     = wallet.balance;
       const fiatBefore        = wallet.fiatBalanceKobo ?? 0;
@@ -203,7 +265,9 @@ export class OrdersService {
         companyId:               dto.companyId ?? null,
         repId:                   null,
         vendorId:                null,
-        areaId:                  dto.areaId,
+        areaId,
+        areaLocationId,
+        coverageMatched,
         flow:                    dto.flow,
         bagId:                   dto.flow === 'wash_fold' ? dto.bagId ?? null : null,
         itemSelections:          dto.flow === 'wash_iron' ? (dto.selections ?? null) : null,
@@ -216,6 +280,8 @@ export class OrdersService {
         pickupLatitude:          dto.pickupLatitude ?? null,
         pickupLongitude:         dto.pickupLongitude ?? null,
         scheduledPickupAt:       new Date(dto.scheduledPickupAt),
+        // SLA: deliver within the configured turnaround from the scheduled pickup.
+        deliveryDeadline:        new Date(new Date(dto.scheduledPickupAt).getTime() + cfg.orderTurnaroundHours * 3600_000),
         specialInstructions:     dto.specialInstructions ?? null,
         pricingSnapshot:         pricing as any,
         totalWP:                 pricing.totalWP,
@@ -266,6 +332,14 @@ export class OrdersService {
 
       return { order, pricing };
     });
+
+    // Auto-start the rep broadcast the moment payment lands (fire-and-forget —
+    // never fail the order over it; the every-minute cron sweep is the safety net).
+    this.assignmentService
+      .startRepAssignment(result.order.id)
+      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${result.order.reference}: ${(err as Error).message}`));
+
+    return result;
   }
 
   // ─── List orders (admin / customer) ──────────────────────────────────────────
@@ -324,6 +398,14 @@ export class OrdersService {
     const order = await this.findOne(orderId);
 
     const prev = order.status;
+
+    // State-machine guard: only legal moves (or an idempotent same-state re-call).
+    if (prev !== toStatus && !ALLOWED_TRANSITIONS[prev]?.includes(toStatus)) {
+      throw new BadRequestException(
+        `Illegal order transition: ${prev} → ${toStatus}`,
+      );
+    }
+
     order.status = toStatus;
 
     // Set auto-complete timestamp when delivered
@@ -331,6 +413,20 @@ export class OrdersService {
       const config = await this.platformConfigService.getConfig();
       const hoursMs = config.orderAutoCompleteHours * 60 * 60 * 1000;
       order.autoCompleteAt = new Date(Date.now() + hoursMs);
+
+      // Scoring signal: was this delivery on time vs the order SLA?
+      if (order.repId) {
+        const onTime = !order.deliveryDeadline || new Date() <= order.deliveryDeadline;
+        await this.repRepository
+          .createQueryBuilder()
+          .update(Rep)
+          .set({
+            totalDeliveries: () => '"total_deliveries" + 1',
+            ...(onTime ? { onTimeDeliveries: () => '"on_time_deliveries" + 1' } : {}),
+          })
+          .where('id = :id', { id: order.repId })
+          .execute();
+      }
     }
 
     if (toStatus === OrderStatus.COMPLETED) {
@@ -413,8 +509,21 @@ export class OrdersService {
     order.vendorShareNairaSnapshot = vendorShareNairaSnapshot;
     order.repShareWP              = repShareWP;
     order.platformShareWP         = Math.max(0, platformShareWP);
+    order.unpricedGarmentTypes    = vendorShareCalc.unpricedTypes.length ? vendorShareCalc.unpricedTypes : null;
 
     await this.orderRepository.save(order);
+
+    // Send the vendor the full garment list for the order (their ₦ earning +
+    // any items they have no price for flagged inline). Fire-and-forget.
+    if (order.vendorId) {
+      this.notificationsService.notifyVendorGarmentsLogged({
+        vendorId:      order.vendorId,
+        orderRef:      order.reference,
+        garmentLog:    dto.garmentLog,
+        unpricedTypes: vendorShareCalc.unpricedTypes,
+        earningNaira:  vendorShareNairaSnapshot,
+      });
+    }
 
     // Transition to WITH_VENDOR
     await this.transition(orderId, OrderStatus.WITH_VENDOR, repUserId, 'rep', dto.note);
@@ -513,12 +622,8 @@ export class OrdersService {
     // Only customer's own orders
     if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
 
-    // Cannot cancel once picked up
-    if ([
-      OrderStatus.PICKED_UP, OrderStatus.WITH_VENDOR, OrderStatus.IN_PROGRESS,
-      OrderStatus.QUALITY_CHECK, OrderStatus.READY_FOR_DELIVERY, OrderStatus.REP_COLLECTED,
-      OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.COMPLETED,
-    ].includes(order.status)) {
+    // Cannot cancel once the rep has collected the clothes (derived from the state machine).
+    if (!CANCELLABLE_STATUSES.includes(order.status)) {
       throw new BadRequestException('Order cannot be cancelled at this stage');
     }
 
@@ -564,6 +669,15 @@ export class OrdersService {
       order.cancelledAt        = new Date();
       order.cancellationReason = reason;
       await manager.save(order);
+
+      // Kill any live assignment offers so reps/vendors stop seeing this order
+      // and the expiry cron never tries to re-broadcast a cancelled order.
+      await manager
+        .createQueryBuilder()
+        .update(AssignmentBroadcast)
+        .set({ status: 'cancelled' })
+        .where(`order_id = :orderId AND status = 'pending'`, { orderId })
+        .execute();
 
       await manager.save(
         manager.create(OrderStatusHistory, {
@@ -638,21 +752,33 @@ export class OrdersService {
     const activePricing = await this.vendorsService.getActivePricing(vendorId);
     const rate          = await this.pricingService.getActiveConversionRate();
 
+    // Drift Option 2: mint at the rate LOCKED on the vendor's active sheet at
+    // approval (falls back to the live rate for pre-lock legacy sheets).
+    const pointsPerUnit = activePricing?.pointsPerUnitSnapshot ?? rate.pointsPerUnit;
+
     let totalNaira = 0;
-    if (activePricing) {
-      const priceMap: Record<string, number> = {};
-      for (const item of activePricing.items) {
-        if (!isPriceItemLive(item)) continue; // skip pending/rejected price lines
-        priceMap[item.garmentType] = item.priceNaira;
-      }
-      for (const [garmentType, count] of Object.entries(garmentLog)) {
-        const priceNaira = priceMap[garmentType] ?? 0;
-        totalNaira += priceNaira * count;
-      }
+    const unpricedTypes: string[] = [];
+
+    const priceMap: Record<string, number> = {};
+    for (const item of activePricing?.items ?? []) {
+      if (!isPriceItemLive(item)) continue; // skip pending/rejected price lines
+      priceMap[item.garmentType] = item.priceNaira;
     }
 
-    const totalWP = Math.round(totalNaira * rate.pointsPerUnit);
-    return { totalNaira, totalWP };
+    for (const [garmentType, count] of Object.entries(garmentLog)) {
+      let priceNaira = priceMap[garmentType];
+      if (priceNaira == null) {
+        // Vendor has no price for this type: pay them the AVERAGE of vendors who
+        // do price it (customer already paid P70 at order time), and flag the
+        // order so the vendor is told to set a price.
+        unpricedTypes.push(garmentType);
+        priceNaira = (await this.vendorsService.averageLivePriceForGarment(garmentType, vendorId)) ?? 0;
+      }
+      totalNaira += priceNaira * count;
+    }
+
+    const totalWP = Math.round(totalNaira * pointsPerUnit);
+    return { totalNaira, totalWP, unpricedTypes };
   }
 
   // ─── Rating recalculation ─────────────────────────────────────────────────────
@@ -674,14 +800,19 @@ export class OrdersService {
     rep.rating      = parseFloat(result.avg ?? '0');
     rep.ratingCount = (rep.ratingCount ?? 0) + 1;
 
-    // Check if below threshold
+    // Check if below threshold — only notify on the false→true transition.
     const config = await this.platformConfigService.getConfig();
+    const wasFlagged = rep.flaggedForReview;
     if (rep.rating < config.lowRatingThreshold && rep.rating > 0) {
       rep.flaggedForReview = true;
       rep.flaggedAt        = new Date();
     }
 
     await this.repRepository.save(rep);
+
+    if (!wasFlagged && rep.flaggedForReview) {
+      this.notificationsService.notifyRepFlaggedForReview({ repId: rep.id, rating: rep.rating });
+    }
   }
 
   private async updateVendorRating(vendorId: string) {

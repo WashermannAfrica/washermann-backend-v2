@@ -55,6 +55,9 @@ export enum LedgerSource {
   /** Vendor payout debit from earnings wallet */
   VENDOR_PAYOUT        = 'vendor_payout',
 
+  /** Re-credit after a failed payout transfer (reverses VENDOR_PAYOUT) */
+  PAYOUT_REVERSAL      = 'payout_reversal',
+
   /** Manual admin credit to vendor wallet */
   ADMIN_VENDOR_CREDIT  = 'admin_vendor_credit',
 

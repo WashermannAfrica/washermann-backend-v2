@@ -90,6 +90,14 @@ export class Order extends BaseEntity {
   @Column({ name: 'area_id', type: 'uuid' })
   areaId: string;
 
+  @ApiProperty({ nullable: true, description: 'Resolved town/location geofence the pickup point fell in (null = legacy or fallback-assigned)' })
+  @Column({ name: 'area_location_id', type: 'uuid', nullable: true })
+  areaLocationId: string | null;
+
+  @ApiProperty({ default: true, description: 'False when the pickup point was outside all geofences and the order was routed to the nearest covered area' })
+  @Column({ name: 'coverage_matched', type: 'boolean', default: true })
+  coverageMatched: boolean;
+
   // ─── Service details ─────────────────────────────────────────────────────────
 
   @ApiProperty({ enum: ['wash_fold', 'wash_iron', 'bundle'], description: 'Order flow (catalogue model)' })
@@ -227,6 +235,18 @@ export class Order extends BaseEntity {
   @ApiProperty({ nullable: true, description: 'Garment count logged by rep at pickup' })
   @Column({ name: 'garment_log', type: 'jsonb', nullable: true })
   garmentLog: GarmentLog | null;
+
+  @ApiProperty({ nullable: true, description: 'SLA: deliver by this time (pickup + turnaround hours). Feeds rep on-time scoring.' })
+  @Column({ name: 'delivery_deadline', type: 'timestamp with time zone', nullable: true })
+  deliveryDeadline: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Logged garment types the assigned vendor had NOT priced — their share used the cross-vendor average; vendor sees "no price set for this item" on the order.',
+  })
+  @Column({ name: 'unpriced_garment_types', type: 'jsonb', nullable: true })
+  unpricedGarmentTypes: string[] | null;
 
   // ─── Status ──────────────────────────────────────────────────────────────────
 

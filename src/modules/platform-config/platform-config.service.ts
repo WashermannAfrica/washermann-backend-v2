@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PlatformConfig } from '../../database/entities/platform-config.entity';
+import { PlatformConfig, DEFAULT_ASSIGNMENT_SCORING } from '../../database/entities/platform-config.entity';
 import { PlatformPriceList } from '../../database/entities/platform-price-list.entity';
 import { RepBonusTier } from '../../database/entities/rep-bonus-tier.entity';
 import { UpdatePlatformConfigDto } from './dto/update-config.dto';
@@ -38,6 +38,8 @@ export class PlatformConfigService {
       lowRatingThreshold: 3.5,
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
+      orderTurnaroundHours: 48,
+      assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
       ironingPercent: 15,

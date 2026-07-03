@@ -66,7 +66,11 @@ export class StaffService {
     const token = uuidv4();
     await this.redisService.setEx(`${INVITE_TOKEN_PREFIX}${token}`, INVITE_TTL, user.id);
 
-    const deepLinkBase = this.configService.get<string>('app.deepLinkBase') || this.configService.get<string>('app.frontendUrl') || 'https://app.washermann.com';
+    // Staff activate in the ADMIN web portal — never the mobile deep link.
+    const deepLinkBase =
+      this.configService.get<string>('app.adminPortalUrl') ||
+      this.configService.get<string>('app.frontendUrl') ||
+      'http://localhost:3001';
 
     await this.notificationsService.sendStaffInvite({
       fullName: dto.fullName,

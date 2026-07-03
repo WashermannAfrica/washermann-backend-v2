@@ -22,6 +22,7 @@ import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
 import { Area } from './entities/area.entity';
 import { AreaLocation } from './entities/area-location.entity';
 import { GameScore } from './entities/game-score.entity';
+import { CoverageGap } from './entities/coverage-gap.entity';
 import { Vendor } from './entities/vendor.entity';
 import { VendorDocument } from './entities/vendor-document.entity';
 import { VendorPricing } from './entities/vendor-pricing.entity';
@@ -87,7 +88,7 @@ import { RateEpoch } from './entities/rate-epoch.entity';
             CompanyWallet, CompanyLedgerEntry,
             Vault, GiftCard, GiftCardRedemption,
             // Phase 6
-            Area, AreaLocation,
+            Area, AreaLocation, CoverageGap,
             Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry,
             Rep, RepPseudoWallet, RepPseudoLedgerEntry,
             PlatformPriceList, PlatformConfig, RepBonusTier,

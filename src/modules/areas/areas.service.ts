@@ -4,15 +4,25 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, ILike, In, Repository } from 'typeorm';
 import { Area } from '../../database/entities/area.entity';
 import { AreaLocation } from '../../database/entities/area-location.entity';
+import { CoverageGap } from '../../database/entities/coverage-gap.entity';
 import { Rep } from '../../database/entities/rep.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { Order } from '../../database/entities/order.entity';
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
-import { DeactivateAreaDto } from './dto/area-location.dto';
+import { AddAreaLocationDto, DeactivateAreaDto, UpdateAreaLocationDto } from './dto/area-location.dto';
+
+/** What a lat/lng resolves to: the covering location/area, or the nearest covered fallback. */
+export interface CoverageResolution {
+  covered: boolean;
+  area: Area;
+  location: AreaLocation;
+  /** Distance in km from the point to the matched/nearest location center. */
+  distanceKm: number;
+}
 
 const TERMINAL_ORDER_STATUSES = ['completed', 'cancelled', 'delivered'];
 
@@ -24,6 +34,7 @@ export class AreasService {
     @InjectRepository(Rep) private repRepository: Repository<Rep>,
     @InjectRepository(Vendor) private vendorRepository: Repository<Vendor>,
     @InjectRepository(Order) private orderRepository: Repository<Order>,
+    @InjectRepository(CoverageGap) private coverageGapRepository: Repository<CoverageGap>,
     private dataSource: DataSource,
   ) {}
 
@@ -48,10 +59,19 @@ export class AreasService {
       });
       await manager.save(area);
 
-      const names = this.cleanLocationNames(dto.locations ?? []);
-      if (names.length) {
+      const locs = this.cleanLocationInputs(dto.locations ?? []);
+      if (locs.length) {
         await manager.save(
-          names.map((name) => manager.create(AreaLocation, { areaId: area.id, name, isActive: true })),
+          locs.map((l) =>
+            manager.create(AreaLocation, {
+              areaId: area.id,
+              name: l.name,
+              centerLat: l.centerLat ?? null,
+              centerLng: l.centerLng ?? null,
+              radiusKm: l.radiusKm ?? null,
+              isActive: true,
+            }),
+          ),
         );
       }
       area.locations = await manager.find(AreaLocation, { where: { areaId: area.id } });
@@ -307,13 +327,30 @@ export class AreasService {
     return this.locationRepository.find({ where: { areaId }, order: { createdAt: 'ASC' } });
   }
 
-  async addLocation(areaId: string, name: string) {
+  async addLocation(areaId: string, dto: AddAreaLocationDto) {
     await this.findOne(areaId);
-    const clean = name.trim();
+    const clean = dto.name.trim();
     if (!clean) throw new BadRequestException('Location name is required');
     return this.locationRepository.save(
-      this.locationRepository.create({ areaId, name: clean, isActive: true }),
+      this.locationRepository.create({
+        areaId,
+        name: clean,
+        centerLat: dto.centerLat ?? null,
+        centerLng: dto.centerLng ?? null,
+        radiusKm: dto.radiusKm ?? null,
+        isActive: true,
+      }),
     );
+  }
+
+  async updateLocation(areaId: string, locationId: string, dto: UpdateAreaLocationDto) {
+    const loc = await this.locationRepository.findOne({ where: { id: locationId, areaId } });
+    if (!loc) throw new NotFoundException('Location not found');
+    if (dto.name      != null) loc.name      = dto.name.trim();
+    if (dto.centerLat != null) loc.centerLat = dto.centerLat;
+    if (dto.centerLng != null) loc.centerLng = dto.centerLng;
+    if (dto.radiusKm  != null) loc.radiusKm  = dto.radiusKm;
+    return this.locationRepository.save(loc);
   }
 
   async removeLocation(areaId: string, locationId: string) {
@@ -323,17 +360,114 @@ export class AreasService {
     return { removed: true };
   }
 
+  /** Admin: uncovered-address demand signals, newest first (where to open next). */
+  async listCoverageGaps(page = 1, limit = 50) {
+    const p = Math.max(1, page);
+    const l = Math.min(200, Math.max(1, limit));
+    const [rows, total] = await this.coverageGapRepository.findAndCount({
+      order: { createdAt: 'DESC' },
+      skip: (p - 1) * l,
+      take: l,
+    });
+    // Attach the fallback area's name for readability.
+    const areaIds = [...new Set(rows.map((r) => r.fallbackAreaId).filter((x): x is string => !!x))];
+    const areas = areaIds.length ? await this.areaRepository.find({ where: { id: In(areaIds) } }) : [];
+    const byId = new Map(areas.map((a) => [a.id, a.name]));
+    const data = rows.map((r) => ({ ...r, fallbackAreaName: r.fallbackAreaId ? (byId.get(r.fallbackAreaId) ?? null) : null }));
+    return { data, meta: { total, page: p, limit: l, pages: Math.ceil(total / l) } };
+  }
+
+  // ─── Geofence resolution ──────────────────────────────────────────────────────
+
+  /** Great-circle distance in km between two points (haversine). */
+  private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  /**
+   * Resolve a point to coverage. An area's region is the UNION of its locations'
+   * circles, so the check is point-in-any-circle:
+   *  - inside one or more circles → covered=true, nearest center wins the tie-break;
+   *  - outside all circles → covered=false, FALLBACK to the nearest geofenced
+   *    location's area (per product rule: never reject — route to the closest
+   *    covered area) and log a coverage gap as a demand signal;
+   *  - no geofenced locations exist at all → null (caller keeps legacy behavior).
+   */
+  async resolveAreaForPoint(
+    lat: number,
+    lng: number,
+    opts: { userId?: string; addressText?: string; source?: 'resolve_check' | 'order_placed'; logGap?: boolean } = {},
+  ): Promise<CoverageResolution | null> {
+    const locations = await this.locationRepository
+      .createQueryBuilder('loc')
+      .innerJoinAndSelect('loc.area', 'area')
+      .where('loc.is_active = true')
+      .andWhere('area.is_active = true')
+      .andWhere('loc.center_lat IS NOT NULL')
+      .andWhere('loc.center_lng IS NOT NULL')
+      .andWhere('loc.radius_km IS NOT NULL')
+      .getMany();
+
+    if (locations.length === 0) return null;
+
+    let nearest: { loc: AreaLocation; distanceKm: number } | null = null;
+    let nearestCovered: { loc: AreaLocation; distanceKm: number } | null = null;
+
+    for (const loc of locations) {
+      const d = this.haversineKm(lat, lng, loc.centerLat!, loc.centerLng!);
+      if (!nearest || d < nearest.distanceKm) nearest = { loc, distanceKm: d };
+      if (d <= loc.radiusKm! && (!nearestCovered || d < nearestCovered.distanceKm)) {
+        nearestCovered = { loc, distanceKm: d };
+      }
+    }
+
+    const hit = nearestCovered ?? nearest!;
+    const covered = !!nearestCovered;
+
+    if (!covered && opts.logGap !== false) {
+      // Fire-and-forget demand signal — never block resolution on logging.
+      void this.coverageGapRepository
+        .save(
+          this.coverageGapRepository.create({
+            userId: opts.userId ?? null,
+            latitude: lat,
+            longitude: lng,
+            addressText: opts.addressText ?? null,
+            fallbackAreaId: hit.loc.areaId,
+            distanceKm: Math.round(hit.distanceKm * 100) / 100,
+            source: opts.source ?? 'resolve_check',
+          }),
+        )
+        .catch(() => undefined);
+    }
+
+    return {
+      covered,
+      area: hit.loc.area!,
+      location: hit.loc,
+      distanceKm: Math.round(hit.distanceKm * 100) / 100,
+    };
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private cleanLocationNames(names: string[]): string[] {
+  /** Trim + dedupe location inputs by name (case-insensitive), keeping geometry. */
+  private cleanLocationInputs(inputs: AddAreaLocationDto[]): AddAreaLocationDto[] {
     const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of names) {
-      const n = (raw ?? '').trim();
+    const out: AddAreaLocationDto[] = [];
+    for (const raw of inputs) {
+      const n = (raw?.name ?? '').trim();
       const key = n.toLowerCase();
       if (n && !seen.has(key)) {
         seen.add(key);
-        out.push(n);
+        out.push({ ...raw, name: n });
       }
     }
     return out;

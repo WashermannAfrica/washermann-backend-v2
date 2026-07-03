@@ -580,15 +580,24 @@ export class NotificationsService {
   async notifyNoRepsAvailableAdmin(params: { orderRef: string; areaName: string; orderId: string }) {
     const adminEmail = this.adminEmail();
     const vars: Record<string, string | number> = { orderRef: params.orderRef, areaName: params.areaName };
-    const meta = { orderRef: params.orderRef, orderId: params.orderId };
 
     fire(async () => {
       await Promise.all([
         adminEmail && this.sendEmail('assignment.no_reps.admin', adminEmail, vars),
-        // In-app for all admin users would require a query — push to a fixed admin account or skip
-        // For now, log only (admin will see it in the dashboard)
       ]);
     }, this.logger, 'assignment.no_reps.admin');
+  }
+
+  /** Fire when no vendors can be found for an order in any area — admin must assign manually. */
+  async notifyNoVendorsAvailableAdmin(params: { orderRef: string; areaName: string; orderId: string }) {
+    const adminEmail = this.adminEmail();
+    const vars: Record<string, string | number> = { orderRef: params.orderRef, areaName: params.areaName };
+
+    fire(async () => {
+      await Promise.all([
+        adminEmail && this.sendEmail('assignment.no_vendors.admin', adminEmail, vars),
+      ]);
+    }, this.logger, 'assignment.no_vendors.admin');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -723,6 +732,67 @@ export class NotificationsService {
         this.sendInApp('pricing.reviewed.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.reviewed.vendor');
+  }
+
+  /**
+   * Fire when the rep logs the garment count for an order — sends the assigned
+   * vendor the FULL garment list, their earning for the order in ₦, and flags
+   * any items they have no price for (those were paid at the cross-vendor
+   * average; the note prompts them to set their own price).
+   */
+  async notifyVendorGarmentsLogged(params: {
+    vendorId:      string;
+    orderRef:      string;
+    garmentLog:    Record<string, number>;
+    unpricedTypes: string[];
+    earningNaira:  number;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const pretty = (s: string) =>
+      s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+    const unpricedSet = new Set(params.unpricedTypes);
+    const entries = Object.entries(params.garmentLog).filter(([, count]) => Number(count) > 0);
+    const itemCount = entries.reduce((sum, [, count]) => sum + Number(count), 0);
+
+    const itemsRowsHtml = entries
+      .map(([type, count]) => {
+        const flag = unpricedSet.has(type)
+          ? ' <em style="color:#c62828;font-style:normal;font-size:12px;">· no price set — market average used</em>'
+          : '';
+        return `<div class="info-row"><span>${pretty(type)}${flag}</span><span>× ${count}</span></div>`;
+      })
+      .join('');
+    const itemsText = entries.map(([type, count]) => `${pretty(type)} × ${count}`).join(', ');
+
+    const unpricedText = params.unpricedTypes.map(pretty).join(', ');
+    const unpricedNote = params.unpricedTypes.length
+      ? ` Note: you have no price set for ${unpricedText} — the market average was used for your earnings on ${params.unpricedTypes.length > 1 ? 'those items' : 'that item'}. Set your own price from your dashboard.`
+      : '';
+    const unpricedNoteHtml = params.unpricedTypes.length
+      ? `<p style="color:#c62828;">You have <strong>no price set</strong> for: <strong>${unpricedText}</strong>. Your earnings on ${params.unpricedTypes.length > 1 ? 'these items' : 'this item'} used the <strong>average price of other vendors</strong> — set your own price from your dashboard so future orders pay <em>your</em> rate.</p>`
+      : '';
+
+    const vars: Record<string, string | number> = {
+      vendorName:       vendor.businessName ?? 'there',
+      orderRef:         params.orderRef,
+      itemsRowsHtml,
+      itemsText,
+      itemCount,
+      earningNaira:     Math.round(params.earningNaira).toLocaleString(),
+      unpricedCount:    params.unpricedTypes.length,
+      unpricedNote,
+      unpricedNoteHtml,
+    };
+
+    fire(async () => {
+      await Promise.all([
+        user.email    && this.sendEmail('order.garments_logged.vendor', user.email, vars),
+        user.fcmToken && this.sendPush('order.garments_logged.vendor', user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendInApp('order.garments_logged.vendor', vendor.userId, vars, 'order', { orderRef: params.orderRef }),
+      ]);
+    }, this.logger, 'order.garments_logged.vendor');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

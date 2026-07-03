@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Rep } from '../../database/entities/rep.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
@@ -13,12 +13,24 @@ import { VendorVerificationStatus } from '../../common/enums/vendor-verification
 import { AreasService } from '../areas/areas.service';
 import { OrdersService } from '../orders/orders.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PlatformConfigService } from '../platform-config/platform-config.service';
+import {
+  AssignmentScoringConfig,
+  DEFAULT_ASSIGNMENT_SCORING,
+} from '../../database/entities/platform-config.entity';
 
 /** Priority score for a rep or vendor candidate */
 interface ScoredCandidate {
   id: string;
   score: number;
+  /** Fairness bucket [0,1] — used to reserve one broadcast slot for the most-starved candidate. */
+  fairness: number;
 }
+
+/** Statuses that no longer occupy a provider (for open-load counting). */
+const OPEN_LOAD_TERMINAL = ['completed', 'cancelled', 'delivered'];
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 @Injectable()
 export class AssignmentService {
@@ -41,10 +53,122 @@ export class AssignmentService {
     private statusHistoryRepository: Repository<OrderStatusHistory>,
 
     private areasService: AreasService,
+    // forwardRef: OrdersModule ↔ AssignmentModule cycle (placeOrder auto-starts assignment).
+    @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
+    private platformConfigService: PlatformConfigService,
   ) {}
+
+  /**
+   * A rep's or vendor's own assignment offers — a pullable queue so they aren't
+   * blind if a push/SMS never lands. `pending` = live offers awaiting response;
+   * `history` = everything they responded to, missed, or that expired.
+   */
+  async myRequests(userId: string, targetType: 'rep' | 'vendor') {
+    const entity =
+      targetType === 'rep'
+        ? await this.repRepository.findOne({ where: { userId } })
+        : await this.vendorRepository.findOne({ where: { userId } });
+    if (!entity) throw new NotFoundException(`${targetType} profile not found`);
+
+    const rows = await this.broadcastRepository.find({
+      where: { targetType, targetId: entity.id },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+    const orderIds = [...new Set(rows.map((r) => r.orderId))];
+    const orders = orderIds.length ? await this.orderRepository.find({ where: { id: In(orderIds) } }) : [];
+    const byId = new Map(orders.map((o) => [o.id, o]));
+    const now = Date.now();
+    const broadcastingStatus = targetType === 'rep' ? OrderStatus.BROADCASTING_REP : OrderStatus.BROADCASTING_VENDOR;
+
+    const isLiveOffer = (b: AssignmentBroadcast) =>
+      b.status === 'pending' &&
+      (!b.expiresAt || new Date(b.expiresAt).getTime() > now) &&
+      byId.get(b.orderId)?.status === broadcastingStatus;
+
+    const shape = (b: AssignmentBroadcast) => {
+      const o = byId.get(b.orderId);
+      return {
+        broadcastId: b.id,
+        orderId: b.orderId,
+        reference: o?.reference ?? null,
+        broadcastStatus: b.status,
+        batchNumber: b.batchNumber,
+        expiresAt: b.expiresAt,
+        respondedAt: b.respondedAt,
+        createdAt: b.createdAt,
+        orderStatus: o?.status ?? null,
+        scheduledPickupAt: o?.scheduledPickupAt ?? null,
+        pickupAddress: o?.pickupAddress ?? null,
+      };
+    };
+
+    return {
+      pending: rows.filter(isLiveOffer).map(shape),
+      history: rows.filter((b) => !isLiveOffer(b)).map(shape),
+    };
+  }
+
+  /**
+   * Rep declines an offer: mark it, and if that was the batch's LAST live offer,
+   * immediately broadcast the next batch instead of waiting out the window.
+   */
+  async repDeclines(orderId: string, repUserId: string): Promise<{ declined: boolean }> {
+    const rep = await this.repRepository.findOne({ where: { userId: repUserId } });
+    if (!rep) return { declined: false };
+
+    const broadcast = await this.broadcastRepository.findOne({
+      where: { orderId, targetId: rep.id, targetType: 'rep', status: 'pending' },
+    });
+    if (!broadcast) return { declined: false };
+
+    broadcast.status = 'declined';
+    broadcast.respondedAt = new Date();
+    await this.broadcastRepository.save(broadcast);
+
+    await this.advanceBatchIfExhausted(orderId, 'rep', broadcast.batchNumber);
+    return { declined: true };
+  }
+
+  /** Vendor declines an offer — same fast-forward semantics as repDeclines. */
+  async vendorDeclines(orderId: string, vendorUserId: string): Promise<{ declined: boolean }> {
+    const vendor = await this.vendorRepository.findOne({ where: { userId: vendorUserId } });
+    if (!vendor) return { declined: false };
+
+    const broadcast = await this.broadcastRepository.findOne({
+      where: { orderId, targetId: vendor.id, targetType: 'vendor', status: 'pending' },
+    });
+    if (!broadcast) return { declined: false };
+
+    broadcast.status = 'declined';
+    broadcast.respondedAt = new Date();
+    await this.broadcastRepository.save(broadcast);
+
+    await this.advanceBatchIfExhausted(orderId, 'vendor', broadcast.batchNumber);
+    return { declined: true };
+  }
+
+  /** When every offer in the current batch is resolved, move to the next batch now. */
+  private async advanceBatchIfExhausted(orderId: string, targetType: 'rep' | 'vendor', batchNumber: number) {
+    const stillPending = await this.broadcastRepository.count({
+      where: { orderId, targetType, status: 'pending' },
+    });
+    if (stillPending > 0) return;
+
+    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const expectedStatus = targetType === 'rep' ? OrderStatus.BROADCASTING_REP : OrderStatus.BROADCASTING_VENDOR;
+    if (!order || order.status !== expectedStatus) return;
+
+    this.logger.log(`Order ${orderId}: batch ${batchNumber} fully declined — advancing ${targetType} broadcast`);
+    if (targetType === 'rep') {
+      await this.broadcastReps(orderId, order.areaId, batchNumber + 1);
+    } else {
+      await this.broadcastVendors(orderId, order.areaId, batchNumber + 1);
+    }
+  }
 
   // ─── Broadcast batch size / window from ENV ───────────────────────────────────
 
@@ -151,7 +275,11 @@ export class AssignmentService {
 
   // ─── Rep accepts assignment ───────────────────────────────────────────────────
 
-  async repAccepts(orderId: string, repId: string): Promise<Order | null> {
+  async repAccepts(orderId: string, repUserId: string): Promise<Order | null> {
+    // Callers authenticate as the USER — resolve their rep profile first.
+    const rep = await this.repRepository.findOne({ where: { userId: repUserId } });
+    if (!rep) return null;
+    const repId = rep.id;
     const broadcast = await this.broadcastRepository.findOne({
       where: { orderId, targetId: repId, targetType: 'rep', status: 'pending' },
     });
@@ -180,6 +308,10 @@ export class AssignmentService {
     order.repId = repId;
     order.status = OrderStatus.REP_ASSIGNED;
     await this.orderRepository.save(order);
+
+    // Scoring signals: accept latency (broadcast→accept) + recency
+    Object.assign(rep, this.acceptSignalPatch(rep, broadcast.createdAt));
+    await this.repRepository.save(rep);
 
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -240,7 +372,23 @@ export class AssignmentService {
           return;
         }
       }
-      this.logger.warn(`Order ${orderId}: No available vendors found — requires manual admin assignment`);
+      // All areas exhausted — escalate to admin (mirror the rep path).
+      this.logger.warn(`Order ${orderId}: No available vendors found in any area — escalating`);
+      await this.statusHistoryRepository.save(
+        this.statusHistoryRepository.create({
+          orderId,
+          fromStatus: order.status,
+          toStatus:   order.status,
+          triggeredBy: null,
+          triggeredByRole: 'system',
+          note: 'No available vendors found in any area — requires manual admin assignment',
+        }),
+      );
+      this.notificationsService.notifyNoVendorsAvailableAdmin({
+        orderRef: order.reference,
+        areaName: areaId,
+        orderId,
+      });
       return;
     }
 
@@ -280,7 +428,11 @@ export class AssignmentService {
 
   // ─── Vendor accepts assignment ────────────────────────────────────────────────
 
-  async vendorAccepts(orderId: string, vendorId: string): Promise<Order | null> {
+  async vendorAccepts(orderId: string, vendorUserId: string): Promise<Order | null> {
+    // Callers authenticate as the USER — resolve their vendor profile first.
+    const vendor = await this.vendorRepository.findOne({ where: { userId: vendorUserId } });
+    if (!vendor) return null;
+    const vendorId = vendor.id;
     const broadcast = await this.broadcastRepository.findOne({
       where: { orderId, targetId: vendorId, targetType: 'vendor', status: 'pending' },
     });
@@ -306,6 +458,10 @@ export class AssignmentService {
     order.vendorId = vendorId;
     order.status   = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
+
+    // Scoring signals: accept latency (broadcast→accept) + recency
+    Object.assign(vendor, this.acceptSignalPatch(vendor, broadcast.createdAt));
+    await this.vendorRepository.save(vendor);
 
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -334,6 +490,8 @@ export class AssignmentService {
     order.status = OrderStatus.REP_ASSIGNED;
     await this.orderRepository.save(order);
 
+    await this.repRepository.update(repId, { lastAssignedAt: new Date() });
+
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
         orderId,
@@ -355,6 +513,8 @@ export class AssignmentService {
     order.vendorId = vendorId;
     order.status   = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
+
+    await this.vendorRepository.update(vendorId, { lastAssignedAt: new Date() });
 
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -389,22 +549,24 @@ export class AssignmentService {
   ): Promise<ScoredCandidate[]> {
     const qb = this.repRepository
       .createQueryBuilder('r')
-      .where('r.isAvailable = true')
+      .where('r.is_available = true')
       .andWhere('r.status = :status', { status: RepStatus.ACTIVE })
-      .andWhere(`r.areaIds::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
+      .andWhere(`r.area_ids::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
 
     if (excludeIds.length > 0) {
       qb.andWhere('r.id NOT IN (:...excludeIds)', { excludeIds });
     }
 
     const reps = await qb.getMany();
+    const cfg = await this.scoringConfig();
+    const openLoad = await this.openOrderCounts('rep_id', reps.map((r) => r.id));
 
-    return reps
-      .map((rep) => ({
-        id:    rep.id,
-        score: this.computeRepScore(rep),
-      }))
+    const scored = reps
+      .filter((rep) => (openLoad.get(rep.id) ?? 0) < cfg.loadCap) // hard load cap
+      .map((rep) => this.computeRepScore(rep, cfg, openLoad.get(rep.id) ?? 0))
       .sort((a, b) => b.score - a.score);
+
+    return this.applyFairnessSlot(scored, cfg);
   }
 
   private async scoreVendors(
@@ -414,22 +576,24 @@ export class AssignmentService {
   ): Promise<ScoredCandidate[]> {
     const qb = this.vendorRepository
       .createQueryBuilder('v')
-      .where('v.isAvailable = true')
-      .andWhere('v.verificationStatus = :vs', { vs: VendorVerificationStatus.VERIFIED })
-      .andWhere(`v.areaIds::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
+      .where('v.is_available = true')
+      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
+      .andWhere(`v.area_ids::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
 
     if (excludeIds.length > 0) {
       qb.andWhere('v.id NOT IN (:...excludeIds)', { excludeIds });
     }
 
     const vendors = await qb.getMany();
+    const cfg = await this.scoringConfig();
+    const openLoad = await this.openOrderCounts('vendor_id', vendors.map((v) => v.id));
 
-    return vendors
-      .map((vendor) => ({
-        id:    vendor.id,
-        score: this.computeVendorScore(vendor),
-      }))
+    const scored = vendors
+      .filter((v) => (openLoad.get(v.id) ?? 0) < cfg.loadCap) // hard load cap
+      .map((v) => this.computeVendorScore(v, cfg, openLoad.get(v.id) ?? 0))
       .sort((a, b) => b.score - a.score);
+
+    return this.applyFairnessSlot(scored, cfg);
   }
 
   /**
@@ -438,17 +602,127 @@ export class AssignmentService {
    *  admin priority bonus: lower number = higher bonus (max +50)
    *  Result: higher is better
    */
-  private computeRepScore(rep: Rep): number {
-    const ratingScore    = (rep.rating ?? 0) * 20;
-    const priorityBonus  = Math.max(0, 50 - (rep.assignmentPriority ?? 100));
-    return ratingScore + priorityBonus;
+  // ─── Composite scoring: score = 100·(wP·P + wL·L + wF·F) ────────────────────────
+  // All sub-signals normalize to [0,1]; unknown signals score a neutral 0.5 so new
+  // providers aren't punished for missing history. Weights/constants live in
+  // platform_config.assignment_scoring (admin-tunable, no deploy needed).
+
+  private async scoringConfig(): Promise<AssignmentScoringConfig> {
+    const config = await this.platformConfigService.getConfig();
+    return { ...DEFAULT_ASSIGNMENT_SCORING, ...(config.assignmentScoring ?? {}) };
+  }
+
+  /** Open (non-terminal) order count per candidate, one grouped query. */
+  private async openOrderCounts(column: 'rep_id' | 'vendor_id', ids: string[]): Promise<Map<string, number>> {
+    if (!ids.length) return new Map();
+    const rows = await this.orderRepository
+      .createQueryBuilder('o')
+      .select(`o.${column}`, 'pid')
+      .addSelect('COUNT(*)', 'n')
+      .where(`o.${column} IN (:...ids)`, { ids })
+      .andWhere('o.status NOT IN (:...terminal)', { terminal: OPEN_LOAD_TERMINAL })
+      .groupBy(`o.${column}`)
+      .getRawMany<{ pid: string; n: string }>();
+    return new Map(rows.map((r) => [r.pid, Number(r.n)]));
+  }
+
+  /** Fairness bucket, shared shape for reps and vendors. */
+  private fairnessScore(
+    cfg: AssignmentScoringConfig,
+    lastAssignedAt: Date | null,
+    createdAt: Date,
+    openOrders: number,
+    completedJobs: number,
+  ): number {
+    const sinceMs = Date.now() - new Date(lastAssignedAt ?? createdAt).getTime();
+    const recency = clamp01(sinceMs / (cfg.recencyCapH * 3600_000));
+    const loadRoom = clamp01(1 - openOrders / cfg.loadCap);
+    const newbie = completedJobs < cfg.newbieN ? 1 : 0;
+    return 0.5 * recency + 0.3 * loadRoom + 0.2 * newbie;
+  }
+
+  /** Reserve one of the top-N slots for the most-starved (highest fairness) candidate. */
+  private applyFairnessSlot(sorted: ScoredCandidate[], cfg: AssignmentScoringConfig): ScoredCandidate[] {
+    if (!cfg.fairnessSlot || sorted.length <= this.broadcastN) return sorted;
+    const topN = sorted.slice(0, this.broadcastN);
+    const maxFair = sorted.reduce((best, c) => (c.fairness > best.fairness ? c : best), sorted[0]);
+    if (topN.some((c) => c.id === maxFair.id)) return sorted;
+    // Swap the most-starved candidate into the last slot of the first batch.
+    const rest = sorted.filter((c) => c.id !== maxFair.id);
+    return [...rest.slice(0, this.broadcastN - 1), maxFair, ...rest.slice(this.broadcastN - 1)];
+  }
+
+  private computeRepScore(rep: Rep, cfg: AssignmentScoringConfig, openOrders: number): ScoredCandidate {
+    const windowSec = this.windowSeconds;
+
+    // Performance
+    const rating01   = clamp01((rep.rating ?? 0) / 5);
+    const onTime01   = rep.totalDeliveries > 0 ? clamp01(rep.onTimeDeliveries / rep.totalDeliveries) : 0.5;
+    const latency01  = rep.avgAcceptLatencySec != null ? clamp01(1 - rep.avgAcceptLatencySec / windowSec) : 0.5;
+    const complete01 = rep.acceptCount > 0 ? clamp01(rep.totalDeliveries / rep.acceptCount) : 0.5;
+    const P = 0.4 * rating01 + 0.25 * onTime01 + 0.2 * latency01 + 0.15 * complete01;
+
+    // Loyalty (loyalty-points ledger lands here later as a third term)
+    const profile01 = (rep.phone ? 0.5 : 0) + (rep.contractUrl ? 0.5 : 0);
+    const tenure01  = clamp01(Math.log(1 + rep.totalDeliveries) / Math.log(1 + cfg.satOrders));
+    const L = 0.5 * profile01 + 0.5 * tenure01;
+
+    // Fairness
+    const F = this.fairnessScore(cfg, rep.lastAssignedAt, rep.createdAt, openOrders, rep.totalDeliveries);
+
+    // Admin nudge retained: assignmentPriority (lower = preferred) adds up to +5 points.
+    const priorityBonus = Math.max(0, 100 - (rep.assignmentPriority ?? 100)) / 20;
+
+    return {
+      id: rep.id,
+      score: Math.round((100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) + priorityBonus) * 100) / 100,
+      fairness: F,
+    };
   }
 
   /**
    * Vendor priority score formula:
    *  base = rating × 20 (0–100 points)
    */
-  private computeVendorScore(vendor: Vendor): number {
-    return (vendor.rating ?? 0) * 20;
+  private computeVendorScore(vendor: Vendor, cfg: AssignmentScoringConfig, openOrders: number): ScoredCandidate {
+    const windowSec = this.windowSeconds;
+
+    // Performance (vendors have no delivery counters — rating leads, latency assists)
+    const rating01  = clamp01((vendor.rating ?? 0) / 5);
+    const latency01 = vendor.avgAcceptLatencySec != null ? clamp01(1 - vendor.avgAcceptLatencySec / windowSec) : 0.5;
+    const P = 0.7 * rating01 + 0.3 * latency01;
+
+    // Loyalty
+    const profile01 =
+      (vendor.businessName ? 0.4 : 0) + (vendor.logoUrl ? 0.3 : 0) + (vendor.phone ? 0.3 : 0);
+    const tenure01 = clamp01(Math.log(1 + vendor.acceptCount) / Math.log(1 + cfg.satOrders));
+    const L = 0.5 * profile01 + 0.5 * tenure01;
+
+    // Fairness
+    const F = this.fairnessScore(cfg, vendor.lastAssignedAt, vendor.createdAt, openOrders, vendor.acceptCount);
+
+    return {
+      id: vendor.id,
+      score: Math.round(100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) * 100) / 100,
+      fairness: F,
+    };
+  }
+
+  /** Incremental rolling mean + recency counters, recorded when a provider accepts. */
+  private acceptSignalPatch(
+    current: { avgAcceptLatencySec: number | null; acceptCount: number },
+    broadcastCreatedAt: Date,
+  ) {
+    const latencySec = Math.max(0, (Date.now() - new Date(broadcastCreatedAt).getTime()) / 1000);
+    const n = current.acceptCount ?? 0;
+    const newAvg =
+      current.avgAcceptLatencySec == null
+        ? latencySec
+        : current.avgAcceptLatencySec + (latencySec - current.avgAcceptLatencySec) / (n + 1);
+    return {
+      avgAcceptLatencySec: Math.round(newAvg * 100) / 100,
+      acceptCount: n + 1,
+      lastAssignedAt: new Date(),
+    };
   }
 }

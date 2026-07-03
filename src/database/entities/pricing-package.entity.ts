@@ -11,16 +11,21 @@ import { Role } from '../../common/enums/roles.enum';
 
 /**
  * One criteria entry inside a package.
- * Either structured (garmentType + quantity) or descriptive-only.
+ * A line references a catalogue item OR a whole catalogue category (never both),
+ * or is descriptive-only (label without any reference).
  *
  * Examples:
- *   { label: "Baby bodysuits",   garmentType: "babygrow",  quantity: 10 }
- *   { label: "Baby blankets",    garmentType: "blanket",   quantity: 3  }
- *   { label: "Free gentle wash", garmentType: null,        quantity: null }
+ *   { label: "Baby bodysuits", itemId: "<uuid>",     categoryId: null,     quantity: 10 }
+ *   { label: "Any native wear", itemId: null,        categoryId: "<uuid>", quantity: 3  }
+ *   { label: "Free gentle wash", itemId: null,       categoryId: null,     quantity: null }
+ *
+ * `garmentType` is the legacy free-text reference kept for pre-catalogue rows.
  */
 export interface PackageCriteriaItem {
   label:       string;
-  garmentType: string | null;   // maps to a known garment type (optional)
+  itemId?:     string | null;   // catalogue item included in the package
+  categoryId?: string | null;   // catalogue category — any item within counts
+  garmentType?: string | null;  // legacy free-text garment reference
   quantity:    number | null;   // null = "any amount" or purely descriptive
 }
 

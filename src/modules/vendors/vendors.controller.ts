@@ -223,30 +223,19 @@ export class VendorsController {
 
   // ─── Wallet ───────────────────────────────────────────────────────────────────
 
-  @Get(':id/wallet')
-  @Roles(Role.ADMIN, Role.FINANCE)
-  @ApiOperation({ summary: 'Get vendor earnings wallet (admin/finance)' })
-  getWallet(@Param('id', ParseUUIDPipe) id: string) {
-    return this.vendorsService.getWallet(id);
-  }
-
-  @Get(':id/wallet/ledger')
-  @Roles(Role.ADMIN, Role.FINANCE)
-  @ApiOperation({ summary: 'Get vendor earnings ledger (admin/finance)' })
-  getLedger(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    return this.vendorsService.getLedger(id, page, limit);
-  }
-
   @Get('me/wallet')
   @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Get own vendor wallet (vendor)' })
+  @ApiOperation({
+    summary: 'Get own vendor wallet, naira-first (vendor)',
+    description:
+      'Returns the wallet with naira values computed at the vendor\'s effective payout rate ' +
+      '(the ₦/WP snapshot locked on their active pricing sheet, or the global payout rate for ' +
+      'legacy sheets): balanceNaira, totalEarnedNaira, payoutRateNairaPerWP alongside the raw WP ' +
+      'fields. Clients should display ₦ as the primary figure and WP as secondary.',
+  })
   async getMyWallet(@Request() req: { user: { sub: string } }) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
-    return this.vendorsService.getWallet(vendor.id);
+    return this.vendorsService.getWalletView(vendor.id);
   }
 
   @Get('me/wallet/ledger')
@@ -260,4 +249,24 @@ export class VendorsController {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
     return this.vendorsService.getLedger(vendor.id, page, limit);
   }
+
+  @Get(':id/wallet')
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'Get vendor earnings wallet, naira-first (admin/finance)' })
+  getWallet(@Param('id', ParseUUIDPipe) id: string) {
+    return this.vendorsService.getWalletView(id);
+  }
+
+  @Get(':id/wallet/ledger')
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'Get vendor earnings ledger (admin/finance)' })
+  getLedger(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.vendorsService.getLedger(id, page, limit);
+  }
+
+
 }
