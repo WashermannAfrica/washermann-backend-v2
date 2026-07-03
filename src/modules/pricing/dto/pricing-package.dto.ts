@@ -6,11 +6,50 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PackageAudience, PackageCriteriaItem } from '../../../database/entities/pricing-package.entity';
+import { PackageAudience } from '../../../database/entities/pricing-package.entity';
+
+/**
+ * One package line. Reference a catalogue item OR a category (not both),
+ * or send only a label for a purely descriptive line ("Free gentle wash").
+ * When an item/category is referenced, `label` may be omitted — it is
+ * auto-filled from the catalogue name.
+ */
+export class PackageCriteriaItemDto {
+  @ApiPropertyOptional({ example: 'Baby bodysuits', description: 'Display label; auto-filled from the item/category name when omitted' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
+
+  @ApiPropertyOptional({ description: 'Catalogue item included in this package' })
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
+
+  @ApiPropertyOptional({ description: 'Catalogue category — any item within it counts' })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'Legacy free-text garment reference (pre-catalogue)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  garmentType?: string;
+
+  @ApiPropertyOptional({ example: 10, description: 'How many of this line are included; omit for "any amount"/descriptive' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+}
 
 export class CreatePricingPackageDto {
   @ApiProperty({ example: 'Baby Bundle' })
@@ -35,12 +74,14 @@ export class CreatePricingPackageDto {
   priceWP: number;
 
   @ApiPropertyOptional({
-    description: 'Structured breakdown of what is included. Each item: { label, garmentType?, quantity? }',
-    type: 'array',
+    description: 'What is included: catalogue item lines, category lines, or descriptive lines',
+    type: [PackageCriteriaItemDto],
   })
   @IsOptional()
   @IsArray()
-  criteria?: PackageCriteriaItem[];
+  @ValidateNested({ each: true })
+  @Type(() => PackageCriteriaItemDto)
+  criteria?: PackageCriteriaItemDto[];
 
   @ApiPropertyOptional({
     description: 'Audience targeting rules. Omit or set allUsers:true for everyone.',
@@ -101,10 +142,12 @@ export class UpdatePricingPackageDto {
   @Min(1)
   priceWP?: number;
 
-  @ApiPropertyOptional({ type: 'array' })
+  @ApiPropertyOptional({ type: [PackageCriteriaItemDto] })
   @IsOptional()
   @IsArray()
-  criteria?: PackageCriteriaItem[];
+  @ValidateNested({ each: true })
+  @Type(() => PackageCriteriaItemDto)
+  criteria?: PackageCriteriaItemDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

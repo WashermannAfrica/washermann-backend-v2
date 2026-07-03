@@ -17,7 +17,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AreasService } from './areas.service';
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
-import { AddAreaLocationDto, DeactivateAreaDto } from './dto/area-location.dto';
+import { AddAreaLocationDto, DeactivateAreaDto, UpdateAreaLocationDto } from './dto/area-location.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Role } from '../../common/enums/roles.enum';
@@ -68,6 +68,43 @@ export class AreasController {
   @ApiOperation({ summary: 'Public: active service areas with their locations (curated dropdown)' })
   publicAreas() {
     return this.areasService.publicServiceAreas();
+  }
+
+  // ─── Admin: coverage gaps (uncovered-address demand signals) ──────────────────
+
+  @Get('coverage-gaps')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Uncovered-address demand signals, newest first (admin) — where to open next' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  coverageGaps(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.areasService.listCoverageGaps(page ? Number(page) : 1, limit ? Number(limit) : 50);
+  }
+
+  // ─── Public: resolve a point to coverage (geofence check) ────────────────────
+
+  @Get('resolve')
+  @Public()
+  @ApiOperation({
+    summary: 'Resolve a lat/lng to coverage — covering area/location, or the nearest covered fallback',
+  })
+  @ApiQuery({ name: 'lat', required: true, type: Number })
+  @ApiQuery({ name: 'lng', required: true, type: Number })
+  async resolve(@Query('lat') lat: string, @Query('lng') lng: string) {
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    if (!Number.isFinite(nLat) || !Number.isFinite(nLng) || Math.abs(nLat) > 90 || Math.abs(nLng) > 180) {
+      return { resolved: false, reason: 'invalid_coordinates' };
+    }
+    const res = await this.areasService.resolveAreaForPoint(nLat, nLng, { source: 'resolve_check' });
+    if (!res) return { resolved: false, reason: 'no_geofenced_locations' };
+    return {
+      resolved: true,
+      covered: res.covered,
+      distanceKm: res.distanceKm,
+      area: { id: res.area.id, name: res.area.name, state: res.area.state, transportFeeWP: res.area.transportFeeWP },
+      location: { id: res.location.id, name: res.location.name },
+    };
   }
 
   // ─── Get one ─────────────────────────────────────────────────────────────────
@@ -137,7 +174,18 @@ export class AreasController {
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Add a location/town to an area (admin)' })
   addLocation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddAreaLocationDto) {
-    return this.areasService.addLocation(id, dto.name);
+    return this.areasService.addLocation(id, dto);
+  }
+
+  @Patch(':id/locations/:locationId')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Update a location/town — name and/or geofence (admin)' })
+  updateLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Body() dto: UpdateAreaLocationDto,
+  ) {
+    return this.areasService.updateLocation(id, locationId, dto);
   }
 
   @Delete(':id/locations/:locationId')

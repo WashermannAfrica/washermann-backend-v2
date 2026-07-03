@@ -17,6 +17,7 @@ import { VendorPricing, GarmentPriceItem, priceItemKey, isPriceItemLive } from '
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
 import { User } from '../../database/entities/user.entity';
+import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
@@ -27,6 +28,7 @@ import { Role } from '../../common/enums/roles.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
+import { PlatformConfigService } from '../platform-config/platform-config.service';
 
 @Injectable()
 export class VendorsService {
@@ -51,11 +53,15 @@ export class VendorsService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
 
+    @InjectRepository(ConversionRate)
+    private conversionRateRepository: Repository<ConversionRate>,
+
     private dataSource: DataSource,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
     private redisService: RedisService,
     private referralsService: ReferralsService,
+    private platformConfigService: PlatformConfigService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -406,6 +412,38 @@ export class VendorsService {
       .getOne();
   }
 
+  /**
+   * Market reference for a garment type the assigned vendor did NOT price:
+   * the AVERAGE of the live approved prices of vendors who DO price it
+   * (latest active sheet per vendor, excluding the assigned vendor).
+   * Returns null when nobody prices it.
+   */
+  async averageLivePriceForGarment(garmentType: string, excludeVendorId?: string): Promise<number | null> {
+    const sheets = await this.pricingRepository
+      .createQueryBuilder('p')
+      .where('p.approvedAt IS NOT NULL')
+      .andWhere('p.effectiveFrom <= NOW()')
+      .orderBy('p.effectiveFrom', 'DESC')
+      .getMany();
+
+    const seenVendors = new Set<string>();
+    const prices: number[] = [];
+    for (const sheet of sheets) {
+      if (seenVendors.has(sheet.vendorId)) continue; // only each vendor's latest active sheet
+      seenVendors.add(sheet.vendorId);
+      if (excludeVendorId && sheet.vendorId === excludeVendorId) continue;
+      for (const item of sheet.items) {
+        if (!isPriceItemLive(item)) continue;
+        if (item.garmentType === garmentType && item.priceNaira > 0) {
+          prices.push(item.priceNaira);
+          break;
+        }
+      }
+    }
+    if (!prices.length) return null;
+    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
+  }
+
   /** Load a proposal that is still open for review (not fully finalized as rejected). */
   private async loadReviewableProposal(pricingId: string): Promise<VendorPricing> {
     const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });
@@ -449,6 +487,21 @@ export class VendorsService {
     pricing.approvedAt = new Date();
     pricing.effectiveFrom = effectiveFrom;
     pricing.rejectionReason = null;
+
+    // Drift Option 2 — LOCK the WP/₦ rate onto the sheet at approval. Earnings
+    // minted under this sheet and their payout burn both use this snapshot, so
+    // the vendor's ₦-in equals ₦-out regardless of later platform rate moves.
+    const activeRate = await this.conversionRateRepository
+      .createQueryBuilder('r')
+      .where('r.currency = :c', { c: 'NGN' })
+      .andWhere('r.effective_from <= NOW()')
+      .orderBy('r.effective_from', 'DESC')
+      .getOne();
+    if (activeRate) {
+      pricing.conversionRateId = activeRate.id;
+      pricing.pointsPerUnitSnapshot = activeRate.pointsPerUnit;
+    }
+
     await this.pricingRepository.save(pricing);
 
     // Start the re-pricing cooldown ONLY when nothing was rejected — otherwise the
@@ -517,6 +570,38 @@ export class VendorsService {
     return wallet;
   }
 
+  /**
+   * The ₦/WP rate this vendor's WP actually converts at: the snapshot locked on
+   * their active pricing sheet (same rate their earnings were minted and payouts
+   * burn at), falling back to the global payout rate for pre-lock legacy sheets.
+   */
+  async effectivePayoutRate(vendorId: string): Promise<number> {
+    const active = await this.getActivePricing(vendorId);
+    const locked =
+      active?.pointsPerUnitSnapshot && active.pointsPerUnitSnapshot > 0
+        ? Math.round((1 / active.pointsPerUnitSnapshot) * 10000) / 10000
+        : null;
+    if (locked) return locked;
+    const config = await this.platformConfigService.getConfig();
+    return config.payoutRateNairaPerWP;
+  }
+
+  /**
+   * Wallet with naira-first framing for client display: vendors think in ₦, so
+   * the balance and lifetime earnings are returned in naira alongside the WP.
+   */
+  async getWalletView(vendorId: string) {
+    const wallet = await this.getWallet(vendorId);
+    const rate = await this.effectivePayoutRate(vendorId);
+    const toNaira = (wp: number) => Math.round(wp * rate * 100) / 100;
+    return {
+      ...wallet,
+      payoutRateNairaPerWP: rate,
+      balanceNaira: toNaira(wallet.balance),
+      totalEarnedNaira: toNaira(wallet.totalEarned),
+    };
+  }
+
   async getLedger(vendorId: string, page = 1, limit = 20) {
     const [entries, total] = await this.ledgerRepository.findAndCount({
       where: { vendorId },
@@ -536,15 +621,17 @@ export class VendorsService {
     amount: number,
     source: LedgerSource,
     description: string,
-    meta?: { orderId?: string; nairaSnapshot?: number; reference?: string },
+    meta?: { orderId?: string; nairaSnapshot?: number; reference?: string; countAsEarning?: boolean },
   ) {
     const wallet = await this.walletRepository.findOne({ where: { vendorId } });
     if (!wallet) throw new NotFoundException('Vendor wallet not found');
     if (wallet.status === 'frozen') throw new ForbiddenException('Vendor wallet is frozen');
 
     const balanceBefore = wallet.balance;
-    wallet.balance    += amount;
-    wallet.totalEarned += amount;
+    wallet.balance += amount;
+    // Reversals (e.g. failed-payout re-credits) restore the balance without
+    // inflating lifetime earnings.
+    if (meta?.countAsEarning !== false) wallet.totalEarned += amount;
     await this.walletRepository.save(wallet);
 
     const entry = this.ledgerRepository.create({

@@ -10,7 +10,6 @@ export enum OrderStatus {
   PICKED_UP             = 'picked_up',
   WITH_VENDOR           = 'with_vendor',
   IN_PROGRESS           = 'in_progress',
-  QUALITY_CHECK         = 'quality_check',
   READY_FOR_DELIVERY    = 'ready_for_delivery',
   REP_COLLECTED         = 'rep_collected',
   OUT_FOR_DELIVERY      = 'out_for_delivery',

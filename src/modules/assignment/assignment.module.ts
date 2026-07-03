@@ -8,12 +8,14 @@ import { OrderStatusHistory } from '../../database/entities/order-status-history
 import { AssignmentController } from './assignment.controller';
 import { AssignmentService } from './assignment.service';
 import { AreasModule } from '../areas/areas.module';
+import { PlatformConfigModule } from '../platform-config/platform-config.module';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Rep, Vendor, Order, AssignmentBroadcast, OrderStatusHistory]),
     AreasModule,
+    PlatformConfigModule,
     forwardRef(() => OrdersModule),
   ],
   controllers: [AssignmentController],

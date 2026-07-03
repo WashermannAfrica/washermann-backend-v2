@@ -40,15 +40,18 @@ export class PricingController {
   // ─── Public / authenticated price calculation ─────────────────────────────────
 
   /**
-   * Authoritative server-side price calculation.
-   * Used by the client to show exact pre-payment total.
-   * The order placement endpoint runs this again internally
-   * (the client-provided total is never trusted).
+   * DEPRECATED — legacy bag-size price calculation.
+   * The catalogue-based order flows quote via /quote/wash-iron and /quote/bag/:bagId.
+   * Kept only for clients still on the old bag-size model.
    */
   @Post('calculate')
   @ApiOperation({
-    summary: 'Calculate order price (authoritative)',
-    description: 'Returns full itemised breakdown in WP. The server runs this again at order placement — the result here is for display only.',
+    summary: '[DEPRECATED] Calculate order price (legacy bag-size model)',
+    deprecated: true,
+    description:
+      'DEPRECATED — prices the legacy bag-size model (serviceType + bagSize + specialItems + ironingCount + areaId) ' +
+      'from the platform price list. The current catalogue-based order flows quote via POST /quote/wash-iron and ' +
+      'GET /quote/bag/:bagId — use those instead. Kept only for clients still on the old model.',
   })
   calculate(@Body() dto: CalculatePriceDto) {
     return this.pricingService.calculate(dto);

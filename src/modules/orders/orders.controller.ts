@@ -151,16 +151,6 @@ export class OrdersController {
     return this.ordersService.transition(id, OrderStatus.IN_PROGRESS, req.user.sub, 'vendor');
   }
 
-  @Post(':id/status/quality-check')
-  @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Vendor marks order as in quality check' })
-  markQualityCheck(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Request() req: { user: { sub: string } },
-  ) {
-    return this.ordersService.transition(id, OrderStatus.QUALITY_CHECK, req.user.sub, 'vendor');
-  }
-
   @Post(':id/status/ready-for-delivery')
   @Roles(Role.VENDOR)
   @ApiOperation({ summary: 'Vendor marks order as ready for delivery' })

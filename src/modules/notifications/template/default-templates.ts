@@ -446,15 +446,15 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   {
     key: 'order.earning_credited.vendor', channel: 'email',
     name: 'Earning Credited — Vendor Email',
-    subject: 'Payment Received — Order {{orderRef}}',
+    subject: 'You\'ve been paid ₦{{nairaEquivalent}} — Order {{orderRef}}',
     variables: ['vendorName', 'orderRef', 'earnedWP', 'nairaEquivalent'],
-    body: 'Hi {{vendorName}}, {{earnedWP}} WP (~₦{{nairaEquivalent}}) has been credited to your vendor wallet for order {{orderRef}}.',
+    body: 'Hi {{vendorName}}, ₦{{nairaEquivalent}} has been credited to your wallet for order {{orderRef}}.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
       <p>Payment for order <strong>{{orderRef}}</strong> has been released to your wallet.</p>
       <div class="highlight-box">
-        <div class="highlight-value">{{earnedWP}} WP</div>
-        <div class="highlight-label">~₦{{nairaEquivalent}} at current rate</div>
+        <div class="highlight-value">₦{{nairaEquivalent}}</div>
+        <div class="highlight-label">{{earnedWP}} WP</div>
       </div>
       <p>You can request a payout from your vendor dashboard at any time.</p>
     `),
@@ -462,16 +462,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   {
     key: 'order.earning_credited.vendor', channel: 'push',
     name: 'Earning Credited — Vendor Push',
-    variables: ['orderRef', 'earnedWP'],
-    subject: 'Payment Received 💰',
-    body: '{{earnedWP}} WP credited for order {{orderRef}}.',
+    variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
+    subject: 'You\'ve been paid 💰',
+    body: '₦{{nairaEquivalent}} credited for order {{orderRef}}.',
   },
   {
     key: 'order.earning_credited.vendor', channel: 'in_app',
     name: 'Earning Credited — Vendor In-App',
-    variables: ['orderRef', 'earnedWP'],
+    variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
     subject: 'Payment Received',
-    body: '{{earnedWP}} WP credited to your wallet for completing order {{orderRef}}.',
+    body: '₦{{nairaEquivalent}} credited to your wallet for completing order {{orderRef}} ({{earnedWP}} WP).',
   },
 
   // ── Vendor Account Verified ───────────────────────────────────────────────────
@@ -540,6 +540,41 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     variables: [],
     subject: 'Pricing Approved',
     body: 'Your pricing proposal has been approved. Your new rates are now live for all new orders.',
+  },
+
+  // ── Vendor: garment list logged on an order ─────────────────────────────────
+
+  {
+    key: 'order.garments_logged.vendor', channel: 'email',
+    name: 'Garments Logged — Vendor Email',
+    subject: 'Order {{orderRef}} — {{itemCount}} garments received',
+    variables: ['vendorName', 'orderRef', 'itemsRowsHtml', 'itemsText', 'itemCount', 'earningNaira', 'unpricedCount', 'unpricedNote', 'unpricedNoteHtml'],
+    body: 'Hi {{vendorName}}, the rep has logged the garments for order {{orderRef}}: {{itemsText}}. You will earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The rep has logged the garments for order <strong>{{orderRef}}</strong>. Here is the full list:</p>
+      {{itemsRowsHtml}}
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{earningNaira}}</div>
+        <div class="highlight-label">your earning on this order</div>
+      </div>
+      {{unpricedNoteHtml}}
+      <p>The laundry is on its way to you — you can mark it in progress from your dashboard once you receive it.</p>
+    `),
+  },
+  {
+    key: 'order.garments_logged.vendor', channel: 'push',
+    name: 'Garments Logged — Vendor Push',
+    variables: ['orderRef', 'itemCount', 'earningNaira'],
+    subject: 'Order {{orderRef}} — {{itemCount}} garments',
+    body: 'Garment list logged. You earn ₦{{earningNaira}} on this order. Tap for the full list.',
+  },
+  {
+    key: 'order.garments_logged.vendor', channel: 'in_app',
+    name: 'Garments Logged — Vendor In-App',
+    variables: ['orderRef', 'itemsText', 'earningNaira', 'unpricedNote'],
+    subject: 'Order {{orderRef}} garment list',
+    body: '{{itemsText}}. You earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
   },
 
   // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────
@@ -632,7 +667,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Payout Failed — Vendor Email',
     subject: 'Payout Failed — Action Required',
     variables: ['vendorName', 'nairaAmount', 'failureReason', 'payoutId'],
-    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} could not be processed. Reason: {{failureReason}}. Your WP balance has not been deducted.',
+    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} could not be processed. Reason: {{failureReason}}. Your wallet balance has been restored — you can request the payout again, or contact support if the problem persists.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
       <p>Unfortunately, your payout request of <strong>₦{{nairaAmount}}</strong> could not be processed.</p>
@@ -640,14 +675,14 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
         <div class="highlight-value" style="color:#c62828;">❌ Failed</div>
         <div class="highlight-label">{{failureReason}}</div>
       </div>
-      <p>Your WashPoints balance has not been deducted. Please contact support with reference <strong>{{payoutId}}</strong> to resolve this.</p>
+      <p>Your wallet balance has been <strong>restored in full</strong> — you can check your bank details and request the payout again. If the problem persists, contact support with reference <strong>{{payoutId}}</strong>.</p>
     `),
   },
   {
     key: 'payout.failed.vendor', channel: 'sms',
     name: 'Payout Failed — Vendor SMS',
     variables: ['nairaAmount'],
-    body: 'Your Washermann payout of ₦{{nairaAmount}} failed. Your WP balance is unchanged. Please contact support.',
+    body: 'Your Washermann payout of ₦{{nairaAmount}} failed. Your balance has been restored — you can request again.',
   },
   {
     key: 'payout.failed.vendor', channel: 'push',
@@ -661,7 +696,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Payout Failed — Vendor In-App',
     variables: ['nairaAmount', 'failureReason'],
     subject: 'Payout Failed',
-    body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your WP balance is unchanged.',
+    body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your balance has been restored — you can request again.',
   },
 
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
@@ -720,6 +755,34 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     variables: ['orderRef', 'areaName'],
     subject: 'Manual Assignment Required',
     body: 'No reps available for order {{orderRef}} in {{areaName}}. Please assign a rep manually.',
+  },
+
+  // ── No Vendors Available (admin escalation) ─────────────────────────────────────
+
+  {
+    key: 'assignment.no_vendors.admin', channel: 'email',
+    name: 'No Vendors Available — Admin Email',
+    subject: 'Action Required: No Vendors Available for Order {{orderRef}}',
+    variables: ['orderRef', 'areaName'],
+    body: 'Order {{orderRef}} in {{areaName}} could not be assigned — no available vendors found. Manual assignment required.',
+    htmlBody: buildEmailHtml(`
+      <p>Order <strong>{{orderRef}}</strong> in area <strong>{{areaName}}</strong> could not be automatically assigned to a vendor.</p>
+      <div class="warning">⚠️ No available vendors were found in this area or any adjacent areas. Please assign a vendor manually from the admin panel.</div>
+    `),
+  },
+  {
+    key: 'assignment.no_vendors.admin', channel: 'push',
+    name: 'No Vendors Available — Admin Push',
+    variables: ['orderRef'],
+    subject: 'Manual Assignment Required',
+    body: 'No vendors available for order {{orderRef}}. Manual assignment needed.',
+  },
+  {
+    key: 'assignment.no_vendors.admin', channel: 'in_app',
+    name: 'No Vendors Available — Admin In-App',
+    variables: ['orderRef', 'areaName'],
+    subject: 'Manual Assignment Required',
+    body: 'No vendors available for order {{orderRef}} in {{areaName}}. Please assign a vendor manually.',
   },
 
   // ── Admin: Vendor Pending Verification ───────────────────────────────────────

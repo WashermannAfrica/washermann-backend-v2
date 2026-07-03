@@ -101,6 +101,29 @@ export class VendorPricing {
   @Column({ name: 'rejected_at', type: 'timestamp with time zone', nullable: true })
   rejectedAt: Date | null;
 
+  // ─── Rate lock (drift Option 2) ────────────────────────────────────────────────
+  // The WP/₦ conversion rate is SNAPSHOTTED when the admin finalizes this sheet.
+  // All earnings minted under this sheet AND their payout burn use this locked
+  // rate, so the vendor's ₦-in equals ₦-out regardless of platform rate moves.
+
+  @ApiProperty({ nullable: true, description: 'ConversionRate row locked at approval' })
+  @Column({ name: 'conversion_rate_id', type: 'uuid', nullable: true })
+  conversionRateId: string | null;
+
+  @ApiProperty({ nullable: true, description: 'WP per ₦1, locked at approval' })
+  @Column({
+    name: 'points_per_unit_snapshot',
+    type: 'decimal',
+    precision: 10,
+    scale: 4,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : parseFloat(v)),
+    },
+  })
+  pointsPerUnitSnapshot: number | null;
+
   // ─── Relations ───────────────────────────────────────────────────────────────
   @ManyToOne(() => Vendor, { eager: false })
   @JoinColumn({ name: 'vendor_id' })

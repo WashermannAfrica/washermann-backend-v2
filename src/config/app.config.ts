@@ -47,4 +47,5 @@ export default registerAs('app', () => ({
   appUrl: process.env.APP_URL || null, // e.g. https://dev-api.washermann.com
   deepLinkBase: process.env.DEEP_LINK_BASE || 'https://app.washermann.com',
   salesRepPortalUrl: process.env.SALES_REP_PORTAL_URL || 'http://localhost:3005',
+  adminPortalUrl: process.env.ADMIN_PORTAL_URL || 'http://localhost:3001',
 }));

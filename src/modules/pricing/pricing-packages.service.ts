@@ -5,14 +5,17 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { PricingPackage, PackageAudience } from '../../database/entities/pricing-package.entity';
+import { PricingPackage, PackageAudience, PackageCriteriaItem } from '../../database/entities/pricing-package.entity';
 import { User } from '../../database/entities/user.entity';
 import { Address } from '../../database/entities/address.entity';
 import { Order } from '../../database/entities/order.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
+import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
+import { CatalogueCategory } from '../../database/entities/catalogue-category.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import {
   CreatePricingPackageDto,
+  PackageCriteriaItemDto,
   UpdatePricingPackageDto,
 } from './dto/pricing-package.dto';
 
@@ -45,7 +48,65 @@ export class PricingPackagesService {
 
     @InjectRepository(CompanyEmployee)
     private companyEmployeeRepository: Repository<CompanyEmployee>,
+
+    @InjectRepository(CatalogueItem)
+    private catalogueItemRepository: Repository<CatalogueItem>,
+
+    @InjectRepository(CatalogueCategory)
+    private catalogueCategoryRepository: Repository<CatalogueCategory>,
   ) {}
+
+  // ─── Criteria normalization ───────────────────────────────────────────────────
+
+  /**
+   * Validates and normalizes package criteria lines against the catalogue:
+   *  - a line may reference an item OR a category, never both
+   *  - referenced ids must exist in the catalogue
+   *  - missing labels are auto-filled from the item/category name
+   *  - descriptive lines (label only) pass through untouched
+   */
+  private async normalizeCriteria(lines: PackageCriteriaItemDto[]): Promise<PackageCriteriaItem[]> {
+    const itemIds     = [...new Set(lines.map(l => l.itemId).filter((v): v is string => !!v))];
+    const categoryIds = [...new Set(lines.map(l => l.categoryId).filter((v): v is string => !!v))];
+
+    const [items, categories] = await Promise.all([
+      itemIds.length     ? this.catalogueItemRepository.find({ where: { id: In(itemIds) } })         : Promise.resolve([] as CatalogueItem[]),
+      categoryIds.length ? this.catalogueCategoryRepository.find({ where: { id: In(categoryIds) } }) : Promise.resolve([] as CatalogueCategory[]),
+    ]);
+    const itemById     = new Map(items.map(i => [i.id, i]));
+    const categoryById = new Map(categories.map(c => [c.id, c]));
+
+    return lines.map((line, idx) => {
+      if (line.itemId && line.categoryId) {
+        throw new BadRequestException(`Criteria line ${idx + 1}: reference an item or a category, not both`);
+      }
+
+      let label = line.label?.trim() || '';
+
+      if (line.itemId) {
+        const item = itemById.get(line.itemId);
+        if (!item) throw new NotFoundException(`Criteria line ${idx + 1}: catalogue item ${line.itemId} not found`);
+        if (!label) label = item.name;
+      }
+      if (line.categoryId) {
+        const category = categoryById.get(line.categoryId);
+        if (!category) throw new NotFoundException(`Criteria line ${idx + 1}: catalogue category ${line.categoryId} not found`);
+        if (!label) label = `Any ${category.name}`;
+      }
+
+      if (!label) {
+        throw new BadRequestException(`Criteria line ${idx + 1}: a label is required for descriptive lines`);
+      }
+
+      return {
+        label,
+        itemId:      line.itemId      ?? null,
+        categoryId:  line.categoryId  ?? null,
+        garmentType: line.garmentType ?? null,
+        quantity:    line.quantity    ?? null,
+      };
+    });
+  }
 
   // ─── Admin CRUD ───────────────────────────────────────────────────────────────
 
@@ -59,7 +120,7 @@ export class PricingPackagesService {
       description:    dto.description   ?? null,
       imageUrl:       dto.imageUrl      ?? null,
       priceWP:        dto.priceWP,
-      criteria:       dto.criteria      ?? [],
+      criteria:       dto.criteria ? await this.normalizeCriteria(dto.criteria) : [],
       audience:       dto.audience      ?? { allUsers: true },
       isActive:       dto.isActive      ?? true,
       displayOrder:   dto.displayOrder  ?? 100,
@@ -97,7 +158,7 @@ export class PricingPackagesService {
     if (dto.description    !== undefined) pkg.description    = dto.description ?? null;
     if (dto.imageUrl       !== undefined) pkg.imageUrl       = dto.imageUrl    ?? null;
     if (dto.priceWP        !== undefined) pkg.priceWP        = dto.priceWP;
-    if (dto.criteria       !== undefined) pkg.criteria       = dto.criteria;
+    if (dto.criteria       !== undefined) pkg.criteria       = await this.normalizeCriteria(dto.criteria);
     if (dto.audience       !== undefined) pkg.audience       = dto.audience;
     if (dto.isActive       !== undefined) pkg.isActive       = dto.isActive;
     if (dto.displayOrder   !== undefined) pkg.displayOrder   = dto.displayOrder;

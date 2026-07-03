@@ -63,6 +63,20 @@ export class Vendor extends BaseEntity {
   @Column({ name: 'rating_count', type: 'int', default: 0 })
   ratingCount: number;
 
+  // ─── Assignment-scoring signals (updated by assignment/order engines) ──────────
+
+  @ApiProperty({ nullable: true, description: 'When this vendor last won an assignment (fairness recency)' })
+  @Column({ name: 'last_assigned_at', type: 'timestamp with time zone', nullable: true })
+  lastAssignedAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Rolling average broadcast→accept latency (seconds)' })
+  @Column({ name: 'avg_accept_latency_sec', type: 'float', nullable: true })
+  avgAcceptLatencySec: number | null;
+
+  @ApiProperty({ description: 'Total broadcasts accepted' })
+  @Column({ name: 'accept_count', type: 'int', default: 0 })
+  acceptCount: number;
+
   @ApiProperty({ nullable: true })
   @Column({ name: 'pricing_last_updated_at', type: 'timestamp with time zone', nullable: true })
   pricingLastUpdatedAt: Date | null;

@@ -70,6 +70,32 @@ export class TasksService {
    * If no more candidates are found after expiry, the order stays in its current
    * status and the admin is notified via the status history log.
    */
+  /**
+   * Safety net for the placeOrder auto-start: any order still PAID after ~60s
+   * with no rep broadcast (fire-and-forget failed, or process restarted
+   * mid-placement) gets its assignment started here.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async sweepStalePaidOrders() {
+    const cutoff = new Date(Date.now() - 60_000);
+    const stale = await this.orderRepository.find({
+      where: { status: OrderStatus.PAID, createdAt: LessThan(cutoff) },
+      take: 20,
+    });
+    for (const order of stale) {
+      const existing = await this.broadcastRepository.count({
+        where: { orderId: order.id, targetType: 'rep' },
+      });
+      if (existing > 0) continue;
+      try {
+        this.logger.warn(`Order ${order.reference} stuck in PAID — auto-starting assignment`);
+        await this.assignmentService.startRepAssignment(order.id);
+      } catch (err) {
+        this.logger.error(`Sweep auto-start failed for ${order.reference}: ${(err as Error).message}`);
+      }
+    }
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async expireAssignmentBroadcasts() {
     const now = new Date();

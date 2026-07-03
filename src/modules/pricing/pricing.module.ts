@@ -8,6 +8,7 @@ import { Address } from '../../database/entities/address.entity';
 import { Order } from '../../database/entities/order.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
+import { CatalogueCategory } from '../../database/entities/catalogue-category.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { PlatformPriceList } from '../../database/entities/platform-price-list.entity';
 import { Bag } from '../../database/entities/bag.entity';
@@ -29,7 +30,7 @@ import { AreasModule } from '../areas/areas.module';
     TypeOrmModule.forFeature([
       ConversionRate, VendorPricing, PricingPackage,
       User, Address, Order, CompanyEmployee,
-      CatalogueItem, Vendor, PlatformPriceList, Bag, Bundle, BundleLine,
+      CatalogueItem, CatalogueCategory, Vendor, PlatformPriceList, Bag, Bundle, BundleLine,
     ]),
     PlatformConfigModule,
     AreasModule,
