@@ -72,6 +72,31 @@ export class UploadController {
     return this.uploadService.uploadUserAvatar(req.user.sub, file);
   }
 
+  // ─── Blog: cover + inline editor images ──────────────────────────────────────
+
+  @Post('blog-image')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('file', multerMemory))
+  @ApiOperation({
+    summary: 'Upload a blog image — cover or inline (admin)',
+    description:
+      'Accepts JPEG, PNG, or WebP. Max 5 MB. Capped at 1600px wide. Never overwrites — each upload gets a ' +
+      'unique URL, since published posts reference their images forever. Returns { url, width, height }.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Image file (jpg/png/webp, max 5 MB)' },
+      },
+      required: ['file'],
+    },
+  })
+  uploadBlogImage(@UploadedFile() file: Express.Multer.File) {
+    return this.uploadService.uploadBlogImage(file);
+  }
+
   // ─── Vendor: upload business logo ─────────────────────────────────────────────
 
   @Post('vendor/logo')
