@@ -187,9 +187,18 @@
           <input type="text" id="clientSecret" autocomplete="off" spellcheck="false">
         </div>
         <div class="field">
-          <label for="windowSecs">Window (s)</label>
-          <input type="number" id="windowSecs" value="30" min="5" max="300">
+          <label for="windowSecs">Window (s) <span class="hint">— match the server</span></label>
+          <input type="number" id="windowSecs" value="30" min="5" max="600">
         </div>
+      </div>
+
+      <div class="field">
+        <label for="baseUrl">API base URL <span class="hint">— the environment you'll top up on</span></label>
+        <input type="text" id="baseUrl" placeholder="https://dev-api.washermann.com" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="bearer">Bearer token <span class="hint">— access token from a login on that SAME environment (fills the curl)</span></label>
+        <input type="text" id="bearer" placeholder="eyJhbGciOi…" autocomplete="off" spellcheck="false">
       </div>
     </div>
   </section>
@@ -205,12 +214,13 @@
       <div class="label"><span id="meterText">—</span><span>server also accepts the previous &amp; next window</span></div>
     </div>
 
-    <details>
-      <summary>curl example with this code</summary>
+    <details open>
+      <summary>Ready-to-run curl <button type="button" class="copy" id="copyCurlBtn" style="margin-left:10px;padding:4px 12px;font-size:12px;" disabled>Copy curl</button></summary>
       <pre class="curl" id="curlBox">—</pre>
     </details>
   </section>
 
+  <p class="note"><strong>All values must belong to the SAME environment</strong> you send the request to. A code built with dev's secrets only works against dev; local secrets only against local. Mixing them is the #1 cause of "Invalid X-WM-Topup-Code".</p>
   <p class="note"><strong>Handle secrets like passwords.</strong> Only use this page from a trusted machine. Nothing is stored or sent anywhere — values live only in this tab and vanish when you close it.</p>
   <p class="privacy">All computation happens in your browser (WebCrypto). This page makes no network requests.</p>
 </div>
@@ -251,7 +261,7 @@
   async function compute() {
     const v = inputs();
     const win = Math.floor(Date.now() / (v.windowSecs * 1000));
-    const sig = JSON.stringify([mode, v.userId, v.signingSecret, v.topupKeyDirect, v.clientSecret, v.windowSecs, win]);
+    const sig = JSON.stringify([mode, v.userId, v.signingSecret, v.topupKeyDirect, v.clientSecret, v.windowSecs, win, $('baseUrl').value, $('bearer').value]);
     if (sig === lastInputsSig) return;
     lastInputsSig = sig;
     lastWindow = win;
@@ -263,6 +273,7 @@
       codeBox.textContent = 'Fill in the fields above — the code appears here and refreshes itself.';
       codeBox.classList.add('idle');
       copyBtn.disabled = true;
+      $('copyCurlBtn').disabled = true;
       curlBox.textContent = '—';
       return;
     }
@@ -276,12 +287,15 @@
       codeBox.textContent = code;
       codeBox.classList.remove('idle');
       copyBtn.disabled = false;
+      const base = ($('baseUrl').value.trim() || '$API').replace(/\/+$/, '');
+      const bearer = $('bearer').value.trim() || '$TOKEN';
       curlBox.textContent =
-        'curl -X POST "$API/api/v1/wallets/me/topup" \\\n' +
-        '  -H "Authorization: Bearer $TOKEN" \\\n' +
+        'curl -X POST "' + base + '/api/v1/wallets/me/topup" \\\n' +
+        '  -H "Authorization: Bearer ' + bearer + '" \\\n' +
         '  -H "X-WM-Topup-Code: ' + code + '" \\\n' +
         '  -H "Content-Type: application/json" \\\n' +
         '  -d \'{"amountNaira": 1000}\'';
+      $('copyCurlBtn').disabled = false;
     } catch (e) {
       currentCode = '';
       codeBox.textContent = 'Could not compute — check the values (' + e.message + ')';
@@ -313,7 +327,7 @@
 
   $('modeSecret').addEventListener('click', () => setMode('secret'));
   $('modeKey').addEventListener('click', () => setMode('key'));
-  ['userId', 'signingSecret', 'topupKey', 'clientSecret', 'windowSecs'].forEach(id =>
+  ['userId', 'signingSecret', 'topupKey', 'clientSecret', 'windowSecs', 'baseUrl', 'bearer'].forEach(id =>
     $(id).addEventListener('input', () => { lastInputsSig = ''; tick(); })
   );
 
@@ -323,6 +337,16 @@
     const b = $('copyBtn');
     b.textContent = 'Copied';
     setTimeout(() => { b.textContent = 'Copy'; }, 1200);
+  });
+
+  $('copyCurlBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const text = $('curlBox').textContent;
+    if (!text || text === '—') return;
+    await navigator.clipboard.writeText(text);
+    const b = $('copyCurlBtn');
+    b.textContent = 'Copied';
+    setTimeout(() => { b.textContent = 'Copy curl'; }, 1200);
   });
 
   setInterval(tick, 250);

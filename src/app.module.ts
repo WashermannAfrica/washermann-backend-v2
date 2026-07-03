@@ -57,6 +57,7 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { SalesRepModule } from './modules/sales-rep/sales-rep.module';
 import { RateEngineModule } from './modules/rate-engine/rate-engine.module';
 import { GamesModule } from './modules/games/games.module';
+import { BlogModule } from './modules/blog/blog.module';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { GamesModule } from './modules/games/games.module';
     SalesRepModule,
     RateEngineModule,
     GamesModule,
+    BlogModule,
   ],
 
   providers: [

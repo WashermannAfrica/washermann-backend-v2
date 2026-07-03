@@ -10,6 +10,11 @@
  *   API_URL=http://localhost:3009 ADMIN_EMAIL=... ADMIN_PASSWORD=... node scripts/seed-lagos-areas.js
  *   node scripts/seed-lagos-areas.js --dry-run          # print the plan, write nothing
  *   node scripts/seed-lagos-areas.js --adjacency-only   # only (re)apply adjacency links
+ *   node scripts/seed-lagos-areas.js --replace          # make the target MATCH the plan:
+ *     - plan areas that already exist are updated in place (same id — reps/vendors/orders
+ *       keep valid references): fields overwritten, towns replaced with the plan's
+ *       geofenced ones, adjacency overwritten
+ *     - areas NOT in the plan are deactivated (soft — never deleted)
  *
  * Coordinates: verified against OSM/Nominatim where possible; towns marked
  * "verify" resolved poorly in geocoders — their circles are best-estimates and
@@ -23,6 +28,7 @@ const EMAIL     = process.env.ADMIN_EMAIL;
 const PASSWORD  = process.env.ADMIN_PASSWORD;
 const DRY_RUN   = process.argv.includes('--dry-run');
 const ADJ_ONLY  = process.argv.includes('--adjacency-only');
+const REPLACE   = process.argv.includes('--replace');
 const BASE      = `${API_URL.replace(/\/$/, '')}/api/v1`;
 
 const L = (name, lat, lng, r) => ({ name, centerLat: lat, centerLng: lng, radiusKm: r });
@@ -314,19 +320,57 @@ async function main() {
   });
   const token = login.data.accessToken;
 
-  const existing = await api('/areas?limit=100', {}, token);
-  const byName = new Map(existing.data.map((a) => [a.name.trim().toLowerCase(), a]));
-  console.log(`Existing areas on target: ${existing.data.length}`);
+  const existingRes = await api('/areas?limit=100', {}, token);
+  const existingRows = existingRes.data;
+  const byName = new Map(existingRows.map((a) => [a.name.trim().toLowerCase(), a]));
+  console.log(`Existing areas on target: ${existingRows.length}${REPLACE ? '  (REPLACE mode)' : ''}`);
 
-  // Pass 1 — create missing areas (with their towns)
-  let created = 0, skipped = 0;
+  // Pass 1 — create missing areas; with --replace, also overwrite existing plan areas
+  let created = 0, skipped = 0, replaced = 0, deactivated = 0;
   if (!ADJ_ONLY) {
     for (const area of AREAS) {
-      if (byName.has(area.name.toLowerCase())) {
+      const existing = byName.get(area.name.toLowerCase());
+
+      if (existing && !REPLACE) {
         console.log(`  = exists, skipping: ${area.name}`);
         skipped++;
         continue;
       }
+
+      if (existing && REPLACE) {
+        if (DRY_RUN) {
+          console.log(`  ~ would replace in place: ${area.name} (${existing.locations?.length ?? 0} old towns → ${area.locations.length} plan towns)`);
+          replaced++;
+          continue;
+        }
+        // Overwrite fields (same id — references stay valid)
+        await api(`/areas/${existing.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            state: area.state,
+            lga: area.lga,
+            description: area.description,
+            transportFeeWP: area.transportFeeWP,
+            targetUsers: area.targetUsers,
+            isActive: true,
+          }),
+        }, token);
+        // Swap towns: delete every old location, add the plan's geofenced ones
+        for (const loc of existing.locations ?? []) {
+          try {
+            await api(`/areas/${existing.id}/locations/${loc.id}`, { method: 'DELETE' }, token);
+          } catch (e) {
+            console.warn(`    ! could not remove old town "${loc.name}" (${e.message}) — leaving it`);
+          }
+        }
+        for (const loc of area.locations) {
+          await api(`/areas/${existing.id}/locations`, { method: 'POST', body: JSON.stringify(loc) }, token);
+        }
+        console.log(`  ~ replaced in place: ${area.name} (${area.locations.length} towns)`);
+        replaced++;
+        continue;
+      }
+
       if (DRY_RUN) {
         console.log(`  + would create: ${area.name} (${area.locations.length} towns, fee ${area.transportFeeWP} WP)`);
         created++;
@@ -337,6 +381,26 @@ async function main() {
       byName.set(area.name.toLowerCase(), res.data);
       console.log(`  + created: ${area.name} (${res.data.locations?.length ?? 0} towns)`);
       created++;
+    }
+
+    // --replace: deactivate areas on the target that are NOT part of the plan
+    if (REPLACE) {
+      const planNames = new Set(AREAS.map((a) => a.name.toLowerCase()));
+      for (const row of existingRows) {
+        if (planNames.has(row.name.trim().toLowerCase())) continue;
+        if (!row.isActive) continue;
+        if (DRY_RUN) {
+          console.log(`  - would deactivate (not in plan): ${row.name}`);
+          deactivated++;
+          continue;
+        }
+        await api(`/areas/${row.id}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ reason: 'Replaced by Lagos coverage plan seed' }),
+        }, token);
+        console.log(`  - deactivated (not in plan): ${row.name}`);
+        deactivated++;
+      }
     }
   }
 
@@ -352,7 +416,8 @@ async function main() {
       console.warn(`  ! ${area.name}: some adjacent areas not found on target`);
     }
     const currentIds = row.adjacentAreaIds || [];
-    if (!ADJ_ONLY && currentIds.length > 0) { continue; } // don't clobber manual edits
+    // Default mode never clobbers manual adjacency edits; --replace/--adjacency-only overwrite.
+    if (!ADJ_ONLY && !REPLACE && currentIds.length > 0) { continue; }
     if (JSON.stringify(currentIds) === JSON.stringify(wantIds)) continue;
     if (DRY_RUN) {
       console.log(`  ~ would link ${area.name} → [${area.adjacent.join(', ')}]`);
@@ -364,7 +429,7 @@ async function main() {
     linked++;
   }
 
-  console.log(`\nDone. created=${created} skipped=${skipped} adjacency-updated=${linked}`);
+  console.log(`\nDone. created=${created} replaced=${replaced} deactivated=${deactivated} skipped=${skipped} adjacency-updated=${linked}`);
   if (!DRY_RUN && created > 0) {
     console.log('Reminder: towns marked "verify" in this script should be pin-checked in Admin → Areas → Edit towns.');
   }

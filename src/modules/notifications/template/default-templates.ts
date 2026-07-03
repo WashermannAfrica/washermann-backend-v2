@@ -807,4 +807,66 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     subject: 'New Vendor Pending Review',
     body: '{{vendorName}} is awaiting document verification. Vendor ID: {{vendorId}}.',
   },
+
+  // ── Blog: maker-checker review ────────────────────────────────────────────────
+
+  {
+    key: 'blog.submitted.admin', channel: 'email',
+    name: 'Blog Post Submitted — Admin Email',
+    subject: 'Blog post awaiting review: "{{postTitle}}"',
+    variables: ['postTitle', 'authorName', 'postId'],
+    body: '{{authorName}} submitted "{{postTitle}}" for review. Open the admin Blog section to approve or request changes. (The author cannot approve their own post.)',
+    htmlBody: buildEmailHtml(`
+      <p><strong>{{authorName}}</strong> submitted a blog post for review:</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">"{{postTitle}}"</div></div>
+      <p>Open the admin <strong>Blog</strong> section to read it, then approve it or request changes. Reminder: the author cannot approve their own post — it needs your eyes.</p>
+    `),
+  },
+  {
+    key: 'blog.submitted.admin', channel: 'in_app',
+    name: 'Blog Post Submitted — Admin In-App',
+    variables: ['postTitle', 'authorName'],
+    subject: 'Blog post awaiting review',
+    body: '{{authorName}} submitted "{{postTitle}}" — review it in the Blog section.',
+  },
+  {
+    key: 'blog.approved.author', channel: 'email',
+    name: 'Blog Post Approved — Author Email',
+    subject: 'Published: "{{postTitle}}" 🎉',
+    variables: ['authorName', 'postTitle', 'postSlug'],
+    body: 'Hi {{authorName}}, your post "{{postTitle}}" was approved and is now live on the blog.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{authorName}}</strong>,</p>
+      <p>Your post has been approved and is now live:</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">"{{postTitle}}"</div></div>
+      <p>Readers can find it at <strong>/blog/{{postSlug}}</strong>. Nice work! 🎉</p>
+    `),
+  },
+  {
+    key: 'blog.approved.author', channel: 'in_app',
+    name: 'Blog Post Approved — Author In-App',
+    variables: ['postTitle'],
+    subject: 'Post published 🎉',
+    body: '"{{postTitle}}" was approved and is now live on the blog.',
+  },
+  {
+    key: 'blog.changes_requested.author', channel: 'email',
+    name: 'Blog Changes Requested — Author Email',
+    subject: 'Changes requested on "{{postTitle}}"',
+    variables: ['authorName', 'postTitle', 'reviewNote'],
+    body: 'Hi {{authorName}}, the reviewer requested changes on "{{postTitle}}": {{reviewNote}}. Edit the draft and resubmit when ready.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{authorName}}</strong>,</p>
+      <p>The reviewer requested changes on <strong>"{{postTitle}}"</strong>:</p>
+      <div class="highlight-box"><div class="highlight-label" style="font-size:14px;">{{reviewNote}}</div></div>
+      <p>Edit the draft in the admin Blog section and resubmit when ready. If the post was already live, readers keep seeing the previous approved version in the meantime.</p>
+    `),
+  },
+  {
+    key: 'blog.changes_requested.author', channel: 'in_app',
+    name: 'Blog Changes Requested — Author In-App',
+    variables: ['postTitle', 'reviewNote'],
+    subject: 'Changes requested',
+    body: '"{{postTitle}}": {{reviewNote}}',
+  },
 ];

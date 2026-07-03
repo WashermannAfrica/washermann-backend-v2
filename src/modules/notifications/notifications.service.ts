@@ -796,6 +796,72 @@ export class NotificationsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // BLOG (maker-checker review)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** All active users holding the admin role — recipients for review requests. */
+  private async adminUsers(): Promise<User[]> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .where(`string_to_array(user.roles, ',') && ARRAY['admin']::text[]`)
+      .andWhere(`user.status = 'active'`)
+      .getMany();
+  }
+
+  /** Fire when a post is submitted for review — nudge every other admin. */
+  async notifyBlogSubmitted(params: {
+    postId: string;
+    title: string;
+    authorName: string;
+    excludeUserId: string;
+  }) {
+    const vars: Record<string, string | number> = {
+      postTitle: params.title,
+      authorName: params.authorName,
+      postId: params.postId,
+    };
+    const meta = { postId: params.postId };
+
+    fire(async () => {
+      const admins = (await this.adminUsers()).filter((u) => u.id !== params.excludeUserId);
+      const adminEmail = this.adminEmail();
+      await Promise.all([
+        adminEmail && this.sendEmail('blog.submitted.admin', adminEmail, vars),
+        ...admins.map((a) => this.sendInApp('blog.submitted.admin', a.id, vars, 'general', meta)),
+      ]);
+    }, this.logger, 'blog.submitted.admin');
+  }
+
+  /** Fire when a reviewer approves or requests changes — tell the author. */
+  async notifyBlogReviewDecision(params: {
+    postId: string;
+    title: string;
+    slug: string;
+    authorUserId: string;
+    approved: boolean;
+    note: string | null;
+  }) {
+    const author = await this.getUser(params.authorUserId);
+    if (!author) return;
+
+    const key = params.approved ? 'blog.approved.author' : 'blog.changes_requested.author';
+    const vars: Record<string, string | number> = {
+      authorName: author.fullName,
+      postTitle: params.title,
+      postSlug: params.slug,
+      reviewNote: params.note ?? '',
+    };
+    const meta = { postId: params.postId };
+
+    fire(async () => {
+      await Promise.all([
+        author.email && this.sendEmail(key, author.email, vars),
+        this.sendInApp(key, author.id, vars, 'general', meta),
+      ]);
+    }, this.logger, key);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PAYOUT EVENTS
   // ═══════════════════════════════════════════════════════════════════════════
 
