@@ -30,6 +30,15 @@ export class SalesRepController {
   constructor(private readonly service: SalesRepService) {}
 
   // ─── Public application ───────────────────────────────────────────────────────
+  @Get('applications/availability')
+  @Public()
+  @ApiOperation({ summary: 'Public: is this email/phone already registered? (form pre-check)' })
+  @ApiQuery({ name: 'email', required: false })
+  @ApiQuery({ name: 'phone', required: false })
+  checkAvailability(@Query('email') email?: string, @Query('phone') phone?: string) {
+    return this.service.checkAvailability(email, phone);
+  }
+
   @Post('applications')
   @Public()
   @ApiOperation({ summary: 'Apply to become a sales rep (public)' })
