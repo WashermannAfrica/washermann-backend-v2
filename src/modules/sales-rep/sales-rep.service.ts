@@ -92,6 +92,22 @@ export class SalesRepService implements OnModuleInit {
   }
 
   // ─── Public application ───────────────────────────────────────────────────────
+  /**
+   * Public pre-submit check for the application form: is this email/phone already
+   * tied to a user account? Mirrors the accept-time conflict (phone is UNIQUE on
+   * users; an existing email account would just gain the SALES_REP role, but we
+   * still surface it so the applicant knows to log in instead of re-registering).
+   */
+  async checkAvailability(email?: string, phone?: string) {
+    const e = email?.trim().toLowerCase();
+    const p = phone?.trim();
+    const [emailTaken, phoneTaken] = await Promise.all([
+      e ? this.users.exists({ where: { email: e } }) : Promise.resolve(false),
+      p ? this.users.exists({ where: { phone: p } }) : Promise.resolve(false),
+    ]);
+    return { emailTaken, phoneTaken };
+  }
+
   async apply(dto: CreateSalesRepApplicationDto) {
     const application = this.applications.create({
       fullName: dto.fullName.trim(),
