@@ -34,7 +34,7 @@ export class PlatformConfigService {
       platformPriceOffsetPercent: 25,
       repSharePercent: 15,
       serviceChargePercent: 5,
-      payoutRateNairaPerWP: 9,
+      payoutRateNairaPerWP: 6.86, // launch anchor V=₦6.86/WP (locked); rate engine governs thereafter
       lowRatingThreshold: 3.5,
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
