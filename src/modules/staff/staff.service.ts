@@ -66,7 +66,11 @@ export class StaffService {
     const token = uuidv4();
     await this.redisService.setEx(`${INVITE_TOKEN_PREFIX}${token}`, INVITE_TTL, user.id);
 
-    const deepLinkBase = this.configService.get<string>('app.deepLinkBase') || this.configService.get<string>('app.frontendUrl') || 'https://app.washermann.com';
+    // Staff activate in the ADMIN web portal — never the mobile deep link.
+    const deepLinkBase =
+      this.configService.get<string>('app.adminPortalUrl') ||
+      this.configService.get<string>('app.frontendUrl') ||
+      'http://localhost:3001';
 
     await this.notificationsService.sendStaffInvite({
       fullName: dto.fullName,
@@ -89,7 +93,9 @@ export class StaffService {
   async listStaff(page: number, limit: number): Promise<{ data: object[]; meta: object }> {
     const [users, total] = await this.userRepo
       .createQueryBuilder('user')
-      .where(`user.roles && ARRAY[:...roles]::varchar[]`, { roles: STAFF_ROLES })
+      // roles is a simple-array (comma-separated text); split then overlap so we
+      // match whole roles exactly (avoids 'admin' matching 'company_admin').
+      .where(`string_to_array(user.roles, ',') && ARRAY[:...roles]::text[]`, { roles: STAFF_ROLES })
       .orderBy('user.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)

@@ -9,8 +9,11 @@ import {
   MaxLength,
   Min,
   ArrayMaxSize,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AddAreaLocationDto } from './area-location.dto';
 
 export class CreateAreaDto {
   @ApiProperty({ example: 'Lekki Phase 1' })
@@ -55,4 +58,22 @@ export class CreateAreaDto {
   @IsInt()
   @Min(0)
   transportFeeWP: number;
+
+  @ApiPropertyOptional({ description: 'Target number of users for this area', example: 500, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  targetUsers?: number;
+
+  @ApiPropertyOptional({
+    description: 'Towns/locations within the area — each a circle geofence (name + center + radius)',
+    type: [AddAreaLocationDto],
+    example: [{ name: 'Oniru', centerLat: 6.4281, centerLng: 3.4219, radiusKm: 2.5 }],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AddAreaLocationDto)
+  @ArrayMaxSize(50)
+  locations?: AddAreaLocationDto[];
 }

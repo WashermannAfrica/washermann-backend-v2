@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Order } from '../../database/entities/order.entity';
 import { OrderEscrow } from '../../database/entities/order-escrow.entity';
@@ -16,6 +16,9 @@ import { VendorsModule } from '../vendors/vendors.module';
 import { RepsModule } from '../reps/reps.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
 import { UsersModule } from '../users/users.module';
+import { ReferralsModule } from '../referrals/referrals.module';
+import { AreasModule } from '../areas/areas.module';
+import { AssignmentModule } from '../assignment/assignment.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { UsersModule } from '../users/users.module';
     RepsModule,
     PlatformConfigModule,
     UsersModule,
+    ReferralsModule,
+    AreasModule,
+    forwardRef(() => AssignmentModule),
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

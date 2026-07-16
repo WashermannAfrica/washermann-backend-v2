@@ -1,15 +1,16 @@
 import { NotificationChannel, EmailStyle } from '../../../database/entities/notification-template.entity';
 
+// Washermann brand palette — see also notifications/templates/index.ts
 const DEFAULT_EMAIL_STYLE: EmailStyle = {
-  primaryColor:  '#1a1a2e',
-  accentColor:   '#4fc3f7',
-  bodyBgColor:   '#f5f5f5',
+  primaryColor:  '#00281c', // deep green — header background, emphasis
+  accentColor:   '#13c490', // mint-green — buttons, links, highlights
+  bodyBgColor:   '#eef2f0', // soft green-gray page background
   cardBgColor:   '#ffffff',
-  textColor:     '#444444',
+  textColor:     '#2c3a33',
   logoUrl:       null,
   logoAlt:       'Washermann',
   footerText:    '© {{year}} Washermann. All rights reserved.',
-  fontFamily:    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  fontFamily:    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 };
 
 /**
@@ -27,37 +28,37 @@ export const buildEmailHtml = (contentBlock: string, style: EmailStyle = DEFAULT
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{background:${style.bodyBgColor};font-family:${style.fontFamily};color:${style.textColor};}
-    .wrapper{max-width:560px;margin:40px auto;background:${style.cardBgColor};border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
-    .header{background:${style.primaryColor};padding:28px 32px;text-align:center;}
-    .header-logo{max-height:48px;margin-bottom:8px;}
-    .header h1{color:#fff;font-size:22px;font-weight:700;letter-spacing:-.3px;}
-    .header h1 span{color:${style.accentColor};}
+    a{color:${style.accentColor};}
+    .wrapper{max-width:560px;margin:40px auto;background:${style.cardBgColor};border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(0,40,28,.08);}
+    .header{background:${style.primaryColor};padding:32px;text-align:center;}
+    .header-logo{width:170px;max-width:62%;height:auto;display:block;margin:0 auto;border:0;}
+    .header h1{color:#fff;font-size:24px;font-weight:800;letter-spacing:-.4px;}
+    .header h1 span{color:#3bf4be;}
+    .header .tagline{color:rgba(255,255,255,.55);font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-top:8px;}
     .body{padding:36px 32px;}
     .body p{font-size:15px;line-height:1.7;color:${style.textColor};margin-bottom:16px;}
-    .highlight-box{background:#f0f7ff;border:2px dashed ${style.accentColor};border-radius:10px;padding:20px;text-align:center;margin:24px 0;}
+    .body strong{color:${style.primaryColor};}
+    .highlight-box{background:#e8faf2;border:2px dashed ${style.accentColor};border-radius:12px;padding:22px;text-align:center;margin:24px 0;}
     .highlight-value{font-size:28px;font-weight:800;color:${style.primaryColor};}
-    .highlight-label{font-size:13px;color:#888;margin-top:6px;}
-    .btn{display:inline-block;background:${style.primaryColor};color:#fff!important;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;margin:8px 0;}
-    .divider{height:1px;background:#f0f0f0;margin:24px 0;}
-    .info-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5;font-size:14px;}
-    .info-row span:first-child{color:#888;}
+    .highlight-label{font-size:13px;color:#7c8b83;margin-top:6px;}
+    .btn{display:inline-block;background:${style.accentColor};color:#fff!important;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;margin:8px 0;}
+    .divider{height:1px;background:#e7ece9;margin:24px 0;}
+    .info-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f3f1;font-size:14px;}
+    .info-row span:first-child{color:#7c8b83;}
     .info-row span:last-child{font-weight:600;color:${style.primaryColor};}
     .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;}
     .badge-success{background:#e8f5e9;color:#2e7d32;}
     .badge-warning{background:#fff8e1;color:#f57f17;}
     .badge-danger{background:#ffebee;color:#c62828;}
-    .warning{background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;}
-    .footer{background:#fafafa;padding:20px 32px;text-align:center;border-top:1px solid #f0f0f0;}
-    .footer p{font-size:12px;color:#aaa;line-height:1.6;}
+    .warning{background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#7a6a3a;margin-top:16px;}
+    .footer{background:#f6f9f7;padding:22px 32px;text-align:center;border-top:1px solid #e7ece9;}
+    .footer p{font-size:12px;color:#7c8b83;line-height:1.6;}
   </style>
 </head>
 <body>
   <div class="wrapper">
     <div class="header">
-      ${style.logoUrl
-        ? `<img src="${style.logoUrl}" alt="${style.logoAlt}" class="header-logo"/>`
-        : `<h1>Washer<span>mann</span></h1>`
-      }
+      {{#if logoUrl}}<img src="{{logoUrl}}" alt="Washermann" class="header-logo" width="170"/>{{else}}<h1>Washer<span>mann</span></h1><div class="tagline">Laundry, handled</div>{{/if}}
     </div>
     <div class="body">${contentBlock}</div>
     <div class="footer">
@@ -445,15 +446,15 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   {
     key: 'order.earning_credited.vendor', channel: 'email',
     name: 'Earning Credited — Vendor Email',
-    subject: 'Payment Received — Order {{orderRef}}',
+    subject: 'You\'ve been paid ₦{{nairaEquivalent}} — Order {{orderRef}}',
     variables: ['vendorName', 'orderRef', 'earnedWP', 'nairaEquivalent'],
-    body: 'Hi {{vendorName}}, {{earnedWP}} WP (~₦{{nairaEquivalent}}) has been credited to your vendor wallet for order {{orderRef}}.',
+    body: 'Hi {{vendorName}}, ₦{{nairaEquivalent}} has been credited to your wallet for order {{orderRef}}.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
       <p>Payment for order <strong>{{orderRef}}</strong> has been released to your wallet.</p>
       <div class="highlight-box">
-        <div class="highlight-value">{{earnedWP}} WP</div>
-        <div class="highlight-label">~₦{{nairaEquivalent}} at current rate</div>
+        <div class="highlight-value">₦{{nairaEquivalent}}</div>
+        <div class="highlight-label">{{earnedWP}} WP</div>
       </div>
       <p>You can request a payout from your vendor dashboard at any time.</p>
     `),
@@ -461,16 +462,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   {
     key: 'order.earning_credited.vendor', channel: 'push',
     name: 'Earning Credited — Vendor Push',
-    variables: ['orderRef', 'earnedWP'],
-    subject: 'Payment Received 💰',
-    body: '{{earnedWP}} WP credited for order {{orderRef}}.',
+    variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
+    subject: 'You\'ve been paid 💰',
+    body: '₦{{nairaEquivalent}} credited for order {{orderRef}}.',
   },
   {
     key: 'order.earning_credited.vendor', channel: 'in_app',
     name: 'Earning Credited — Vendor In-App',
-    variables: ['orderRef', 'earnedWP'],
+    variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
     subject: 'Payment Received',
-    body: '{{earnedWP}} WP credited to your wallet for completing order {{orderRef}}.',
+    body: '₦{{nairaEquivalent}} credited to your wallet for completing order {{orderRef}} ({{earnedWP}} WP).',
   },
 
   // ── Vendor Account Verified ───────────────────────────────────────────────────
@@ -541,6 +542,75 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'Your pricing proposal has been approved. Your new rates are now live for all new orders.',
   },
 
+  // ── Vendor: garment list logged on an order ─────────────────────────────────
+
+  {
+    key: 'order.garments_logged.vendor', channel: 'email',
+    name: 'Garments Logged — Vendor Email',
+    subject: 'Order {{orderRef}} — {{itemCount}} garments received',
+    variables: ['vendorName', 'orderRef', 'itemsRowsHtml', 'itemsText', 'itemCount', 'earningNaira', 'unpricedCount', 'unpricedNote', 'unpricedNoteHtml'],
+    body: 'Hi {{vendorName}}, the rep has logged the garments for order {{orderRef}}: {{itemsText}}. You will earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The rep has logged the garments for order <strong>{{orderRef}}</strong>. Here is the full list:</p>
+      {{itemsRowsHtml}}
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{earningNaira}}</div>
+        <div class="highlight-label">your earning on this order</div>
+      </div>
+      {{unpricedNoteHtml}}
+      <p>The laundry is on its way to you — you can mark it in progress from your dashboard once you receive it.</p>
+    `),
+  },
+  {
+    key: 'order.garments_logged.vendor', channel: 'push',
+    name: 'Garments Logged — Vendor Push',
+    variables: ['orderRef', 'itemCount', 'earningNaira'],
+    subject: 'Order {{orderRef}} — {{itemCount}} garments',
+    body: 'Garment list logged. You earn ₦{{earningNaira}} on this order. Tap for the full list.',
+  },
+  {
+    key: 'order.garments_logged.vendor', channel: 'in_app',
+    name: 'Garments Logged — Vendor In-App',
+    variables: ['orderRef', 'itemsText', 'earningNaira', 'unpricedNote'],
+    subject: 'Order {{orderRef}} garment list',
+    body: '{{itemsText}}. You earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
+  },
+
+  // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────
+
+  {
+    key: 'pricing.reviewed.vendor', channel: 'email',
+    name: 'Pricing Reviewed — Vendor Email',
+    subject: 'Your pricing has been reviewed — {{approvedCount}} approved, {{rejectedCount}} need changes',
+    variables: ['vendorName', 'approvedCount', 'rejectedCount', 'approvedRowsHtml', 'rejectedRowsHtml'],
+    body: 'Hi {{vendorName}}, your pricing has been reviewed. Approved: {{approvedText}}. Needs changes: {{rejectedText}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Our team has reviewed your pricing. Here's the outcome:</p>
+      <p style="font-weight:700;color:#2e7d32;margin-top:20px;">✅ Approved ({{approvedCount}}) — now live</p>
+      {{approvedRowsHtml}}
+      <p style="font-weight:700;color:#c62828;margin-top:20px;">✕ Needs changes ({{rejectedCount}})</p>
+      {{rejectedRowsHtml}}
+      <div class="divider"></div>
+      <p>Approved prices are already live for new orders. For the lines that need changes, please review the reasons above and submit updated prices from your vendor dashboard.</p>
+    `),
+  },
+  {
+    key: 'pricing.reviewed.vendor', channel: 'push',
+    name: 'Pricing Reviewed — Vendor Push',
+    variables: ['approvedCount', 'rejectedCount'],
+    subject: 'Pricing reviewed',
+    body: '{{approvedCount}} price(s) approved, {{rejectedCount}} need changes. Tap to view.',
+  },
+  {
+    key: 'pricing.reviewed.vendor', channel: 'in_app',
+    name: 'Pricing Reviewed — Vendor In-App',
+    variables: ['approvedCount', 'rejectedCount'],
+    subject: 'Pricing reviewed',
+    body: 'Your pricing was reviewed: {{approvedCount}} approved (now live), {{rejectedCount}} need changes. Approved: {{approvedText}}. Needs changes: {{rejectedText}}.',
+  },
+
   // ── Payout Approved ───────────────────────────────────────────────────────────
 
   {
@@ -597,7 +667,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Payout Failed — Vendor Email',
     subject: 'Payout Failed — Action Required',
     variables: ['vendorName', 'nairaAmount', 'failureReason', 'payoutId'],
-    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} could not be processed. Reason: {{failureReason}}. Your WP balance has not been deducted.',
+    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} could not be processed. Reason: {{failureReason}}. Your wallet balance has been restored — you can request the payout again, or contact support if the problem persists.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
       <p>Unfortunately, your payout request of <strong>₦{{nairaAmount}}</strong> could not be processed.</p>
@@ -605,14 +675,14 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
         <div class="highlight-value" style="color:#c62828;">❌ Failed</div>
         <div class="highlight-label">{{failureReason}}</div>
       </div>
-      <p>Your WashPoints balance has not been deducted. Please contact support with reference <strong>{{payoutId}}</strong> to resolve this.</p>
+      <p>Your wallet balance has been <strong>restored in full</strong> — you can check your bank details and request the payout again. If the problem persists, contact support with reference <strong>{{payoutId}}</strong>.</p>
     `),
   },
   {
     key: 'payout.failed.vendor', channel: 'sms',
     name: 'Payout Failed — Vendor SMS',
     variables: ['nairaAmount'],
-    body: 'Your Washermann payout of ₦{{nairaAmount}} failed. Your WP balance is unchanged. Please contact support.',
+    body: 'Your Washermann payout of ₦{{nairaAmount}} failed. Your balance has been restored — you can request again.',
   },
   {
     key: 'payout.failed.vendor', channel: 'push',
@@ -626,7 +696,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Payout Failed — Vendor In-App',
     variables: ['nairaAmount', 'failureReason'],
     subject: 'Payout Failed',
-    body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your WP balance is unchanged.',
+    body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your balance has been restored — you can request again.',
   },
 
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
@@ -687,6 +757,34 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'No reps available for order {{orderRef}} in {{areaName}}. Please assign a rep manually.',
   },
 
+  // ── No Vendors Available (admin escalation) ─────────────────────────────────────
+
+  {
+    key: 'assignment.no_vendors.admin', channel: 'email',
+    name: 'No Vendors Available — Admin Email',
+    subject: 'Action Required: No Vendors Available for Order {{orderRef}}',
+    variables: ['orderRef', 'areaName'],
+    body: 'Order {{orderRef}} in {{areaName}} could not be assigned — no available vendors found. Manual assignment required.',
+    htmlBody: buildEmailHtml(`
+      <p>Order <strong>{{orderRef}}</strong> in area <strong>{{areaName}}</strong> could not be automatically assigned to a vendor.</p>
+      <div class="warning">⚠️ No available vendors were found in this area or any adjacent areas. Please assign a vendor manually from the admin panel.</div>
+    `),
+  },
+  {
+    key: 'assignment.no_vendors.admin', channel: 'push',
+    name: 'No Vendors Available — Admin Push',
+    variables: ['orderRef'],
+    subject: 'Manual Assignment Required',
+    body: 'No vendors available for order {{orderRef}}. Manual assignment needed.',
+  },
+  {
+    key: 'assignment.no_vendors.admin', channel: 'in_app',
+    name: 'No Vendors Available — Admin In-App',
+    variables: ['orderRef', 'areaName'],
+    subject: 'Manual Assignment Required',
+    body: 'No vendors available for order {{orderRef}} in {{areaName}}. Please assign a vendor manually.',
+  },
+
   // ── Admin: Vendor Pending Verification ───────────────────────────────────────
 
   {
@@ -708,5 +806,67 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     variables: ['vendorName', 'vendorId'],
     subject: 'New Vendor Pending Review',
     body: '{{vendorName}} is awaiting document verification. Vendor ID: {{vendorId}}.',
+  },
+
+  // ── Blog: maker-checker review ────────────────────────────────────────────────
+
+  {
+    key: 'blog.submitted.admin', channel: 'email',
+    name: 'Blog Post Submitted — Admin Email',
+    subject: 'Blog post awaiting review: "{{postTitle}}"',
+    variables: ['postTitle', 'authorName', 'postId'],
+    body: '{{authorName}} submitted "{{postTitle}}" for review. Open the admin Blog section to approve or request changes. (The author cannot approve their own post.)',
+    htmlBody: buildEmailHtml(`
+      <p><strong>{{authorName}}</strong> submitted a blog post for review:</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">"{{postTitle}}"</div></div>
+      <p>Open the admin <strong>Blog</strong> section to read it, then approve it or request changes. Reminder: the author cannot approve their own post — it needs your eyes.</p>
+    `),
+  },
+  {
+    key: 'blog.submitted.admin', channel: 'in_app',
+    name: 'Blog Post Submitted — Admin In-App',
+    variables: ['postTitle', 'authorName'],
+    subject: 'Blog post awaiting review',
+    body: '{{authorName}} submitted "{{postTitle}}" — review it in the Blog section.',
+  },
+  {
+    key: 'blog.approved.author', channel: 'email',
+    name: 'Blog Post Approved — Author Email',
+    subject: 'Published: "{{postTitle}}" 🎉',
+    variables: ['authorName', 'postTitle', 'postSlug'],
+    body: 'Hi {{authorName}}, your post "{{postTitle}}" was approved and is now live on the blog.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{authorName}}</strong>,</p>
+      <p>Your post has been approved and is now live:</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">"{{postTitle}}"</div></div>
+      <p>Readers can find it at <strong>/blog/{{postSlug}}</strong>. Nice work! 🎉</p>
+    `),
+  },
+  {
+    key: 'blog.approved.author', channel: 'in_app',
+    name: 'Blog Post Approved — Author In-App',
+    variables: ['postTitle'],
+    subject: 'Post published 🎉',
+    body: '"{{postTitle}}" was approved and is now live on the blog.',
+  },
+  {
+    key: 'blog.changes_requested.author', channel: 'email',
+    name: 'Blog Changes Requested — Author Email',
+    subject: 'Changes requested on "{{postTitle}}"',
+    variables: ['authorName', 'postTitle', 'reviewNote'],
+    body: 'Hi {{authorName}}, the reviewer requested changes on "{{postTitle}}": {{reviewNote}}. Edit the draft and resubmit when ready.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{authorName}}</strong>,</p>
+      <p>The reviewer requested changes on <strong>"{{postTitle}}"</strong>:</p>
+      <div class="highlight-box"><div class="highlight-label" style="font-size:14px;">{{reviewNote}}</div></div>
+      <p>Edit the draft in the admin Blog section and resubmit when ready. If the post was already live, readers keep seeing the previous approved version in the meantime.</p>
+    `),
+  },
+  {
+    key: 'blog.changes_requested.author', channel: 'in_app',
+    name: 'Blog Changes Requested — Author In-App',
+    variables: ['postTitle', 'reviewNote'],
+    subject: 'Changes requested',
+    body: '"{{postTitle}}": {{reviewNote}}',
   },
 ];

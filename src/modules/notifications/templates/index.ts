@@ -1,3 +1,53 @@
+// ─── Washermann brand palette ─────────────────────────────────────────────────
+// Sampled from the Washermann landing page / mobile app design.
+const BRAND = {
+  green:     '#00281c', // deep green — header background, emphasis text
+  mint:      '#3bf4be', // bright mint — wordmark accent on the dark header
+  button:    '#13c490', // mint-green — buttons & links (reads on white)
+  mintSoft:  '#e8faf2', // mint tint — OTP / highlight box background
+  bodyBg:    '#eef2f0', // soft green-gray page background
+  card:      '#ffffff',
+  text:      '#2c3a33', // body text
+  muted:     '#7c8b83', // secondary text
+  hairline:  '#e7ece9', // dividers
+  warnBg:    '#fff8e1',
+  warnBar:   '#f59e0b',
+  warnText:  '#7a6a3a',
+};
+
+// Publicly-hosted white-wordmark PNG for the email header. Email clients can't
+// render local files or SVG, so this must be an absolute URL. Unset → text wordmark.
+const emailLogoUrl = () => process.env.EMAIL_LOGO_URL || '';
+
+const brandHeader = () => {
+  const logo = emailLogoUrl();
+  const inner = logo
+    ? `<img src="${logo}" alt="Washermann" width="170" style="width:170px;max-width:62%;height:auto;display:block;margin:0 auto;border:0;"/>`
+    : `<h1>Washer<span>mann</span></h1><div class="tagline">Laundry, handled</div>`;
+  return `<div class="header">${inner}</div>`;
+};
+
+// ─── Reusable building blocks ─────────────────────────────────────────────────
+const ctaButton = (label: string, link: string) => `
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${link}"
+         style="display:inline-block;background:${BRAND.button};color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;mso-padding-alt:0;line-height:1.5;">
+        ${label}
+      </a>
+    </div>`;
+
+const fallbackLink = (link: string) => `
+    <div style="height:1px;background:${BRAND.hairline};margin:24px 0;"></div>
+    <p style="font-size:13px;color:${BRAND.muted};">
+      Button not working? Copy this link into your browser:<br/>
+      <a href="${link}" style="color:${BRAND.button};word-break:break-all;">${link}</a>
+    </p>`;
+
+const expiryNote = (text: string) => `
+    <div style="background:${BRAND.warnBg};border-left:3px solid ${BRAND.warnBar};padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:${BRAND.warnText};margin-top:16px;">
+      ${text}
+    </div>`;
+
 // ─── Base layout ─────────────────────────────────────────────────────────────
 const baseLayout = (content: string) => `
 <!DOCTYPE html>
@@ -8,28 +58,28 @@ const baseLayout = (content: string) => `
   <title>Washermann</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; }
-    .wrapper { max-width: 560px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .header { background: #1a1a2e; padding: 28px 32px; text-align: center; }
-    .header h1 { color: #fff; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
-    .header span { color: #4fc3f7; }
+    body { background: ${BRAND.bodyBg}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: ${BRAND.text}; }
+    .wrapper { max-width: 560px; margin: 40px auto; background: ${BRAND.card}; border-radius: 16px; overflow: hidden; box-shadow: 0 6px 24px rgba(0,40,28,0.08); }
+    .header { background: ${BRAND.green}; padding: 32px; text-align: center; }
+    .header h1 { color: #fff; font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+    .header span { color: ${BRAND.mint}; }
+    .header .tagline { color: rgba(255,255,255,0.55); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 8px; }
     .body { padding: 36px 32px; }
-    .body p { font-size: 15px; line-height: 1.7; color: #444; margin-bottom: 16px; }
-    .otp-box { background: #f0f7ff; border: 2px dashed #4fc3f7; border-radius: 10px; padding: 20px; text-align: center; margin: 24px 0; }
-    .otp-code { font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #1a1a2e; }
-    .otp-expiry { font-size: 13px; color: #888; margin-top: 8px; }
-    .btn { display: inline-block; background: #1a1a2e; color: #fff !important; text-decoration: none; padding: 13px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 8px 0; }
-    .divider { height: 1px; background: #f0f0f0; margin: 24px 0; }
-    .footer { background: #fafafa; padding: 20px 32px; text-align: center; border-top: 1px solid #f0f0f0; }
-    .footer p { font-size: 12px; color: #aaa; line-height: 1.6; }
-    .warning { background: #fff8e1; border-left: 3px solid #f59e0b; padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: 13px; color: #666; margin-top: 16px; }
+    .body p { font-size: 15px; line-height: 1.7; color: ${BRAND.text}; margin-bottom: 16px; }
+    .body strong { color: ${BRAND.green}; }
+    .otp-box { background: ${BRAND.mintSoft}; border: 2px dashed ${BRAND.button}; border-radius: 12px; padding: 22px; text-align: center; margin: 24px 0; }
+    .otp-code { font-size: 38px; font-weight: 800; letter-spacing: 10px; color: ${BRAND.green}; }
+    .otp-expiry { font-size: 13px; color: ${BRAND.muted}; margin-top: 8px; }
+    .btn { display: inline-block; background: ${BRAND.button}; color: #fff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 8px 0; }
+    .divider { height: 1px; background: ${BRAND.hairline}; margin: 24px 0; }
+    .footer { background: #f6f9f7; padding: 22px 32px; text-align: center; border-top: 1px solid ${BRAND.hairline}; }
+    .footer p { font-size: 12px; color: ${BRAND.muted}; line-height: 1.6; }
+    .warning { background: ${BRAND.warnBg}; border-left: 3px solid ${BRAND.warnBar}; padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: 13px; color: ${BRAND.warnText}; margin-top: 16px; }
   </style>
 </head>
 <body>
   <div class="wrapper">
-    <div class="header">
-      <h1>Washer<span>mann</span></h1>
-    </div>
+    ${brandHeader()}
     <div class="body">${content}</div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} Washermann. All rights reserved.<br/>
@@ -46,13 +96,13 @@ export const welcomeTemplate = (data: { fullName: string }) => ({
     <p>Hi <strong>${data.fullName}</strong>,</p>
     <p>Welcome to <strong>Washermann</strong> — your laundry, handled professionally.</p>
     <p>You can now:</p>
-    <ul style="margin: 0 0 16px 20px; color: #444; font-size: 15px; line-height: 2;">
+    <ul style="margin: 0 0 16px 20px; color: ${BRAND.text}; font-size: 15px; line-height: 2;">
       <li>Discover verified laundry vendors near you</li>
       <li>Place and track orders in real time</li>
       <li>Use company benefits or your personal wallet</li>
     </ul>
     <div class="divider"></div>
-    <p style="font-size: 13px; color: #888;">If you didn't create this account, please ignore this email or contact support.</p>
+    <p style="font-size: 13px; color: ${BRAND.muted};">If you didn't create this account, please ignore this email or contact support.</p>
   `),
 });
 
@@ -107,20 +157,9 @@ export const companyInviteTemplate = (data: {
     <p>Hello,</p>
     <p>A <strong>Washermann</strong> company account has been created for <strong>${data.companyName}</strong>.</p>
     <p>Click the button below to activate your account and complete your company profile:</p>
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${data.inviteLink}"
-         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
-        Activate Company Account
-      </a>
-    </div>
-    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
-    <p style="font-size: 13px; color: #888;">
-      Button not working? Copy this link into your browser:<br/>
-      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
-    </p>
-    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
-      This link expires in <strong>48 hours</strong> and can only be used once. If you did not request this, please ignore this email.
-    </div>
+    ${ctaButton('Activate Company Account', data.inviteLink)}
+    ${fallbackLink(data.inviteLink)}
+    ${expiryNote('This link expires in <strong>48 hours</strong> and can only be used once. If you did not request this, please ignore this email.')}
   `),
 });
 
@@ -135,20 +174,9 @@ export const employeeInviteTemplate = (data: {
     <p>Hi <strong>${data.fullName}</strong>,</p>
     <p><strong>${data.companyName}</strong> has added you to their Washermann account. You now have access to laundry benefits provided by your company.</p>
     <p>Click the button below to set up your account:</p>
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${data.inviteLink}"
-         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
-        Set Up My Account
-      </a>
-    </div>
-    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
-    <p style="font-size: 13px; color: #888;">
-      Button not working? Copy this link into your browser:<br/>
-      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
-    </p>
-    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
-      This invite link expires in <strong>7 days</strong> and can only be used once.
-    </div>
+    ${ctaButton('Set Up My Account', data.inviteLink)}
+    ${fallbackLink(data.inviteLink)}
+    ${expiryNote('This invite link expires in <strong>7 days</strong> and can only be used once.')}
   `),
 });
 
@@ -163,20 +191,9 @@ export const vendorInviteTemplate = (data: {
     <p>Hi <strong>${data.fullName}</strong>,</p>
     <p>A vendor account has been created for <strong>${data.businessName}</strong> on the Washermann platform.</p>
     <p>Click the button below to set your password and activate your account:</p>
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${data.inviteLink}"
-         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
-        Activate My Vendor Account
-      </a>
-    </div>
-    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
-    <p style="font-size: 13px; color: #888;">
-      Button not working? Copy this link into your browser:<br/>
-      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
-    </p>
-    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
-      This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.
-    </div>
+    ${ctaButton('Activate My Vendor Account', data.inviteLink)}
+    ${fallbackLink(data.inviteLink)}
+    ${expiryNote('This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.')}
   `),
 });
 
@@ -191,19 +208,28 @@ export const staffInviteTemplate = (data: {
     <p>Hi <strong>${data.fullName}</strong>,</p>
     <p>You have been invited to join the <strong>Washermann</strong> platform team as a <strong>${data.role}</strong>.</p>
     <p>Click the button below to set your password and activate your account:</p>
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${data.inviteLink}"
-         style="display:inline-block;background:#1a1a2e;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:8px;font-weight:600;font-size:15px;mso-padding-alt:0;line-height:1.5;">
-        Activate My Account
-      </a>
-    </div>
-    <div style="height:1px;background:#f0f0f0;margin:24px 0;"></div>
-    <p style="font-size: 13px; color: #888;">
-      Button not working? Copy this link into your browser:<br/>
-      <a href="${data.inviteLink}" style="color:#4fc3f7;word-break:break-all;">${data.inviteLink}</a>
-    </p>
-    <div style="background:#fff8e1;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:#666;margin-top:16px;">
-      This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.
-    </div>
+    ${ctaButton('Activate My Account', data.inviteLink)}
+    ${fallbackLink(data.inviteLink)}
+    ${expiryNote('This invite link expires in <strong>7 days</strong> and can only be used once. If you did not expect this invitation, please ignore this email.')}
+  `),
+});
+
+export const salesRepRejectionTemplate = (data: {
+  fullName: string;
+  reason?: string | null;
+}) => ({
+  subject: `Update on your Washermann Sales Rep application`,
+  html: baseLayout(`
+    <p>Hi <strong>${data.fullName}</strong>,</p>
+    <p>Thank you for applying to become a <strong>Washermann Sales Rep</strong>. After reviewing your application, we're unable to move forward with it at this time.</p>
+    ${
+      data.reason
+        ? `<div style="background:${BRAND.mintSoft};border-radius:8px;padding:14px 16px;margin:16px 0;font-size:14px;color:${BRAND.text};">
+             <strong>Reason:</strong> ${data.reason}
+           </div>`
+        : ''
+    }
+    <p>You're welcome to apply again in the future. If you think this was a mistake, just reply to this email and we'll take another look.</p>
+    <p style="margin-top:20px;">— The Washermann Team</p>
   `),
 });

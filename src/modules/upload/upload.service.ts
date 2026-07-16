@@ -113,6 +113,30 @@ export class UploadService implements OnModuleInit {
     return { avatarUrl: result.secure_url, user };
   }
 
+  // ─── Blog images (covers + inline editor images) ──────────────────────────────
+
+  /**
+   * Upload a blog image (cover or inline). Timestamped public id — never
+   * overwrites, since published posts reference the URL forever.
+   * Capped at 1600px wide.
+   */
+  async uploadBlogImage(file: Express.Multer.File) {
+    this.validateImage(file);
+
+    const result = await this.uploadBuffer(
+      file.buffer,
+      'blog',
+      `blog_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      {
+        transformation: [{ width: 1600, crop: 'limit' }],
+        allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+      },
+    );
+
+    this.logger.log(`Blog image uploaded: ${result.secure_url}`);
+    return { url: result.secure_url, width: result.width, height: result.height };
+  }
+
   // ─── Vendor logo ──────────────────────────────────────────────────────────────
 
   /**

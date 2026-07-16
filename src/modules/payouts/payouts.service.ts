@@ -58,13 +58,23 @@ export class PayoutsService {
     }
 
     const config = await this.platformConfigService.getConfig();
-    const nairaAmount = dto.amountWP * config.payoutRateNairaPerWP;
+
+    // Drift Option 2: burn at the SAME rate the vendor's earnings were minted at —
+    // the WP/₦ snapshot locked on their active pricing sheet at approval. Falls
+    // back to the global payout rate for vendors on pre-lock legacy sheets.
+    const activePricing = await this.vendorsService.getActivePricing(vendorId);
+    const lockedNairaPerWP =
+      activePricing?.pointsPerUnitSnapshot && activePricing.pointsPerUnitSnapshot > 0
+        ? Math.round((1 / activePricing.pointsPerUnitSnapshot) * 10000) / 10000
+        : null;
+    const effectiveRate = lockedNairaPerWP ?? config.payoutRateNairaPerWP;
+    const nairaAmount = Math.round(dto.amountWP * effectiveRate * 100) / 100;
 
     const payout = this.payoutRepository.create({
       vendorId,
       amountWP:           dto.amountWP,
       nairaAmount,
-      payoutRateSnapshot: config.payoutRateNairaPerWP,
+      payoutRateSnapshot: effectiveRate,
       bankCode:           dto.bankCode,
       accountNumber:      dto.accountNumber,
       accountName:        dto.accountName,
@@ -148,6 +158,26 @@ export class PayoutsService {
     }
 
     await this.payoutRepository.save(payout);
+
+    // Failed transfer → automatically restore the vendor's balance (the wallet was
+    // debited up front). Reversal credit does not count toward lifetime earnings.
+    if (payout.status === PayoutStatus.FAILED) {
+      try {
+        await this.vendorsService.creditWallet(
+          payout.vendorId,
+          payout.amountWP,
+          LedgerSource.PAYOUT_REVERSAL,
+          `Payout failed — balance restored: ${payout.id}`,
+          { reference: payout.id, nairaSnapshot: payout.nairaAmount, countAsEarning: false },
+        );
+      } catch (recreditErr) {
+        // Balance restoration MUST NOT be silently lost — flag loudly for manual fix.
+        this.logger.error(
+          `CRITICAL: payout ${payout.id} failed AND wallet re-credit failed (${(recreditErr as Error).message}). ` +
+          `Manually credit vendor ${payout.vendorId} with ${payout.amountWP} WP.`,
+        );
+      }
+    }
 
     // Fire payout notification
     if (payout.status === PayoutStatus.FAILED) {
@@ -268,6 +298,7 @@ export class PayoutsService {
         rep.flaggedForReview = true;
         rep.flaggedAt        = new Date();
         await this.repRepository.save(rep);
+        this.notificationsService.notifyRepFlaggedForReview({ repId: rep.id, rating: rep.rating });
       }
 
       // Reset cycle balance

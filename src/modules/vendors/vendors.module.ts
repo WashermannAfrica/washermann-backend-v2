@@ -6,8 +6,11 @@ import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
 import { User } from '../../database/entities/user.entity';
+import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { VendorsController } from './vendors.controller';
 import { VendorsService } from './vendors.service';
+import { ReferralsModule } from '../referrals/referrals.module';
+import { PlatformConfigModule } from '../platform-config/platform-config.module';
 
 @Module({
   imports: [
@@ -18,7 +21,10 @@ import { VendorsService } from './vendors.service';
       VendorEarningsWallet,
       VendorLedgerEntry,
       User,
+      ConversionRate,
     ]),
+    ReferralsModule,
+    PlatformConfigModule,
   ],
   controllers: [VendorsController],
   providers: [VendorsService],

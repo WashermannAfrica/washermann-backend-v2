@@ -12,16 +12,21 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHmac } from 'crypto';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
+import { Vendor } from '../../database/entities/vendor.entity';
+import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
+import { Wallet } from '../../database/entities/wallet.entity';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { Role } from '../../common/enums/roles.enum';
+import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { CompanyActivationStatus } from '../../common/enums/company-activation-status.enum';
 import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ActivateDto } from './dto/activate.dto';
@@ -30,6 +35,7 @@ import { SetPasswordDto } from './dto/set-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SetupAdminDto } from './dto/setup-admin.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+import { VendorSignupDto } from './dto/vendor-signup.dto';
 
 const SALT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 600;       // 10 minutes
@@ -55,6 +61,8 @@ export class AuthService {
     private configService: ConfigService,
     private redisService: RedisService,
     private notificationsService: NotificationsService,
+    private referralsService: ReferralsService,
+    private dataSource: DataSource,
   ) {}
 
   // ─── Registration ────────────────────────────────────────────────────────────
@@ -81,6 +89,19 @@ export class AuthService {
 
     await this.userRepository.save(user);
     this.logger.log(`New user registered: ${user.id}`);
+
+    // Provision the customer's WashPoints wallet up-front so reads never 404
+    // before the first top-up. Idempotent; must never break signup.
+    await this.ensureUserWallet(user.id);
+
+    // Referral: issue this customer's own code + record any code they signed up with.
+    // Must never break signup.
+    try {
+      await this.referralsService.issueCode(user.id, 'customer');
+      await this.referralsService.attribute(dto.referralCode, user.id, 'customer');
+    } catch (err) {
+      this.logger.warn(`Referral attribution skipped: ${(err as Error).message}`);
+    }
 
     // Send verification OTP only — welcome email is sent after OTP is verified
     this.sendVerificationOtp(user).catch((err) =>
@@ -213,15 +234,14 @@ export class AuthService {
 
     user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     user.status = UserStatus.ACTIVE;
+    // Clicking the invite link (sent to their email) already proves ownership —
+    // no verification OTP needed.
+    if (user.email) user.emailVerified = true;
 
     await this.userRepository.save(user);
     await this.redisService.del(`${INVITE_TOKEN_PREFIX}${dto.inviteToken}`);
 
     this.logger.log(`User activated via invite token: ${user.id}`);
-
-    this.sendVerificationOtp(user).catch((err) =>
-      this.logger.error(`Post-set-password OTP failed: ${err.message}`),
-    );
 
     const tokens = await this.generateTokenPair(user);
 
@@ -283,8 +303,15 @@ export class AuthService {
   async resendOtp(identifier: string, purpose: 'verification' | 'reset') {
     const user = await this.findByIdentifier(identifier);
 
-    // Always return 200 to prevent enumeration
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    // Always return 200 to prevent enumeration.
+    // PENDING users (company self-registrants, invited users awaiting activation)
+    // legitimately need to (re)verify their email — allow them through for the
+    // 'verification' purpose; password reset stays locked to active accounts.
+    const canResend =
+      !!user &&
+      (user.status === UserStatus.ACTIVE ||
+        (purpose === 'verification' && user.status === UserStatus.PENDING));
+    if (!canResend) {
       return {
         data: null,
         message: 'If an account exists, a new OTP has been sent.',
@@ -501,8 +528,10 @@ export class AuthService {
       await this.userRepository.save(user);
     }
 
-    // Send OTP for contact person email verification (fire-and-forget)
-    this.sendVerificationOtp(user).catch((err) =>
+    // Send the verification OTP to the official company email (not the contact
+    // person's personal email). Keyed by user.id, so verification still uses the
+    // contact's identifier via /auth/verify-otp. Fire-and-forget.
+    this.sendVerificationOtp(user, company.ownerEmail).catch((err) =>
       this.logger.error(`Company registration OTP failed: ${err.message}`),
     );
 
@@ -513,12 +542,108 @@ export class AuthService {
     return {
       data: {
         companyId: company.id,
-        message: 'Company registration submitted. Pending admin approval. Please verify your email.',
+        verificationEmail: company.ownerEmail,
+        message: `Company registration submitted. Pending admin approval. We sent a verification code to your company email (${company.ownerEmail}).`,
       },
     };
   }
 
+  // ─── Vendor Self-Registration ─────────────────────────────────────────────────
+
+  /**
+   * Public vendor signup. Coexists with the admin-create/invite flow.
+   *
+   * Creates the User (VENDOR role, ACTIVE so they can log in), an empty Vendor
+   * profile in PENDING_REVIEW (businessName/phone/etc. filled later in KYC) and
+   * the earnings wallet — all atomically. A verification OTP is sent; the vendor
+   * verifies via /auth/verify-otp, then completes KYC. The account cannot go
+   * available / receive orders until an admin verifies it.
+   */
+  async registerVendor(dto: VendorSignupDto) {
+    await this.assertIdentifierNotTaken(dto.email, undefined);
+
+    const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+
+    const user = await this.dataSource.transaction(async (manager) => {
+      const newUser = manager.create(User, {
+        fullName: dto.fullName.trim(),
+        email: dto.email.toLowerCase().trim(),
+        phone: null,
+        passwordHash,
+        roles: [Role.VENDOR],
+        status: UserStatus.ACTIVE,
+        emailVerified: false,
+        phoneVerified: false,
+      });
+      await manager.save(newUser);
+
+      const vendor = manager.create(Vendor, {
+        userId: newUser.id,
+        businessName: null,
+        phone: null,
+        areaIds: [],
+        verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
+        isAvailable: false,
+        rating: 0,
+        ratingCount: 0,
+      });
+      await manager.save(vendor);
+
+      const wallet = manager.create(VendorEarningsWallet, {
+        vendorId: vendor.id,
+        balance: 0,
+        totalEarned: 0,
+        status: 'active',
+      });
+      await manager.save(wallet);
+
+      return newUser;
+    });
+
+    this.logger.log(`Vendor self-registered: ${user.id}`);
+
+    // Referral: issue this vendor's own code + record any code they signed up with.
+    try {
+      await this.referralsService.issueCode(user.id, 'vendor');
+      await this.referralsService.attribute(dto.referralCode, user.id, 'vendor');
+    } catch (err) {
+      this.logger.warn(`Vendor referral attribution skipped: ${(err as Error).message}`);
+    }
+
+    // Send verification OTP — welcome email is sent after OTP is verified
+    this.sendVerificationOtp(user).catch((err) =>
+      this.logger.error(`Vendor registration OTP failed: ${err.message}`),
+    );
+
+    const tokens = await this.generateTokenPair(user);
+
+    return {
+      data: {
+        user: this.sanitizeUser(user),
+        ...tokens,
+        verificationSent: true,
+      },
+      message:
+        'Vendor registration successful. A verification code has been sent. ' +
+        'Verify your email, then complete your business profile.',
+    };
+  }
+
   // ─── Helpers used by other modules ───────────────────────────────────────────
+
+  /** Idempotently provision a user's WashPoints wallet. Never throws into the caller. */
+  private async ensureUserWallet(userId: string): Promise<void> {
+    try {
+      const walletRepo = this.dataSource.getRepository(Wallet);
+      const existing = await walletRepo.findOne({ where: { userId } });
+      if (!existing) {
+        await walletRepo.save(walletRepo.create({ userId, balance: 0, fiatBalanceKobo: 0, isActive: true }));
+        this.logger.log(`Wallet provisioned for user ${userId}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Wallet provisioning skipped for ${userId}: ${(err as Error).message}`);
+    }
+  }
 
   async createInviteToken(userId: string): Promise<string> {
     const token = uuidv4();
@@ -535,8 +660,18 @@ export class AuthService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  private async sendVerificationOtp(user: User): Promise<void> {
-    if (user.email && !user.emailVerified) {
+  /**
+   * Sends verification OTP(s) for a user.
+   *
+   * @param emailOverride  Deliver the email OTP to this address instead of
+   *   user.email (used by company self-registration, where the code goes to the
+   *   official company email rather than the contact person's personal email).
+   *   The OTP is still keyed by user.id, so verification continues to use the
+   *   user's own identifier (email/phone) via /auth/verify-otp.
+   */
+  private async sendVerificationOtp(user: User, emailOverride?: string): Promise<void> {
+    const targetEmail = emailOverride ?? user.email;
+    if (targetEmail && !user.emailVerified) {
       const otp = this.generateOtp();
       await this.redisService.setEx(
         `${OTP_VERIFY_EMAIL_PREFIX}${user.id}`,
@@ -545,7 +680,7 @@ export class AuthService {
       );
       await this.notificationsService.sendEmailVerificationOtp({
         fullName: user.fullName,
-        email: user.email,
+        email: targetEmail,
         otp,
       });
     }

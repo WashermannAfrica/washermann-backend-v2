@@ -67,6 +67,28 @@ export class Rep extends BaseEntity {
   @Column({ name: 'rating_count', type: 'int', default: 0 })
   ratingCount: number;
 
+  // ─── Assignment-scoring signals (updated by assignment/order engines) ──────────
+
+  @ApiProperty({ nullable: true, description: 'When this rep last won an assignment (fairness recency)' })
+  @Column({ name: 'last_assigned_at', type: 'timestamp with time zone', nullable: true })
+  lastAssignedAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Rolling average broadcast→accept latency (seconds)' })
+  @Column({ name: 'avg_accept_latency_sec', type: 'float', nullable: true })
+  avgAcceptLatencySec: number | null;
+
+  @ApiProperty({ description: 'Total broadcasts accepted' })
+  @Column({ name: 'accept_count', type: 'int', default: 0 })
+  acceptCount: number;
+
+  @ApiProperty({ description: 'Deliveries completed on/before the order deadline' })
+  @Column({ name: 'on_time_deliveries', type: 'int', default: 0 })
+  onTimeDeliveries: number;
+
+  @ApiProperty({ description: 'Total deliveries marked by this rep' })
+  @Column({ name: 'total_deliveries', type: 'int', default: 0 })
+  totalDeliveries: number;
+
   @ApiProperty({
     default: false,
     description: 'Auto-set when rating drops below threshold; cleared manually by admin',

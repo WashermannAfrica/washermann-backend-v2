@@ -25,6 +25,22 @@ export class AssignmentController {
     return this.assignmentService.startRepAssignment(orderId);
   }
 
+  // ─── Rep / Vendor: my assignment offers (pullable queue + history) ─────────────
+
+  @Get('me/rep-requests')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep: my assignment offers — pending + missed/responded history' })
+  myRepRequests(@Request() req: { user: { sub: string } }) {
+    return this.assignmentService.myRequests(req.user.sub, 'rep');
+  }
+
+  @Get('me/vendor-requests')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Vendor: my assignment offers — pending + missed/responded history' })
+  myVendorRequests(@Request() req: { user: { sub: string } }) {
+    return this.assignmentService.myRequests(req.user.sub, 'vendor');
+  }
+
   // ─── Rep: accept assignment ───────────────────────────────────────────────────
 
   @Post('orders/:orderId/accept/rep')
@@ -47,6 +63,28 @@ export class AssignmentController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.assignmentService.vendorAccepts(orderId, req.user.sub);
+  }
+
+  // ─── Rep / Vendor: decline assignment (fast-forwards the batch) ────────────────
+
+  @Post('orders/:orderId/decline/rep')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep declines an offer — batch advances immediately once all offers resolve' })
+  repDeclines(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.assignmentService.repDeclines(orderId, req.user.sub);
+  }
+
+  @Post('orders/:orderId/decline/vendor')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Vendor declines an offer — batch advances immediately once all offers resolve' })
+  vendorDeclines(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.assignmentService.vendorDeclines(orderId, req.user.sub);
   }
 
   // ─── Admin: manual assignment ─────────────────────────────────────────────────

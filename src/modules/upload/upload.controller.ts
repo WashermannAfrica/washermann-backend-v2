@@ -27,11 +27,11 @@ import { ApiProperty } from '@nestjs/swagger';
 
 class UploadDocumentDto {
   @ApiProperty({
-    enum: ['nin', 'cac', 'address_proof', 'photo', 'other'],
+    enum: ['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'],
     description: 'Type of KYC document being uploaded',
   })
   @IsString()
-  @IsIn(['nin', 'cac', 'address_proof', 'photo', 'other'])
+  @IsIn(['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'])
   documentType: VendorDocumentType;
 }
 
@@ -70,6 +70,31 @@ export class UploadController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.uploadService.uploadUserAvatar(req.user.sub, file);
+  }
+
+  // ─── Blog: cover + inline editor images ──────────────────────────────────────
+
+  @Post('blog-image')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('file', multerMemory))
+  @ApiOperation({
+    summary: 'Upload a blog image — cover or inline (admin)',
+    description:
+      'Accepts JPEG, PNG, or WebP. Max 5 MB. Capped at 1600px wide. Never overwrites — each upload gets a ' +
+      'unique URL, since published posts reference their images forever. Returns { url, width, height }.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Image file (jpg/png/webp, max 5 MB)' },
+      },
+      required: ['file'],
+    },
+  })
+  uploadBlogImage(@UploadedFile() file: Express.Multer.File) {
+    return this.uploadService.uploadBlogImage(file);
   }
 
   // ─── Vendor: upload business logo ─────────────────────────────────────────────
@@ -114,7 +139,7 @@ export class UploadController {
       type: 'object',
       properties: {
         file:         { type: 'string', format: 'binary', description: 'Document file (image or PDF, max 10 MB)' },
-        documentType: { type: 'string', enum: ['nin', 'cac', 'address_proof', 'photo', 'other'] },
+        documentType: { type: 'string', enum: ['nin', 'cac', 'address_proof', 'photo', 'personal_photo', 'shop_photo', 'other'] },
       },
       required: ['file', 'documentType'],
     },

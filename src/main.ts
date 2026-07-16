@@ -21,7 +21,10 @@ async function bootstrap() {
 
   // ─── CORS ───────────────────────────────────────────────────────────────────
   app.enableCors({
-    origin: configService.get<string>('app.frontendUrl') || '*',
+    origin:
+      configService.get<string[]>('app.corsOrigins') ||
+      configService.get<string>('app.frontendUrl') ||
+      '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret', 'X-WM-Topup-Code'],
     credentials: true,
@@ -41,7 +44,7 @@ async function bootstrap() {
 
   // ─── Swagger (OpenAPI) ──────────────────────────────────────────────────────
   if (env !== 'production') {
-    const swaggerConfig = new DocumentBuilder()
+    const swaggerBuilder = new DocumentBuilder()
       .setTitle('Washermann API')
       .setDescription(
         `
@@ -91,11 +94,27 @@ All responses follow the standard envelope:
       .addTag('Orders', 'Full order lifecycle from placement to delivery and rating')
       .addTag('Assignment', 'Rep & vendor broadcast and manual assignment for orders')
       .addTag('Payouts', 'Vendor payout requests and rep bonus cycle')
-      .addTag('Upload', 'File uploads — profile pictures, vendor logos, KYC documents, rep contracts')
-      .addServer(`http://localhost:${port}`, 'Local')
-      .addServer('https://dev-api.washermann.com', 'Development')
-      .addServer('https://api.washermann.com', 'Production')
-      .build();
+      .addTag('Upload', 'File uploads — profile pictures, vendor logos, KYC documents, rep contracts');
+
+    // Servers: list every known environment, with THIS instance's own URL (APP_URL)
+    // first — Swagger UI selects the first entry by default, so "Try it out" hits
+    // the environment you're actually viewing. De-duped by URL so the current env
+    // isn't listed twice.
+    const knownServers: Array<[string, string]> = [
+      [appUrl, `This environment (${env})`],
+      [`http://localhost:${port}`, 'Local'],
+      ['https://dev-api.washermann.com', 'Development'],
+      ['https://staging-api.washermann.com', 'Staging'],
+      ['https://api.washermann.com', 'Production'],
+    ];
+    const seenServers = new Set<string>();
+    for (const [url, desc] of knownServers) {
+      if (!seenServers.has(url)) {
+        seenServers.add(url);
+        swaggerBuilder.addServer(url, desc);
+      }
+    }
+    const swaggerConfig = swaggerBuilder.build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {

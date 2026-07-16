@@ -20,6 +20,10 @@ import { GiftCard } from './entities/gift-card.entity';
 import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
 // ─── Phase 6 entities ─────────────────────────────────────────────────────────
 import { Area } from './entities/area.entity';
+import { AreaLocation } from './entities/area-location.entity';
+import { GameScore } from './entities/game-score.entity';
+import { CoverageGap } from './entities/coverage-gap.entity';
+import { BlogPost } from './entities/blog-post.entity';
 import { Vendor } from './entities/vendor.entity';
 import { VendorDocument } from './entities/vendor-document.entity';
 import { VendorPricing } from './entities/vendor-pricing.entity';
@@ -43,6 +47,28 @@ import { PricingPackage } from './entities/pricing-package.entity';
 // ─── Marketing ──────────────────────────────────────────────────────────────────
 import { WaitlistSignup } from './entities/waitlist-signup.entity';
 import { WashRepApplication } from './entities/wash-rep-application.entity';
+// ─── Catalogue ────────────────────────────────────────────────────────────────
+import { CatalogueCategory } from './entities/catalogue-category.entity';
+import { CatalogueSubCategory } from './entities/catalogue-subcategory.entity';
+import { CatalogueItem } from './entities/catalogue-item.entity';
+import { VendorItemSuggestion } from './entities/vendor-item-suggestion.entity';
+import { Bag } from './entities/bag.entity';
+import { Bundle } from './entities/bundle.entity';
+import { BundleLine } from './entities/bundle-line.entity';
+// ─── Referrals ────────────────────────────────────────────────────────────────
+import { ReferralCode } from './entities/referral-code.entity';
+import { Referral } from './entities/referral.entity';
+import { RewardRule } from './entities/reward-rule.entity';
+// ─── Sales rep ────────────────────────────────────────────────────────────────
+import { SalesRepApplication } from './entities/sales-rep-application.entity';
+import { SalesRep } from './entities/sales-rep.entity';
+import { TutorialStep } from './entities/tutorial-step.entity';
+import { AssessmentQuestion } from './entities/assessment-question.entity';
+import { AssessmentAttempt } from './entities/assessment-attempt.entity';
+import { SalesRepPayout } from './entities/sales-rep-payout.entity';
+// ─── Rate engine ──────────────────────────────────────────────────────────────
+import { RateConfig } from './entities/rate-config.entity';
+import { RateEpoch } from './entities/rate-epoch.entity';
 
 @Module({
   imports: [
@@ -63,7 +89,8 @@ import { WashRepApplication } from './entities/wash-rep-application.entity';
             CompanyWallet, CompanyLedgerEntry,
             Vault, GiftCard, GiftCardRedemption,
             // Phase 6
-            Area,
+            Area, AreaLocation, CoverageGap,
+            BlogPost,
             Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry,
             Rep, RepPseudoWallet, RepPseudoLedgerEntry,
             PlatformPriceList, PlatformConfig, RepBonusTier,
@@ -75,6 +102,18 @@ import { WashRepApplication } from './entities/wash-rep-application.entity';
             PricingPackage,
             // Marketing
             WaitlistSignup, WashRepApplication,
+            // Catalogue
+            CatalogueCategory, CatalogueSubCategory, CatalogueItem, VendorItemSuggestion, Bag,
+            Bundle, BundleLine,
+            // Referrals
+            ReferralCode, Referral, RewardRule,
+            // Games
+            GameScore,
+            // Sales rep
+            SalesRepApplication, SalesRep, TutorialStep,
+            AssessmentQuestion, AssessmentAttempt, SalesRepPayout,
+            // Rate engine
+            RateConfig, RateEpoch,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

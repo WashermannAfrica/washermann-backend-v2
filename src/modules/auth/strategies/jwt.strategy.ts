@@ -49,6 +49,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Account is deactivated');
     }
 
-    return user;
+    // Expose `sub` alongside the entity: controllers read either `req.user.id`
+    // (via @CurrentUser('id')) or `req.user.sub` (via @Request()). Without this,
+    // `req.user.sub` is undefined and every "me"/self lookup silently resolves
+    // to the wrong record (a findOne with `where: { id: undefined }`).
+    return Object.assign(user, { sub: user.id });
   }
 }

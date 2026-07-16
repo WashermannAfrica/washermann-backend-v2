@@ -6,7 +6,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateWashRepApplicationDto {
   @ApiProperty({ example: 'Tunde Bello' })
@@ -45,10 +45,4 @@ export class CreateWashRepApplicationDto {
   @ApiProperty({ example: false })
   @IsBoolean()
   workedLaundromat: boolean;
-
-  /** Honeypot — must be empty. */
-  @ApiPropertyOptional({ description: 'Honeypot (leave empty)' })
-  @IsOptional()
-  @IsString()
-  company_website?: string;
 }

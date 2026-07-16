@@ -1,9 +1,14 @@
-import { IsArray, ValidateNested, IsString, IsNumber, Min, ArrayMinSize, ArrayMaxSize } from 'class-validator';
+import { IsArray, ValidateNested, IsString, IsNumber, Min, ArrayMinSize, ArrayMaxSize, IsOptional, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GarmentPriceItemDto {
-  @ApiProperty({ example: 'shirt', description: 'Garment type identifier' })
+  @ApiPropertyOptional({ description: 'Catalogue item UUID this price is for (the P70 join key)' })
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
+
+  @ApiProperty({ example: 'shirt', description: 'Garment type identifier (legacy free-text)' })
   @IsString()
   garmentType: string;
 

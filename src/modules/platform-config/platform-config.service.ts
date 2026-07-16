@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PlatformConfig } from '../../database/entities/platform-config.entity';
+import { PlatformConfig, DEFAULT_ASSIGNMENT_SCORING } from '../../database/entities/platform-config.entity';
 import { PlatformPriceList } from '../../database/entities/platform-price-list.entity';
 import { RepBonusTier } from '../../database/entities/rep-bonus-tier.entity';
 import { UpdatePlatformConfigDto } from './dto/update-config.dto';
@@ -26,15 +26,29 @@ export class PlatformConfigService {
     const config = await this.configRepository.findOne({ where: {} });
     if (config) return config;
 
-    // Bootstrap default row
+    // Bootstrap default row. Every non-nullable column must be set explicitly —
+    // TypeORM includes them in the INSERT, so an omitted field becomes NULL and
+    // violates the NOT NULL constraint (the DB-level DEFAULT only applies when
+    // the column is absent from the INSERT statement).
     const defaults = this.configRepository.create({
       platformPriceOffsetPercent: 25,
       repSharePercent: 15,
       serviceChargePercent: 5,
-      payoutRateNairaPerWP: 9,
+      payoutRateNairaPerWP: 6.86, // launch anchor V=₦6.86/WP (locked); rate engine governs thereafter
       lowRatingThreshold: 3.5,
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
+      orderTurnaroundHours: 48,
+      assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
+      vatPercent: 0,
+      priceSuggestionPercentile: 70,
+      ironingPercent: 15,
+      chargeStack: [
+        { key: 'platform_margin',     label: 'Platform margin',     kind: 'percent', value: 25 },
+        { key: 'service_charge',      label: 'Service charge',      kind: 'percent', value: 5 },
+        { key: 'wash_rep_commission', label: 'Wash-rep commission', kind: 'percent', value: 15 },
+        { key: 'vat',                 label: 'VAT',                 kind: 'percent', value: 7.5 },
+      ],
       updatedBy: null,
     });
     return this.configRepository.save(defaults);

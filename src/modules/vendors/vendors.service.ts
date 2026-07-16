@@ -8,24 +8,27 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, IsNull } from 'typeorm';
+import { ReferralsService } from '../referrals/referrals.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorDocument } from '../../database/entities/vendor-document.entity';
-import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
+import { VendorPricing, GarmentPriceItem, priceItemKey, isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
 import { User } from '../../database/entities/user.entity';
+import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
-import { ApprovePricingDto, RejectPricingDto } from './dto/approve-pricing.dto';
+import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { Role } from '../../common/enums/roles.enum';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
+import { PlatformConfigService } from '../platform-config/platform-config.service';
 
 @Injectable()
 export class VendorsService {
@@ -50,10 +53,15 @@ export class VendorsService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
 
+    @InjectRepository(ConversionRate)
+    private conversionRateRepository: Repository<ConversionRate>,
+
     private dataSource: DataSource,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
     private redisService: RedisService,
+    private referralsService: ReferralsService,
+    private platformConfigService: PlatformConfigService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -143,6 +151,11 @@ export class VendorsService {
       .createQueryBuilder('v')
       .leftJoin('v.user', 'u')
       .addSelect(['u.id', 'u.fullName', 'u.email', 'u.phone'])
+      // Per-vendor aggregates so the admin list can show orders / earnings / balance.
+      .leftJoin('vendor_earnings_wallets', 'w', 'w.vendor_id = v.id')
+      .addSelect('COALESCE(w.total_earned, 0)', 'earnedwp')
+      .addSelect('COALESCE(w.balance, 0)', 'balancewp')
+      .addSelect('(SELECT COUNT(*) FROM orders o WHERE o.vendor_id = v.id)', 'ordercount')
       .orderBy('v.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -160,7 +173,14 @@ export class VendorsService {
       );
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const { entities, raw } = await qb.getRawAndEntities();
+    const total = await qb.getCount();
+    const data = entities.map((v, i) => ({
+      ...v,
+      orderCount: Number(raw[i]?.ordercount ?? 0),
+      earnedWp:   Number(raw[i]?.earnedwp ?? 0),
+      balanceWp:  Number(raw[i]?.balancewp ?? 0),
+    }));
     return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
@@ -232,6 +252,10 @@ export class VendorsService {
 
     if (dto.decision === VendorVerificationStatus.VERIFIED) {
       this.notificationsService.notifyVendorVerified({ vendorId });
+      // Referral: vendor approval is the vendor-leg unlock trigger (fire-and-forget).
+      this.referralsService
+        .onRefereeQualified(vendor.userId, 'vendor')
+        .catch((err) => this.logger.error(`Referral unlock (vendor) failed: ${err.message}`));
     }
 
     return saved;
@@ -293,22 +317,58 @@ export class VendorsService {
       }
     }
 
-    // Check for an existing pending proposal
+    // Already-approved (live) prices are LOCKED — carry them forward unchanged and
+    // ignore any incoming attempt to alter them. The vendor may only (re)price the
+    // items that aren't approved (new ones + ones the admin rejected).
+    const active = await this.getActivePricing(vendorId);
+    const approvedLocked: GarmentPriceItem[] = (active?.items ?? [])
+      .filter(isPriceItemLive)
+      .map((i) => ({
+        itemId: i.itemId,
+        garmentType: i.garmentType,
+        priceNaira: i.priceNaira,
+        status: 'approved' as const,
+        rejectionReason: null,
+        decidedAt: i.decidedAt ?? null,
+      }));
+    const lockedKeys = new Set(approvedLocked.map(priceItemKey));
+
+    // Sanitise incoming: vendors cannot set review status, and locked lines are dropped.
+    const incoming: GarmentPriceItem[] = (dto.items ?? [])
+      .map((i) => ({ itemId: i.itemId, garmentType: i.garmentType, priceNaira: i.priceNaira }))
+      .filter((i) => !lockedKeys.has(priceItemKey(i)));
+
+    // If a draft proposal is still open (not yet reviewed), accumulate into it;
+    // otherwise start a fresh one. Either way it = [locked-approved] + [editable].
     const pending = await this.pricingRepository.findOne({
-      where: { vendorId, approvedAt: null as any, rejectedAt: null as any },
+      where: { vendorId, approvedAt: IsNull(), rejectedAt: IsNull() },
     });
+    const existingEditable = (pending?.items ?? []).filter((i) => !lockedKeys.has(priceItemKey(i)));
+    const editable = this.mergePricingItems(existingEditable, incoming);
+    const items = [...approvedLocked, ...editable];
+
     if (pending) {
-      throw new ConflictException('You already have a pending pricing proposal. Wait for admin review.');
+      pending.items = items;
+      return this.pricingRepository.save(pending);
     }
 
     const pricing = this.pricingRepository.create({
       vendorId,
-      items: dto.items,
+      items,
       effectiveFrom: null,
       approvedAt: null,
       approvedBy: null,
     });
     return this.pricingRepository.save(pricing);
+  }
+
+  /** Merge a new batch of price items into an existing list (incoming wins), keyed by itemId then garmentType. */
+  private mergePricingItems(existing: GarmentPriceItem[], incoming: GarmentPriceItem[]): GarmentPriceItem[] {
+    const keyOf = (i: GarmentPriceItem) => i.itemId ?? `gt:${i.garmentType}`;
+    const merged = new Map<string, GarmentPriceItem>();
+    for (const item of existing ?? []) merged.set(keyOf(item), item);
+    for (const item of incoming ?? []) merged.set(keyOf(item), item);
+    return Array.from(merged.values());
   }
 
   async getPricingHistory(vendorId: string) {
@@ -317,6 +377,29 @@ export class VendorsService {
       order: { proposedAt: 'DESC' },
       take: 20,
     });
+  }
+
+  /** Vendor: their most recent pricing proposal (pending or active) — for pre-filling the editor. */
+  async getLatestPricing(vendorId: string): Promise<VendorPricing | null> {
+    return this.pricingRepository.findOne({
+      where: { vendorId },
+      order: { proposedAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Admin: pricing proposals still needing review across all vendors.
+   * Includes brand-new proposals AND ones partially reviewed per-item
+   * (approvedAt may be set once review starts, but pending lines remain).
+   */
+  async listPendingPricing() {
+    return this.pricingRepository
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.vendor', 'vendor')
+      .where('p.rejectedAt IS NULL')
+      .andWhere(`(p.approvedAt IS NULL OR p.items @> '[{"status":"pending"}]')`)
+      .orderBy('p.proposedAt', 'ASC')
+      .getMany();
   }
 
   async getActivePricing(vendorId: string): Promise<VendorPricing | null> {
@@ -329,39 +412,154 @@ export class VendorsService {
       .getOne();
   }
 
-  /** Admin approves a pending pricing proposal */
-  async approvePricing(pricingId: string, dto: ApprovePricingDto, adminId: string) {
+  /**
+   * Market reference for a garment type the assigned vendor did NOT price:
+   * the AVERAGE of the live approved prices of vendors who DO price it
+   * (latest active sheet per vendor, excluding the assigned vendor).
+   * Returns null when nobody prices it.
+   */
+  async averageLivePriceForGarment(garmentType: string, excludeVendorId?: string): Promise<number | null> {
+    const sheets = await this.pricingRepository
+      .createQueryBuilder('p')
+      .where('p.approvedAt IS NOT NULL')
+      .andWhere('p.effectiveFrom <= NOW()')
+      .orderBy('p.effectiveFrom', 'DESC')
+      .getMany();
+
+    const seenVendors = new Set<string>();
+    const prices: number[] = [];
+    for (const sheet of sheets) {
+      if (seenVendors.has(sheet.vendorId)) continue; // only each vendor's latest active sheet
+      seenVendors.add(sheet.vendorId);
+      if (excludeVendorId && sheet.vendorId === excludeVendorId) continue;
+      for (const item of sheet.items) {
+        if (!isPriceItemLive(item)) continue;
+        if (item.garmentType === garmentType && item.priceNaira > 0) {
+          prices.push(item.priceNaira);
+          break;
+        }
+      }
+    }
+    if (!prices.length) return null;
+    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
+  }
+
+  /** Load a proposal that is still open for review (not fully finalized as rejected). */
+  private async loadReviewableProposal(pricingId: string): Promise<VendorPricing> {
     const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });
     if (!pricing) throw new NotFoundException('Pricing proposal not found');
-    if (pricing.approvedAt) throw new BadRequestException('Pricing is already approved');
-    if (pricing.rejectedAt) throw new BadRequestException('Pricing has already been rejected');
-
-    pricing.approvedAt   = new Date();
-    pricing.approvedBy   = adminId;
-    pricing.effectiveFrom = new Date(dto.effectiveFrom);
-    await this.pricingRepository.save(pricing);
-
-    // Update vendor.pricingLastUpdatedAt
-    await this.vendorRepository.update(pricing.vendorId, {
-      pricingLastUpdatedAt: new Date(),
-    });
-
-    // Notify vendor
-    this.notificationsService.notifyPricingApproved({ vendorId: pricing.vendorId });
-
+    if (pricing.rejectedAt) throw new BadRequestException('This pricing proposal has already been fully rejected');
     return pricing;
   }
 
-  /** Admin rejects a pending pricing proposal */
-  async rejectPricing(pricingId: string, dto: RejectPricingDto, adminId: string) {
-    const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });
-    if (!pricing) throw new NotFoundException('Pricing proposal not found');
-    if (pricing.approvedAt) throw new BadRequestException('Pricing is already approved');
-    if (pricing.rejectedAt) throw new BadRequestException('Pricing has already been rejected');
+  /**
+   * Admin STAGES an approve/reject on a SINGLE price line. The decision is
+   * recorded but NOT yet live and NO email is sent — nothing reaches the vendor
+   * until the admin finalizes the review (one summary email, one price change).
+   */
+  async decidePricingItem(pricingId: string, dto: DecidePricingItemDto, _adminId: string) {
+    if (dto.decision === 'rejected' && !dto.reason?.trim()) {
+      throw new BadRequestException('A reason is required when rejecting a price line');
+    }
+    const pricing = await this.loadReviewableProposal(pricingId);
+    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
 
-    pricing.rejectedAt       = new Date();
-    pricing.rejectionReason  = dto.reason;
-    return this.pricingRepository.save(pricing);
+    const target = pricing.items.find((i) => priceItemKey(i) === dto.itemKey);
+    if (!target) throw new NotFoundException(`No price line matching "${dto.itemKey}" in this proposal`);
+
+    const nowIso = new Date().toISOString();
+    pricing.items = pricing.items.map((i) =>
+      priceItemKey(i) === dto.itemKey
+        ? {
+            ...i,
+            status: dto.decision,
+            rejectionReason: dto.decision === 'rejected' ? (dto.reason?.trim() ?? null) : null,
+            decidedAt: nowIso,
+          }
+        : i,
+    );
+    return this.pricingRepository.save(pricing); // staged only — approvedAt stays null
+  }
+
+  /** Lock the sheet: approved lines go live, cooldown starts only when the sheet is fully clean. */
+  private async finalizeReview(pricing: VendorPricing, adminId: string, effectiveFrom: Date) {
+    pricing.approvedBy = adminId;
+    pricing.approvedAt = new Date();
+    pricing.effectiveFrom = effectiveFrom;
+    pricing.rejectionReason = null;
+
+    // Drift Option 2 — LOCK the WP/₦ rate onto the sheet at approval. Earnings
+    // minted under this sheet and their payout burn both use this snapshot, so
+    // the vendor's ₦-in equals ₦-out regardless of later platform rate moves.
+    const activeRate = await this.conversionRateRepository
+      .createQueryBuilder('r')
+      .where('r.currency = :c', { c: 'NGN' })
+      .andWhere('r.effective_from <= NOW()')
+      .orderBy('r.effective_from', 'DESC')
+      .getOne();
+    if (activeRate) {
+      pricing.conversionRateId = activeRate.id;
+      pricing.pointsPerUnitSnapshot = activeRate.pointsPerUnit;
+    }
+
+    await this.pricingRepository.save(pricing);
+
+    // Start the re-pricing cooldown ONLY when nothing was rejected — otherwise the
+    // vendor still needs to fix + resubmit the rejected lines, which must not be blocked.
+    const anyRejected = pricing.items.some((i) => i.status === 'rejected');
+    if (!anyRejected) {
+      await this.vendorRepository.update(pricing.vendorId, { pricingLastUpdatedAt: new Date() });
+    }
+    this.notificationsService.notifyPricingReviewed({ vendorId: pricing.vendorId, items: pricing.items });
+    return pricing;
+  }
+
+  /**
+   * Finalize: keep all staged decisions, APPROVE every line the admin did not
+   * respond to, then lock the sheet and email the vendor ONE summary.
+   */
+  async approvePricing(pricingId: string, dto: ApprovePricingDto, adminId: string) {
+    const pricing = await this.loadReviewableProposal(pricingId);
+    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
+    const effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
+
+    // Staged rejects stay rejected; everything else (staged-approved + untouched) becomes approved.
+    pricing.items = pricing.items.map((i) =>
+      i.status === 'rejected' ? i : { ...i, status: 'approved' as const, rejectionReason: null },
+    );
+    return this.finalizeReview(pricing, adminId, effectiveFrom);
+  }
+
+  /**
+   * Finalize: keep all staged decisions, REJECT every line the admin did not
+   * respond to, then lock the sheet and email the vendor ONE summary. If no line
+   * survived as approved the whole proposal is marked rejected so the vendor can
+   * submit a fresh one.
+   */
+  async rejectPricing(pricingId: string, dto: RejectPricingDto, adminId: string) {
+    const pricing = await this.loadReviewableProposal(pricingId);
+    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
+
+    // Staged approves stay approved; everything else (staged-rejected + untouched) becomes rejected.
+    pricing.items = pricing.items.map((i) =>
+      i.status === 'approved'
+        ? i
+        : { ...i, status: 'rejected' as const, rejectionReason: i.rejectionReason ?? dto.reason },
+    );
+
+    const anyApproved = pricing.items.some((i) => i.status === 'approved');
+    if (!anyApproved) {
+      // Nothing survived — fully reject so the vendor can submit a fresh proposal.
+      pricing.rejectedAt = new Date();
+      pricing.rejectionReason = dto.reason;
+      pricing.approvedAt = null;
+      pricing.approvedBy = null;
+      pricing.effectiveFrom = null;
+      await this.pricingRepository.save(pricing);
+      this.notificationsService.notifyPricingReviewed({ vendorId: pricing.vendorId, items: pricing.items });
+      return pricing;
+    }
+    return this.finalizeReview(pricing, adminId, new Date());
   }
 
   // ─── Wallet ──────────────────────────────────────────────────────────────────
@@ -370,6 +568,38 @@ export class VendorsService {
     const wallet = await this.walletRepository.findOne({ where: { vendorId } });
     if (!wallet) throw new NotFoundException('Vendor wallet not found');
     return wallet;
+  }
+
+  /**
+   * The ₦/WP rate this vendor's WP actually converts at: the snapshot locked on
+   * their active pricing sheet (same rate their earnings were minted and payouts
+   * burn at), falling back to the global payout rate for pre-lock legacy sheets.
+   */
+  async effectivePayoutRate(vendorId: string): Promise<number> {
+    const active = await this.getActivePricing(vendorId);
+    const locked =
+      active?.pointsPerUnitSnapshot && active.pointsPerUnitSnapshot > 0
+        ? Math.round((1 / active.pointsPerUnitSnapshot) * 10000) / 10000
+        : null;
+    if (locked) return locked;
+    const config = await this.platformConfigService.getConfig();
+    return config.payoutRateNairaPerWP;
+  }
+
+  /**
+   * Wallet with naira-first framing for client display: vendors think in ₦, so
+   * the balance and lifetime earnings are returned in naira alongside the WP.
+   */
+  async getWalletView(vendorId: string) {
+    const wallet = await this.getWallet(vendorId);
+    const rate = await this.effectivePayoutRate(vendorId);
+    const toNaira = (wp: number) => Math.round(wp * rate * 100) / 100;
+    return {
+      ...wallet,
+      payoutRateNairaPerWP: rate,
+      balanceNaira: toNaira(wallet.balance),
+      totalEarnedNaira: toNaira(wallet.totalEarned),
+    };
   }
 
   async getLedger(vendorId: string, page = 1, limit = 20) {
@@ -391,15 +621,17 @@ export class VendorsService {
     amount: number,
     source: LedgerSource,
     description: string,
-    meta?: { orderId?: string; nairaSnapshot?: number; reference?: string },
+    meta?: { orderId?: string; nairaSnapshot?: number; reference?: string; countAsEarning?: boolean },
   ) {
     const wallet = await this.walletRepository.findOne({ where: { vendorId } });
     if (!wallet) throw new NotFoundException('Vendor wallet not found');
     if (wallet.status === 'frozen') throw new ForbiddenException('Vendor wallet is frozen');
 
     const balanceBefore = wallet.balance;
-    wallet.balance    += amount;
-    wallet.totalEarned += amount;
+    wallet.balance += amount;
+    // Reversals (e.g. failed-payout re-credits) restore the balance without
+    // inflating lifetime earnings.
+    if (meta?.countAsEarning !== false) wallet.totalEarned += amount;
     await this.walletRepository.save(wallet);
 
     const entry = this.ledgerRepository.create({

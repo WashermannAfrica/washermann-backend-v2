@@ -97,6 +97,14 @@ export class NotificationTemplateController {
     return qb.getMany();
   }
 
+  // POST /admin/notification-templates/sync-defaults
+  @Post('sync-defaults')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-apply all in-code default content/branding to stored templates (rebrand sync)' })
+  async syncDefaults(@Request() req) {
+    return this.templateService.resyncDefaults(req.user.sub);
+  }
+
   // GET /admin/notification-templates/:id
   @Get(':id')
   @ApiOperation({ summary: 'Get a single notification template' })

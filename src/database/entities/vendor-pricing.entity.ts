@@ -9,12 +9,43 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { Vendor } from './vendor.entity';
 
+/** Per-item review decision inside a pricing proposal. */
+export type PriceItemStatus = 'pending' | 'approved' | 'rejected';
+
 /** A single garment price entry inside VendorPricing.items */
 export interface GarmentPriceItem {
-  /** e.g. 'shirt', 'trouser', 'agbada', 'duvet' */
+  /**
+   * Canonical catalogue item this price is for (the P70 join key).
+   * Optional during the catalogue transition; new pricing should always set it.
+   */
+  itemId?: string;
+  /** e.g. 'shirt', 'trouser', 'agbada', 'duvet' — legacy free-text, retained until fully migrated */
   garmentType: string;
   /** Price in Naira (stored as number, e.g. 800 = ₦800) */
   priceNaira: number;
+  /**
+   * Per-item review decision. Absent on legacy proposals approved before per-item
+   * review existed — those count as live (see {@link isPriceItemLive}).
+   */
+  status?: PriceItemStatus;
+  /** Admin's reason when this line was rejected. */
+  rejectionReason?: string | null;
+  /** ISO timestamp of the per-item decision. */
+  decidedAt?: string | null;
+}
+
+/**
+ * A price line is "live" (usable for charging/order math) when it is explicitly
+ * approved, OR has no status at all (legacy proposals where the whole proposal
+ * was approved before per-item review). Pending/rejected lines are never live.
+ */
+export function isPriceItemLive(item: GarmentPriceItem): boolean {
+  return item.status == null || item.status === 'approved';
+}
+
+/** Stable key for matching a price line across requests (catalogue id, else garment type). */
+export function priceItemKey(item: GarmentPriceItem): string {
+  return item.itemId ?? `gt:${item.garmentType}`;
 }
 
 /**
@@ -69,6 +100,29 @@ export class VendorPricing {
   @ApiProperty({ nullable: true })
   @Column({ name: 'rejected_at', type: 'timestamp with time zone', nullable: true })
   rejectedAt: Date | null;
+
+  // ─── Rate lock (drift Option 2) ────────────────────────────────────────────────
+  // The WP/₦ conversion rate is SNAPSHOTTED when the admin finalizes this sheet.
+  // All earnings minted under this sheet AND their payout burn use this locked
+  // rate, so the vendor's ₦-in equals ₦-out regardless of platform rate moves.
+
+  @ApiProperty({ nullable: true, description: 'ConversionRate row locked at approval' })
+  @Column({ name: 'conversion_rate_id', type: 'uuid', nullable: true })
+  conversionRateId: string | null;
+
+  @ApiProperty({ nullable: true, description: 'WP per ₦1, locked at approval' })
+  @Column({
+    name: 'points_per_unit_snapshot',
+    type: 'decimal',
+    precision: 10,
+    scale: 4,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : parseFloat(v)),
+    },
+  })
+  pointsPerUnitSnapshot: number | null;
 
   // ─── Relations ───────────────────────────────────────────────────────────────
   @ManyToOne(() => Vendor, { eager: false })

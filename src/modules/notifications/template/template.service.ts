@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as Handlebars from 'handlebars';
@@ -22,7 +23,13 @@ export class TemplateService implements OnModuleInit {
   constructor(
     @InjectRepository(NotificationTemplate)
     private repo: Repository<NotificationTemplate>,
+    private configService: ConfigService,
   ) {}
+
+  /** Publicly-hosted email header logo URL (empty → text-wordmark fallback). */
+  private get logoUrl(): string {
+    return this.configService.get<string>('notifications.emailLogoUrl') || '';
+  }
 
   // ─── Seed default templates on startup ───────────────────────────────────────
 
@@ -66,6 +73,41 @@ export class TemplateService implements OnModuleInit {
     }
   }
 
+  /**
+   * Re-apply ALL in-code defaults to existing rows (and insert any missing) so the
+   * stored content/branding matches the current code. Overwrites name/subject/body/
+   * htmlBody/variables and clears per-template style overrides. Admin-triggered:
+   * use to roll out a rebrand or copy changes. Returns counts.
+   */
+  async resyncDefaults(updatedBy: string | null = null): Promise<{ updated: number; inserted: number }> {
+    let updated = 0;
+    let inserted = 0;
+    for (const tpl of DEFAULT_TEMPLATES) {
+      const existing = await this.repo.findOne({ where: { key: tpl.key, channel: tpl.channel } });
+      if (existing) {
+        existing.name      = tpl.name;
+        existing.subject   = tpl.subject ?? null;
+        existing.body      = tpl.body;
+        existing.htmlBody  = tpl.htmlBody ?? null;
+        existing.variables = tpl.variables;
+        existing.emailStyle = null;
+        existing.isActive  = true;
+        existing.updatedBy = updatedBy;
+        await this.repo.save(existing);
+        updated++;
+      } else {
+        await this.repo.save(this.repo.create({
+          key: tpl.key, channel: tpl.channel, name: tpl.name,
+          subject: tpl.subject ?? null, body: tpl.body, htmlBody: tpl.htmlBody ?? null,
+          variables: tpl.variables, isActive: true, updatedBy,
+        }));
+        inserted++;
+      }
+    }
+    this.logger.log(`Re-synced templates from defaults: ${updated} updated, ${inserted} inserted`);
+    return { updated, inserted };
+  }
+
   // ─── Render a template ───────────────────────────────────────────────────────
 
   /**
@@ -82,6 +124,7 @@ export class TemplateService implements OnModuleInit {
     // 1. Add handy computed variables
     const ctx = {
       year: new Date().getFullYear().toString(),
+      logoUrl: this.logoUrl,
       ...variables,
     };
 
@@ -119,6 +162,7 @@ export class TemplateService implements OnModuleInit {
       sampleVars[v] = `{{${v}}}`;   // echo variable names as placeholders
     }
     sampleVars['year'] = new Date().getFullYear().toString();
+    sampleVars['logoUrl'] = this.logoUrl;
 
     return this.compile(tpl, sampleVars, style);
   }

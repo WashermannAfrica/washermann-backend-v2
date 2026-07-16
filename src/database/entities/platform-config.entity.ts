@@ -3,6 +3,51 @@ import { ApiProperty } from '@nestjs/swagger';
 import { DecimalTransformer } from '../../common/transformers/column.transformers';
 
 /**
+ * A single charge in the stackable charge stack applied on top of an item's
+ * P70 base to form its platform price. Reserved keys carry escrow meaning:
+ *  - 'wash_rep_commission' funds the rep's escrow share
+ *  - 'vat' is a pass-through remittance
+ *  - 'platform_margin' / 'service_charge' are platform margin
+ */
+export interface ChargeStackItem {
+  key:   string;
+  label: string;
+  kind:  'percent' | 'fixed';
+  value: number;
+}
+
+/**
+ * Assignment scoring config: composite = wPerf·P + wLoyalty·L + wFair·F (weights sum 1).
+ * All sub-signals normalize to [0,1]. Constants tune the normalizers:
+ *  - satOrders: tenure log-saturation point
+ *  - recencyCapH: hours idle at which the fairness recency boost maxes out
+ *  - loadCap: open orders at/above which a candidate is EXCLUDED
+ *  - newbieN: below this many completed jobs the newcomer boost applies
+ *  - fairnessSlot: reserve 1 of the N broadcast slots for the highest-F candidate
+ */
+export interface AssignmentScoringConfig {
+  wPerf: number;
+  wLoyalty: number;
+  wFair: number;
+  satOrders: number;
+  recencyCapH: number;
+  loadCap: number;
+  newbieN: number;
+  fairnessSlot: boolean;
+}
+
+export const DEFAULT_ASSIGNMENT_SCORING: AssignmentScoringConfig = {
+  wPerf: 0.5,
+  wLoyalty: 0.2,
+  wFair: 0.3,
+  satOrders: 200,
+  recencyCapH: 48,
+  loadCap: 5,
+  newbieN: 10,
+  fairnessSlot: true,
+};
+
+/**
  * Single-row table (key/value store) for platform-wide configuration.
  *
  * All values here can be updated live by admin with immediate effect.
@@ -69,7 +114,9 @@ export class PlatformConfig {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    default: 9,
+    // Launch anchor V=₦6.86/WP (locked). This is the cold-start default for a
+    // fresh deployment's singleton config; the rate engine governs it thereafter.
+    default: 6.86,
     transformer: DecimalTransformer,
   })
   payoutRateNairaPerWP: number;
@@ -113,6 +160,23 @@ export class PlatformConfig {
   orderAutoCompleteHours: number;
 
   @ApiProperty({
+    description: 'Hours from scheduled pickup to the delivery deadline (order SLA — feeds rep on-time scoring)',
+    example: 48,
+  })
+  @Column({
+    name: 'order_turnaround_hours',
+    type: 'int',
+    default: 48,
+  })
+  orderTurnaroundHours: number;
+
+  @ApiProperty({
+    description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
+  })
+  @Column({ name: 'assignment_scoring', type: 'jsonb', nullable: true })
+  assignmentScoring: AssignmentScoringConfig | null;
+
+  @ApiProperty({
     description: 'VAT percentage applied on top of subtotal (0 = disabled)',
     example: 7.5,
   })
@@ -137,6 +201,27 @@ export class PlatformConfig {
     default: 70,
   })
   priceSuggestionPercentile: number;
+
+  @ApiProperty({
+    description: 'Stackable charges added on top of an item P70 base to form its platform price.',
+    type: 'array',
+  })
+  @Column({ name: 'charge_stack', type: 'jsonb', default: '[]' })
+  chargeStack: ChargeStackItem[];
+
+  @ApiProperty({
+    description: 'Ironing surcharge as a percentage of item price — applied only in Wash & Iron.',
+    example: 15,
+  })
+  @Column({
+    name: 'ironing_percent',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 15,
+    transformer: DecimalTransformer,
+  })
+  ironingPercent: number;
 
   @ApiProperty({ nullable: true })
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })

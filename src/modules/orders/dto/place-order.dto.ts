@@ -10,43 +10,52 @@ import {
   MaxLength,
   ValidateNested,
   ArrayMaxSize,
+  ArrayNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class SpecialItemDto {
-  @ApiProperty({ example: 'suit' })
-  @IsString()
-  type: string;
+export class OrderItemSelectionDto {
+  @ApiProperty({ description: 'Catalogue item UUID' })
+  @IsUUID()
+  itemId: string;
 
-  @ApiProperty({ example: 1, minimum: 1 })
+  @ApiProperty({ example: 2, minimum: 1 })
   @IsInt()
   @Min(1)
   qty: number;
 }
 
+/**
+ * One flow per order:
+ *  - wash_fold → set `bagId`
+ *  - wash_iron → set `selections`
+ *  - bundle    → set `bundleId` (Phase 4)
+ * Cross-field requirements are validated in the service.
+ */
 export class PlaceOrderDto {
-  @ApiProperty({ enum: ['wash_fold', 'wash_iron'] })
-  @IsEnum(['wash_fold', 'wash_iron'])
-  serviceType: 'wash_fold' | 'wash_iron';
+  @ApiProperty({ enum: ['wash_fold', 'wash_iron', 'bundle'] })
+  @IsEnum(['wash_fold', 'wash_iron', 'bundle'])
+  flow: 'wash_fold' | 'wash_iron' | 'bundle';
 
-  @ApiProperty({ enum: ['small', 'medium', 'large', 'xl'] })
-  @IsEnum(['small', 'medium', 'large', 'xl'])
-  bagSize: 'small' | 'medium' | 'large' | 'xl';
+  @ApiPropertyOptional({ description: 'Bag UUID — required for wash_fold' })
+  @IsOptional()
+  @IsUUID()
+  bagId?: string;
 
-  @ApiPropertyOptional({ type: [SpecialItemDto] })
+  @ApiPropertyOptional({ type: [OrderItemSelectionDto], description: 'Required for wash_iron' })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(50)
+  @ArrayNotEmpty()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
-  @Type(() => SpecialItemDto)
-  specialItems?: SpecialItemDto[];
+  @Type(() => OrderItemSelectionDto)
+  selections?: OrderItemSelectionDto[];
 
-  @ApiPropertyOptional({ minimum: 0, default: 0 })
+  @ApiPropertyOptional({ description: 'Bundle UUID — required for bundle' })
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  ironingCount?: number;
+  @IsUUID()
+  bundleId?: string;
 
   @ApiProperty({ description: 'UUID of the pickup area' })
   @IsUUID()

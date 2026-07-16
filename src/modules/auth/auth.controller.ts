@@ -27,6 +27,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { SetupAdminDto } from './dto/setup-admin.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+import { VendorSignupDto } from './dto/vendor-signup.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -181,6 +182,23 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Company email already exists' })
   registerCompany(@Body() dto: RegisterCompanyDto) {
     return this.authService.registerCompany(dto);
+  }
+
+  // ─── POST /auth/vendor/register ──────────────────────────────────────────────
+  @Public()
+  @Post('vendor/register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Self-register as a vendor — creates a PENDING_REVIEW account',
+    description:
+      'Public vendor signup. Creates the account + empty profile + wallet, sends a ' +
+      'verification OTP, and returns tokens. Vendor then verifies email and completes ' +
+      'KYC (business profile, NIN/CAC, documents, bank). Coexists with admin invite.',
+  })
+  @ApiResponse({ status: 201, description: 'Vendor registration successful' })
+  @ApiResponse({ status: 409, description: 'Email already in use' })
+  registerVendor(@Body() dto: VendorSignupDto) {
+    return this.authService.registerVendor(dto);
   }
 
   // ─── POST /auth/setup ────────────────────────────────────────────────────────

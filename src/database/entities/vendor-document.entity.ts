@@ -3,7 +3,14 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Vendor } from './vendor.entity';
 
 /** Supported document types for vendor verification */
-export type VendorDocumentType = 'nin' | 'cac' | 'address_proof' | 'photo' | 'other';
+export type VendorDocumentType =
+  | 'nin'
+  | 'cac'
+  | 'address_proof'
+  | 'photo'            // legacy "owner photo" — retained for older uploads
+  | 'personal_photo'
+  | 'shop_photo'
+  | 'other';
 
 /**
  * Uploaded verification documents for a vendor.

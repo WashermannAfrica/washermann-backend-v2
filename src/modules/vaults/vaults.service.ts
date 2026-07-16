@@ -46,7 +46,7 @@ export class VaultsService {
 
     // If setting as default, unset all other defaults
     if (shouldBeDefault) {
-      await this.vaultRepo.update({}, { isDefault: false });
+      await this.vaultRepo.update({ isDefault: true }, { isDefault: false });
     }
 
     const vault = this.vaultRepo.create({
@@ -143,7 +143,7 @@ export class VaultsService {
       throw new BadRequestException('Only an ACTIVE vault can be set as default');
     }
 
-    await this.vaultRepo.update({}, { isDefault: false });
+    await this.vaultRepo.update({ isDefault: true }, { isDefault: false });
     vault.isDefault = true;
     await this.vaultRepo.save(vault);
 
@@ -271,7 +271,7 @@ export class VaultsService {
     }
 
     // Set the next vault as default
-    await this.vaultRepo.update({}, { isDefault: false });
+    await this.vaultRepo.update({ isDefault: true }, { isDefault: false });
     nextVault.isDefault = true;
     await this.vaultRepo.save(nextVault);
 

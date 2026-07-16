@@ -63,10 +63,6 @@ export class MarketingService {
   // ─── Wash Rep applications ─────────────────────────────────────────────────────
 
   async applyWashRep(dto: CreateWashRepApplicationDto) {
-    if (dto.company_website) {
-      return { submitted: true };
-    }
-
     if (typeof dto.workedLogistics !== 'boolean' || typeof dto.workedLaundromat !== 'boolean') {
       throw new BadRequestException('Experience answers are required');
     }

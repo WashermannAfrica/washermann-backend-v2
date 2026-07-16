@@ -14,6 +14,15 @@ export type BagSize = 'small' | 'medium' | 'large' | 'xl';
 /** Service type options */
 export type ServiceType = 'wash_fold' | 'wash_iron';
 
+/** Order flow (catalogue pricing model) */
+export type OrderFlow = 'wash_fold' | 'wash_iron' | 'bundle';
+
+/** A selected catalogue item + quantity (wash_iron flow) */
+export interface OrderItemSelection {
+  itemId: string;
+  qty:    number;
+}
+
 /** A single special item in the order */
 export interface SpecialItem {
   type: string;  // e.g. 'suit', 'agbada', 'duvet'
@@ -81,17 +90,41 @@ export class Order extends BaseEntity {
   @Column({ name: 'area_id', type: 'uuid' })
   areaId: string;
 
+  @ApiProperty({ nullable: true, description: 'Resolved town/location geofence the pickup point fell in (null = legacy or fallback-assigned)' })
+  @Column({ name: 'area_location_id', type: 'uuid', nullable: true })
+  areaLocationId: string | null;
+
+  @ApiProperty({ default: true, description: 'False when the pickup point was outside all geofences and the order was routed to the nearest covered area' })
+  @Column({ name: 'coverage_matched', type: 'boolean', default: true })
+  coverageMatched: boolean;
+
   // ─── Service details ─────────────────────────────────────────────────────────
+
+  @ApiProperty({ enum: ['wash_fold', 'wash_iron', 'bundle'], description: 'Order flow (catalogue model)' })
+  @Column({ name: 'flow', type: 'varchar', length: 20, nullable: true })
+  flow: OrderFlow | null;
+
+  @ApiProperty({ nullable: true, description: 'Bag bought (wash_fold flow)' })
+  @Column({ name: 'bag_id', type: 'uuid', nullable: true })
+  bagId: string | null;
+
+  @ApiProperty({ nullable: true, type: 'array', description: 'Selected catalogue items + qty (wash_iron flow)' })
+  @Column({ name: 'item_selections', type: 'jsonb', nullable: true })
+  itemSelections: OrderItemSelection[] | null;
+
+  @ApiProperty({ nullable: true, description: 'Bundle bought (bundle flow)' })
+  @Column({ name: 'bundle_id', type: 'uuid', nullable: true })
+  bundleId: string | null;
 
   @ApiProperty({ enum: ['wash_fold', 'wash_iron'] })
   @Column({ name: 'service_type', type: 'varchar', length: 20 })
   serviceType: ServiceType;
 
-  @ApiProperty({ enum: ['small', 'medium', 'large', 'xl'] })
-  @Column({ name: 'bag_size', type: 'varchar', length: 10 })
-  bagSize: BagSize;
+  @ApiProperty({ enum: ['small', 'medium', 'large', 'xl'], nullable: true, description: 'Legacy bag size (pre-catalogue)' })
+  @Column({ name: 'bag_size', type: 'varchar', length: 10, nullable: true })
+  bagSize: BagSize | null;
 
-  @ApiProperty({ type: 'array', description: 'Special items outside the bag' })
+  @ApiProperty({ type: 'array', description: 'Special items outside the bag (legacy)' })
   @Column({ name: 'special_items', type: 'jsonb', default: '[]' })
   specialItems: SpecialItem[];
 
@@ -202,6 +235,18 @@ export class Order extends BaseEntity {
   @ApiProperty({ nullable: true, description: 'Garment count logged by rep at pickup' })
   @Column({ name: 'garment_log', type: 'jsonb', nullable: true })
   garmentLog: GarmentLog | null;
+
+  @ApiProperty({ nullable: true, description: 'SLA: deliver by this time (pickup + turnaround hours). Feeds rep on-time scoring.' })
+  @Column({ name: 'delivery_deadline', type: 'timestamp with time zone', nullable: true })
+  deliveryDeadline: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Logged garment types the assigned vendor had NOT priced — their share used the cross-vendor average; vendor sees "no price set for this item" on the order.',
+  })
+  @Column({ name: 'unpriced_garment_types', type: 'jsonb', nullable: true })
+  unpricedGarmentTypes: string[] | null;
 
   // ─── Status ──────────────────────────────────────────────────────────────────
 
