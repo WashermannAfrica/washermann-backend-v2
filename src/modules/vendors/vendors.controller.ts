@@ -18,6 +18,7 @@ import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
 import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
+import { SuspendVendorDto } from './dto/suspend-vendor.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
@@ -132,9 +133,18 @@ export class VendorsController {
 
   @Post(':id/suspend')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Suspend a vendor (admin)' })
-  suspend(@Param('id', ParseUUIDPipe) id: string) {
-    return this.vendorsService.updateVerificationStatus(id, VendorVerificationStatus.SUSPENDED);
+  @ApiOperation({
+    summary: 'Suspend a vendor (admin)',
+    description:
+      'Deactivates the vendor and sets them unavailable. Emails/SMSes the vendor to tell ' +
+      'them their account was deactivated, including the reason if one is supplied.',
+  })
+  suspend(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SuspendVendorDto) {
+    return this.vendorsService.updateVerificationStatus(
+      id,
+      VendorVerificationStatus.SUSPENDED,
+      dto?.reason,
+    );
   }
 
   // ─── Documents ────────────────────────────────────────────────────────────────

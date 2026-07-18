@@ -474,6 +474,132 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: '₦{{nairaEquivalent}} credited to your wallet for completing order {{orderRef}} ({{earnedWP}} WP).',
   },
 
+  // ── Vendor Application Received (signup — NOT yet approved) ───────────────────
+  // Sent instead of the generic customer welcome when a vendor signs up. It must
+  // NOT imply they can trade yet: the account is pending review and KYC.
+
+  {
+    key: 'vendor.application_received', channel: 'email',
+    name: 'Application Received — Vendor Email',
+    subject: 'We’ve received your Washermann vendor application 📝',
+    variables: ['vendorName'],
+    body: 'Hi {{vendorName}}, thanks for registering as a Washermann vendor. Your account is under review — please complete your KYC documents so we can verify you. You will not be able to receive orders until your account is approved.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Thanks for registering your business on <strong>Washermann</strong>. We’ve received your application.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">⏳ Under review</div>
+        <div class="highlight-label">Your account is not active yet</div>
+      </div>
+      <p><strong>What happens next:</strong></p>
+      <ul style="margin: 0 0 16px 20px; font-size: 15px; line-height: 2;">
+        <li>Complete your <strong>KYC documents</strong> in the vendor portal — we can’t verify you without them</li>
+        <li>Set up your item pricing so you’re ready to trade on day one</li>
+        <li>Our team reviews your application and documents</li>
+        <li>You’ll get an email the moment a decision is made</li>
+      </ul>
+      <p>You’ll be able to receive and accept orders <strong>only after your account is approved</strong>.</p>
+    `),
+  },
+  {
+    key: 'vendor.application_received', channel: 'sms',
+    name: 'Application Received — Vendor SMS',
+    variables: ['vendorName'],
+    body: 'Hi {{vendorName}}, we received your Washermann vendor application. Please complete your KYC in the vendor portal. Your account is under review — we\'ll email you once a decision is made.',
+  },
+  {
+    key: 'vendor.application_received', channel: 'push',
+    name: 'Application Received — Vendor Push',
+    variables: ['vendorName'],
+    subject: 'Application received ⏳',
+    body: 'Your vendor account is under review. Complete your KYC documents to help us verify you.',
+  },
+  {
+    key: 'vendor.application_received', channel: 'in_app',
+    name: 'Application Received — Vendor In-App',
+    variables: [],
+    subject: 'Application under review',
+    body: 'We’ve received your vendor application. Complete your KYC documents — you can start receiving orders once your account is approved.',
+  },
+
+  // ── Vendor Account Rejected ───────────────────────────────────────────────────
+
+  {
+    key: 'vendor.account_rejected', channel: 'email',
+    name: 'Account Rejected — Vendor Email',
+    subject: 'Update on your Washermann vendor application',
+    variables: ['vendorName', 'reason'],
+    body: 'Hi {{vendorName}}, we were unable to approve your Washermann vendor account at this time. Reason: {{reason}}. You can correct the issue and contact support to be reconsidered.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Thank you for your interest in partnering with <strong>Washermann</strong>. After reviewing your application, we’re unable to approve your vendor account at this time.</p>
+      <div class="highlight-box">
+        <div class="highlight-label">Reason</div>
+        <div class="highlight-value" style="font-size: 16px;">{{reason}}</div>
+      </div>
+      <p>If you believe this was a mistake, or you’ve since resolved the issue above, reply to this email or contact our support team and we’ll be glad to take another look.</p>
+    `),
+  },
+  {
+    key: 'vendor.account_rejected', channel: 'sms',
+    name: 'Account Rejected — Vendor SMS',
+    variables: ['vendorName', 'reason'],
+    body: 'Hi {{vendorName}}, we could not approve your Washermann vendor account. Reason: {{reason}}. Contact support if you would like this reviewed again.',
+  },
+  {
+    key: 'vendor.account_rejected', channel: 'push',
+    name: 'Account Rejected — Vendor Push',
+    variables: [],
+    subject: 'Application update',
+    body: 'There’s an update on your Washermann vendor application. Open the app to see the details.',
+  },
+  {
+    key: 'vendor.account_rejected', channel: 'in_app',
+    name: 'Account Rejected — Vendor In-App',
+    variables: ['reason'],
+    subject: 'Application not approved',
+    body: 'Your vendor account was not approved. Reason: {{reason}}. Contact support if you would like this reviewed again.',
+  },
+
+  // ── Vendor Account Suspended / Deactivated ────────────────────────────────────
+
+  {
+    key: 'vendor.account_suspended', channel: 'email',
+    name: 'Account Suspended — Vendor Email',
+    subject: 'Your Washermann vendor account has been deactivated',
+    variables: ['vendorName', 'reason'],
+    body: 'Hi {{vendorName}}, your Washermann vendor account has been deactivated. Reason: {{reason}}. You will not receive new orders while your account is inactive. Contact support to resolve this.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Your Washermann vendor account has been <strong>deactivated</strong> and you will not receive new orders while it remains inactive.</p>
+      <div class="highlight-box">
+        <div class="highlight-label">Reason</div>
+        <div class="highlight-value" style="font-size: 16px;">{{reason}}</div>
+      </div>
+      <p>Any orders already in progress should still be completed. If you think this is a mistake or you’d like to resolve it, please contact our support team.</p>
+    `),
+  },
+  {
+    key: 'vendor.account_suspended', channel: 'sms',
+    name: 'Account Suspended — Vendor SMS',
+    variables: ['vendorName', 'reason'],
+    body: 'Hi {{vendorName}}, your Washermann vendor account has been deactivated. Reason: {{reason}}. You will not receive new orders. Contact support to resolve.',
+  },
+  {
+    key: 'vendor.account_suspended', channel: 'push',
+    name: 'Account Suspended — Vendor Push',
+    variables: [],
+    subject: 'Account deactivated',
+    body: 'Your vendor account has been deactivated. Open the app for details.',
+  },
+  {
+    key: 'vendor.account_suspended', channel: 'in_app',
+    name: 'Account Suspended — Vendor In-App',
+    variables: ['reason'],
+    subject: 'Account deactivated',
+    body: 'Your vendor account has been deactivated. Reason: {{reason}}. Contact support to resolve this.',
+  },
+
   // ── Vendor Account Verified ───────────────────────────────────────────────────
 
   {
