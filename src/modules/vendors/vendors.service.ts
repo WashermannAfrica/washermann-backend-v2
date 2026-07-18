@@ -256,6 +256,12 @@ export class VendorsService {
       this.referralsService
         .onRefereeQualified(vendor.userId, 'vendor')
         .catch((err) => this.logger.error(`Referral unlock (vendor) failed: ${err.message}`));
+    } else if (dto.decision === VendorVerificationStatus.REJECTED) {
+      // Rejected vendors were previously told nothing at all — always explain why.
+      this.notificationsService.notifyVendorRejected({
+        vendorId,
+        reason: dto.rejectionReason,
+      });
     }
 
     return saved;
@@ -263,14 +269,30 @@ export class VendorsService {
 
   // ─── Admin: Suspend / unsuspend vendor ──────────────────────────────────────
 
-  async updateVerificationStatus(vendorId: string, status: VendorVerificationStatus) {
+  async updateVerificationStatus(
+    vendorId: string,
+    status: VendorVerificationStatus,
+    reason?: string,
+  ) {
     const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
     if (!vendor) throw new NotFoundException('Vendor not found');
+    const previousStatus = vendor.verificationStatus;
     vendor.verificationStatus = status;
     if (status === VendorVerificationStatus.SUSPENDED) {
       vendor.isAvailable = false;
     }
-    return this.vendorRepository.save(vendor);
+    const saved = await this.vendorRepository.save(vendor);
+
+    // Tell the vendor their account was deactivated — previously this was silent.
+    // Only on the transition INTO suspension, so re-suspending doesn't re-notify.
+    if (
+      status === VendorVerificationStatus.SUSPENDED &&
+      previousStatus !== VendorVerificationStatus.SUSPENDED
+    ) {
+      this.notificationsService.notifyVendorSuspended({ vendorId, reason });
+    }
+
+    return saved;
   }
 
   // ─── Documents ───────────────────────────────────────────────────────────────
