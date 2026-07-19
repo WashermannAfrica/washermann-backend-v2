@@ -282,11 +282,22 @@ export class AuthService {
 
     this.logger.log(`${dto.channel} verified for user: ${user.id}`);
 
-    // Send welcome email on the first successful verification only
+    // Send welcome email on the first successful verification only.
+    // Vendors get a DIFFERENT email: their account is PENDING_REVIEW at this point,
+    // so the customer welcome ("place and track orders") would be wrong and
+    // misleading — they must be told they're under review and need to finish KYC.
     if (isFirstVerification) {
-      this.notificationsService
-        .sendWelcome({ fullName: user.fullName, email: user.email, phone: user.phone })
-        .catch((err) => this.logger.error(`Welcome email failed: ${err.message}`));
+      if (user.roles.includes(Role.VENDOR)) {
+        this.notificationsService
+          .notifyVendorApplicationReceived({ userId: user.id, fallbackName: user.fullName })
+          .catch((err) =>
+            this.logger.error(`Vendor application-received email failed: ${err.message}`),
+          );
+      } else {
+        this.notificationsService
+          .sendWelcome({ fullName: user.fullName, email: user.email, phone: user.phone })
+          .catch((err) => this.logger.error(`Welcome email failed: ${err.message}`));
+      }
     }
 
     return {

@@ -632,6 +632,70 @@ export class NotificationsService {
   /**
    * Fire when admin verifies a vendor account.
    */
+  /**
+   * Fire when a vendor finishes signup (OTP verified). Deliberately separate from
+   * the customer welcome: a new vendor is PENDING_REVIEW and must not be told they
+   * can take orders. Looked up by userId because at signup we only have the user.
+   */
+  async notifyVendorApplicationReceived(params: { userId: string; fallbackName?: string }) {
+    const vendor = await this.vendorRepo.findOne({ where: { userId: params.userId } });
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName: vendor?.businessName || params.fallbackName || user.fullName,
+    };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('vendor.application_received', user.email, vars),
+        user.phone && this.sendSms('vendor.application_received', user.phone, vars),
+        user.fcmToken && this.sendPush('vendor.application_received', user.fcmToken, vars),
+        this.sendInApp('vendor.application_received', user.id, vars, 'account'),
+      ]);
+    }, this.logger, 'vendor.application_received');
+  }
+
+  /** Fire when an admin REJECTS a vendor's verification. */
+  async notifyVendorRejected(params: { vendorId: string; reason?: string | null }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName: vendor.businessName,
+      reason: params.reason || 'Your application did not meet our onboarding requirements.',
+    };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('vendor.account_rejected', user.email, vars),
+        user.phone && this.sendSms('vendor.account_rejected', user.phone, vars),
+        user.fcmToken && this.sendPush('vendor.account_rejected', user.fcmToken, vars),
+        this.sendInApp('vendor.account_rejected', vendor.userId, vars, 'account'),
+      ]);
+    }, this.logger, 'vendor.account_rejected');
+  }
+
+  /** Fire when a vendor account is suspended / deactivated. */
+  async notifyVendorSuspended(params: { vendorId: string; reason?: string | null }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName: vendor.businessName,
+      reason: params.reason || 'Please contact support for details.',
+    };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('vendor.account_suspended', user.email, vars),
+        user.phone && this.sendSms('vendor.account_suspended', user.phone, vars),
+        user.fcmToken && this.sendPush('vendor.account_suspended', user.fcmToken, vars),
+        this.sendInApp('vendor.account_suspended', vendor.userId, vars, 'account'),
+      ]);
+    }, this.logger, 'vendor.account_suspended');
+  }
+
   async notifyVendorVerified(params: { vendorId: string }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
