@@ -65,7 +65,7 @@ export class SalesRepService implements OnModuleInit {
   private async seedTutorial() {
     if ((await this.steps.count()) > 0) return;
     const seed: Array<[number, string, string]> = [
-      [1, 'Welcome to the Washermann Sales Rep program', 'You earn cash for every customer and vendor you bring onto Washermann. This short course explains how it works and how you get paid.'],
+      [1, 'Welcome to the Washermann Rep program', 'You earn cash for every customer and vendor you bring onto Washermann. This short course explains how it works and how you get paid.'],
       [2, 'How referrals work', 'You get a unique referral code (e.g. WM-AB12CD). When someone signs up with your code, they are permanently linked to you. A customer referral unlocks after their first completed order; a vendor referral unlocks when the vendor is approved.'],
       [3, 'Getting paid', 'Rewards accrue as cash in your dashboard. Once a referral is "available", you can request a payout to your bank account. Payouts are reviewed and disbursed by the Washermann finance team.'],
       [4, 'Playing fair', 'Self-referrals and fake signups are not rewarded and can get you suspended. Only refer real customers and vendors. Be honest about Washermann’s pricing and service.'],
@@ -211,7 +211,7 @@ export class SalesRepService implements OnModuleInit {
         await this.notificationsService.sendStaffInvite({
           fullName: created.fullName,
           email,
-          role: 'Sales Rep',
+          role: 'Rep', // display label in the invite email only — not the actual Role
           inviteToken,
           deepLinkBase,
         });
