@@ -23,6 +23,7 @@ import { UserStatus } from '../../common/enums/user-status.enum';
 import { AuthService } from '../auth/auth.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RepsService } from '../reps/reps.service';
 import { CreateSalesRepApplicationDto } from './dto/create-sales-rep-application.dto';
 import { SubmitAssessmentDto } from './dto/submit-assessment.dto';
 import { RequestSalesRepPayoutDto } from './dto/request-payout.dto';
@@ -50,6 +51,7 @@ export class SalesRepService implements OnModuleInit {
     private readonly authService: AuthService,
     private readonly referralsService: ReferralsService,
     private readonly notificationsService: NotificationsService,
+    private readonly repsService: RepsService,
   ) {}
 
   async onModuleInit() {
@@ -65,7 +67,7 @@ export class SalesRepService implements OnModuleInit {
   private async seedTutorial() {
     if ((await this.steps.count()) > 0) return;
     const seed: Array<[number, string, string]> = [
-      [1, 'Welcome to the Washermann Sales Rep program', 'You earn cash for every customer and vendor you bring onto Washermann. This short course explains how it works and how you get paid.'],
+      [1, 'Welcome to the Washermann Rep program', 'You earn cash for every customer and vendor you bring onto Washermann. This short course explains how it works and how you get paid.'],
       [2, 'How referrals work', 'You get a unique referral code (e.g. WM-AB12CD). When someone signs up with your code, they are permanently linked to you. A customer referral unlocks after their first completed order; a vendor referral unlocks when the vendor is approved.'],
       [3, 'Getting paid', 'Rewards accrue as cash in your dashboard. Once a referral is "available", you can request a payout to your bank account. Payouts are reviewed and disbursed by the Washermann finance team.'],
       [4, 'Playing fair', 'Self-referrals and fake signups are not rewarded and can get you suspended. Only refer real customers and vendors. Be honest about Washermann’s pricing and service.'],
@@ -211,7 +213,7 @@ export class SalesRepService implements OnModuleInit {
         await this.notificationsService.sendStaffInvite({
           fullName: created.fullName,
           email,
-          role: 'Sales Rep',
+          role: 'Rep', // display label in the invite email only — not the actual Role
           inviteToken,
           deepLinkBase,
         });
@@ -489,10 +491,18 @@ export class SalesRepService implements OnModuleInit {
       user.roles = [...user.roles, Role.REP];
       await this.users.save(user);
     }
+
+    // Create the actual field-rep profile (Rep row + pseudo-wallet) so the user is
+    // visible to the assignment engine — granting the role alone left them invisible.
+    // Idempotent; starts with no service areas (admin assigns them before jobs flow).
+    const repProfile = await this.repsService.ensureProfileForUser(userId, {
+      phone: user.phone,
+    });
+
     profile.upgradedToRepAt = new Date();
     await this.reps.save(profile);
-    this.logger.log(`Sales rep ${userId} upgraded to wash rep by ${adminId}`);
-    return { userId, roles: user.roles, upgradedAt: profile.upgradedToRepAt };
+    this.logger.log(`Sales rep ${userId} upgraded to wash rep by ${adminId} (rep profile ${repProfile.id})`);
+    return { userId, roles: user.roles, upgradedAt: profile.upgradedToRepAt, repId: repProfile.id };
   }
 
   // ─── Admin: content management (tutorial steps) ───────────────────────────────

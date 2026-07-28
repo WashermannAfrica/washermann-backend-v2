@@ -10,6 +10,7 @@ import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Rep } from '../../database/entities/rep.entity';
 import { RepPseudoWallet } from '../../database/entities/rep-pseudo-wallet.entity';
+import { AreasService } from '../areas/areas.service';
 import { RepPseudoLedgerEntry } from '../../database/entities/rep-pseudo-ledger-entry.entity';
 import { User } from '../../database/entities/user.entity';
 import { CreateRepDto } from './dto/create-rep.dto';
@@ -34,11 +35,13 @@ export class RepsService {
     private userRepository: Repository<User>,
 
     private dataSource: DataSource,
+    private areasService: AreasService,
   ) {}
 
   // ─── Create rep (admin only) ──────────────────────────────────────────────────
 
   async create(dto: CreateRepDto, adminId: string) {
+    await this.areasService.assertAreasExist(dto.areaIds ?? []);
     const existing = await this.userRepository.findOne({
       where: [{ email: dto.email.toLowerCase() }, { phone: dto.phone }],
     });
@@ -87,6 +90,45 @@ export class RepsService {
       await manager.save(wallet);
 
       return { rep, user: this.sanitizeUser(user) };
+    });
+  }
+
+  /**
+   * Ensure an EXISTING user has a field-rep profile (Rep row + pseudo-wallet).
+   * Used when a sales-rep is upgraded to a wash-rep: previously the upgrade only
+   * granted the REP role, leaving the user with no Rep row — invisible to the
+   * assignment engine. Idempotent: returns the existing profile if one is present.
+   * Starts with empty service areas; an admin assigns areas before they take jobs.
+   */
+  async ensureProfileForUser(userId: string, opts?: { phone?: string | null }): Promise<Rep> {
+    const existing = await this.repRepository.findOne({ where: { userId } });
+    if (existing) return existing;
+
+    return this.dataSource.transaction(async (manager) => {
+      const rep = manager.create(Rep, {
+        userId,
+        areaIds: [],
+        phone: opts?.phone ?? null,
+        contractUrl: null,
+        status: RepStatus.ACTIVE,
+        isAvailable: false,
+        assignmentPriority: 100,
+        rating: 0,
+        ratingCount: 0,
+        flaggedForReview: false,
+        notes: 'Auto-created on sales-rep → wash-rep upgrade. Assign service areas to enable job assignment.',
+      });
+      await manager.save(rep);
+
+      const wallet = manager.create(RepPseudoWallet, {
+        repId: rep.id,
+        balance: 0,
+        totalEarned: 0,
+        cycleStartedAt: new Date(),
+      });
+      await manager.save(wallet);
+
+      return rep;
     });
   }
 
@@ -151,7 +193,7 @@ export class RepsService {
     const rep = await this.repRepository.findOne({ where: { id: repId } });
     if (!rep) throw new NotFoundException('Rep not found');
 
-    if (dto.areaIds           != null) rep.areaIds           = dto.areaIds;
+    if (dto.areaIds           != null) { await this.areasService.assertAreasExist(dto.areaIds); rep.areaIds = dto.areaIds; }
     if (dto.phone             != null) rep.phone             = dto.phone.trim();
     if (dto.contractUrl       != null) rep.contractUrl       = dto.contractUrl;
     if (dto.status            != null) {

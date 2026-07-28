@@ -218,10 +218,10 @@ export const salesRepRejectionTemplate = (data: {
   fullName: string;
   reason?: string | null;
 }) => ({
-  subject: `Update on your Washermann Sales Rep application`,
+  subject: `Update on your Washermann Rep application`,
   html: baseLayout(`
     <p>Hi <strong>${data.fullName}</strong>,</p>
-    <p>Thank you for applying to become a <strong>Washermann Sales Rep</strong>. After reviewing your application, we're unable to move forward with it at this time.</p>
+    <p>Thank you for applying to become a <strong>Washermann Rep</strong>. After reviewing your application, we're unable to move forward with it at this time.</p>
     ${
       data.reason
         ? `<div style="background:${BRAND.mintSoft};border-radius:8px;padding:14px 16px;margin:16px 0;font-size:14px;color:${BRAND.text};">

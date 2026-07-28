@@ -16,6 +16,7 @@ import { DataSource, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
+import { CompanyAdmin } from '../../database/entities/company-admin.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
@@ -57,6 +58,8 @@ export class AuthService {
     private userRepository: Repository<User>,
     @InjectRepository(Company)
     private companyRepository: Repository<Company>,
+    @InjectRepository(CompanyAdmin)
+    private companyAdminRepository: Repository<CompanyAdmin>,
     private jwtService: JwtService,
     private configService: ConfigService,
     private redisService: RedisService,
@@ -442,7 +445,32 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    return { data: this.sanitizeUser(user) };
+
+    // Company owners/admins need their companyId to call every /:companyId/... route.
+    // The company app reads this off /auth/me right after login to hydrate its store.
+    // A user maps to a company through the company_admins link (covers owner AND admin).
+    let company: {
+      id: string;
+      name: string;
+      activationStatus: string; // PENDING until invite-activation / admin approval completes
+      status: string; // platform status (ACTIVE / INACTIVE)
+      role: string; // this user's role within the company (owner / admin)
+    } | null = null;
+    const link = await this.companyAdminRepository.findOne({ where: { userId } });
+    if (link) {
+      const c = await this.companyRepository.findOne({ where: { id: link.companyId } });
+      if (c) {
+        company = {
+          id: c.id,
+          name: c.name,
+          activationStatus: c.activationStatus,
+          status: c.status,
+          role: link.companyRole,
+        };
+      }
+    }
+
+    return { data: { ...this.sanitizeUser(user), company } };
   }
 
   // ─── Setup: Create First Super Admin ─────────────────────────────────────────

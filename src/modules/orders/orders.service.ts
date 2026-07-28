@@ -185,6 +185,11 @@ export class OrdersService {
         areaLocationId = resolution.covered ? resolution.location.id : null;
         coverageMatched = resolution.covered;
       }
+    } else if (areaId) {
+      // Legacy path (no coordinates): the client-supplied areaId is trusted, so
+      // validate it exists — otherwise the insert hits the area_id FK and fails
+      // with a raw 500 instead of a clean 400.
+      await this.areasService.findOne(areaId);
     }
 
     // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
