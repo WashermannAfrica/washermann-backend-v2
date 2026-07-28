@@ -29,6 +29,7 @@ import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { AreasService } from '../areas/areas.service';
 
 @Injectable()
 export class VendorsService {
@@ -62,6 +63,7 @@ export class VendorsService {
     private redisService: RedisService,
     private referralsService: ReferralsService,
     private platformConfigService: PlatformConfigService,
+    private areasService: AreasService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -73,6 +75,8 @@ export class VendorsService {
     if (existing) {
       throw new ConflictException('A user with this email or phone already exists');
     }
+
+    await this.areasService.assertAreasExist(dto.areaIds ?? []);
 
     const result = await this.dataSource.transaction(async (manager) => {
       const user = manager.create(User, {
@@ -212,7 +216,10 @@ export class VendorsService {
 
     if (dto.businessName != null) vendor.businessName = dto.businessName.trim();
     if (dto.phone        != null) vendor.phone        = dto.phone.trim();
-    if (dto.areaIds      != null) vendor.areaIds      = dto.areaIds;
+    if (dto.areaIds      != null) {
+      await this.areasService.assertAreasExist(dto.areaIds);
+      vendor.areaIds = dto.areaIds;
+    }
     if (dto.isAvailable  != null) {
       // Only verified vendors can toggle available
       if (dto.isAvailable && vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {

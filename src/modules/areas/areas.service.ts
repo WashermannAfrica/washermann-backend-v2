@@ -153,6 +153,22 @@ export class AreasService {
     return area;
   }
 
+  /**
+   * Assert every id in the list is a real area — used wherever a CLIENT supplies
+   * area ids (vendor/rep service areas, legacy order areaId). Converts what would
+   * otherwise be a DB foreign-key 500 or a silent no-match into a clean 400.
+   */
+  async assertAreasExist(ids: string[]): Promise<void> {
+    const unique = [...new Set((ids ?? []).filter(Boolean))];
+    if (unique.length === 0) return;
+    const found = await this.areaRepository.find({ where: { id: In(unique) } });
+    if (found.length !== unique.length) {
+      const foundIds = new Set(found.map((a) => a.id));
+      const missing = unique.filter((id) => !foundIds.has(id));
+      throw new BadRequestException(`Unknown area id(s): ${missing.join(', ')}`);
+    }
+  }
+
   /** Detailed area view for the admin detail page (locations + KPIs + recent orders). */
   async findOneDetailed(id: string) {
     const area = await this.areaRepository.findOne({ where: { id }, relations: ['locations'] });

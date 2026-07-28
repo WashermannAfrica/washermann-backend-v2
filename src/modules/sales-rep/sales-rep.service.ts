@@ -23,6 +23,7 @@ import { UserStatus } from '../../common/enums/user-status.enum';
 import { AuthService } from '../auth/auth.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RepsService } from '../reps/reps.service';
 import { CreateSalesRepApplicationDto } from './dto/create-sales-rep-application.dto';
 import { SubmitAssessmentDto } from './dto/submit-assessment.dto';
 import { RequestSalesRepPayoutDto } from './dto/request-payout.dto';
@@ -50,6 +51,7 @@ export class SalesRepService implements OnModuleInit {
     private readonly authService: AuthService,
     private readonly referralsService: ReferralsService,
     private readonly notificationsService: NotificationsService,
+    private readonly repsService: RepsService,
   ) {}
 
   async onModuleInit() {
@@ -489,10 +491,18 @@ export class SalesRepService implements OnModuleInit {
       user.roles = [...user.roles, Role.REP];
       await this.users.save(user);
     }
+
+    // Create the actual field-rep profile (Rep row + pseudo-wallet) so the user is
+    // visible to the assignment engine — granting the role alone left them invisible.
+    // Idempotent; starts with no service areas (admin assigns them before jobs flow).
+    const repProfile = await this.repsService.ensureProfileForUser(userId, {
+      phone: user.phone,
+    });
+
     profile.upgradedToRepAt = new Date();
     await this.reps.save(profile);
-    this.logger.log(`Sales rep ${userId} upgraded to wash rep by ${adminId}`);
-    return { userId, roles: user.roles, upgradedAt: profile.upgradedToRepAt };
+    this.logger.log(`Sales rep ${userId} upgraded to wash rep by ${adminId} (rep profile ${repProfile.id})`);
+    return { userId, roles: user.roles, upgradedAt: profile.upgradedToRepAt, repId: repProfile.id };
   }
 
   // ─── Admin: content management (tutorial steps) ───────────────────────────────
