@@ -167,29 +167,32 @@ export class OrdersService {
     // 0. Profile-completion gate — customer must have phone + saved address
     await this.usersService.assertOrderEligibility(customerId);
 
-    // 0. Geofence resolution — when pickup coordinates are provided, the AREA IS
-    //    DERIVED SERVER-SIDE (client areaId is only a legacy fallback for orders
-    //    without coordinates). Outside all circles → route to the nearest covered
-    //    area (never reject); the resolver logs the miss as a coverage gap.
+    // 0. Geofence resolution — the AREA IS DERIVED SERVER-SIDE from the required
+    //    pickup coordinates. Inside a coverage circle → that area (covered); outside
+    //    all circles → the nearest area (never reject; logged as a coverage gap).
+    //    The client areaId is only a fallback for the edge case where no area has
+    //    any location circle configured yet.
     let areaId = dto.areaId;
     let areaLocationId: string | null = null;
     let coverageMatched = true;
-    if (dto.pickupLatitude != null && dto.pickupLongitude != null) {
-      const resolution = await this.areasService.resolveAreaForPoint(
-        dto.pickupLatitude,
-        dto.pickupLongitude,
-        { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
-      );
-      if (resolution) {
-        areaId = resolution.area.id;
-        areaLocationId = resolution.covered ? resolution.location.id : null;
-        coverageMatched = resolution.covered;
-      }
+    const resolution = await this.areasService.resolveAreaForPoint(
+      dto.pickupLatitude,
+      dto.pickupLongitude,
+      { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
+    );
+    if (resolution) {
+      areaId = resolution.area.id;
+      areaLocationId = resolution.covered ? resolution.location.id : null;
+      coverageMatched = resolution.covered;
     } else if (areaId) {
-      // Legacy path (no coordinates): the client-supplied areaId is trusted, so
-      // validate it exists — otherwise the insert hits the area_id FK and fails
-      // with a raw 500 instead of a clean 400.
+      // No area has location circles yet — trust the fallback areaId but validate it
+      // exists (clean 400 instead of a raw area_id FK 500).
       await this.areasService.findOne(areaId);
+    }
+    if (!areaId) {
+      throw new BadRequestException(
+        'Could not determine a service area for these coordinates, and no fallback area was provided.',
+      );
     }
 
     // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
