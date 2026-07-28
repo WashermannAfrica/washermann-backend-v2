@@ -102,9 +102,10 @@ export class CompaniesService {
       JSON.stringify({ companyId: company.id, ownerEmail }),
     );
 
-    const deepLinkBase = this.configService.get<string>(
-      'app.deepLinkBase',
-      'https://app.washermann.com',
+    // Activation happens in the company WEB portal, not the mobile deep link.
+    const companyPortalUrl = this.configService.get<string>(
+      'app.companyPortalUrl',
+      'http://localhost:3002',
     );
 
     // Fire and forget — network errors must not block the admin's response
@@ -113,7 +114,7 @@ export class CompaniesService {
         companyName: company.name,
         ownerEmail,
         inviteToken,
-        deepLinkBase,
+        deepLinkBase: companyPortalUrl,
       })
       .catch((err) =>
         this.logger.error(`Company invite email failed: ${err.message}`),

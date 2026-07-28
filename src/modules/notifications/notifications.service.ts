@@ -205,7 +205,7 @@ export class NotificationsService {
   }
 
   async sendCompanyInvite(data: { companyName: string; ownerEmail: string; inviteToken: string; deepLinkBase: string }) {
-    const inviteLink = `${data.deepLinkBase}/company/activate?token=${data.inviteToken}`;
+    const inviteLink = `${data.deepLinkBase}/activate?token=${data.inviteToken}`;
     const template   = companyInviteTemplate({ companyName: data.companyName, inviteLink });
     await this.emailService.send({ to: data.ownerEmail, subject: template.subject, html: template.html });
   }
