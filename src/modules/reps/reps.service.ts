@@ -100,14 +100,22 @@ export class RepsService {
    * assignment engine. Idempotent: returns the existing profile if one is present.
    * Starts with empty service areas; an admin assigns areas before they take jobs.
    */
-  async ensureProfileForUser(userId: string, opts?: { phone?: string | null }): Promise<Rep> {
+  async ensureProfileForUser(
+    userId: string,
+    opts?: { phone?: string | null; areaName?: string | null },
+  ): Promise<Rep> {
     const existing = await this.repRepository.findOne({ where: { userId } });
     if (existing) return existing;
+
+    // Carry the applicant's stated area (free text) onto the profile if it matches
+    // a real area; otherwise start empty for the admin to assign.
+    const matchedArea = await this.areasService.findByName(opts?.areaName);
+    const areaIds = matchedArea ? [matchedArea.id] : [];
 
     return this.dataSource.transaction(async (manager) => {
       const rep = manager.create(Rep, {
         userId,
-        areaIds: [],
+        areaIds,
         phone: opts?.phone ?? null,
         contractUrl: null,
         status: RepStatus.ACTIVE,

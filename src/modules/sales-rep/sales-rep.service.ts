@@ -494,9 +494,14 @@ export class SalesRepService implements OnModuleInit {
 
     // Create the actual field-rep profile (Rep row + pseudo-wallet) so the user is
     // visible to the assignment engine — granting the role alone left them invisible.
-    // Idempotent; starts with no service areas (admin assigns them before jobs flow).
+    // Auto-assign the area they stated on their application (matched by name); if it
+    // doesn't match a real area, the profile starts empty for the admin to assign.
+    const application = user.email
+      ? await this.applications.findOne({ where: { email: user.email }, order: { createdAt: 'DESC' } })
+      : null;
     const repProfile = await this.repsService.ensureProfileForUser(userId, {
       phone: user.phone,
+      areaName: application?.areaOfLagos ?? null,
     });
 
     profile.upgradedToRepAt = new Date();

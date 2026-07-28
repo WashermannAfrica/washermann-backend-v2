@@ -154,6 +154,17 @@ export class AreasService {
   }
 
   /**
+   * Best-effort match of a free-text area name to a real Area (case-insensitive,
+   * active only). Used to carry a sales-rep applicant's stated area onto their
+   * field-rep profile on upgrade. Returns null when nothing matches.
+   */
+  async findByName(name?: string | null): Promise<Area | null> {
+    const q = name?.trim();
+    if (!q) return null;
+    return this.areaRepository.findOne({ where: { name: ILike(q), isActive: true } });
+  }
+
+  /**
    * Assert every id in the list is a real area — used wherever a CLIENT supplies
    * area ids (vendor/rep service areas, legacy order areaId). Converts what would
    * otherwise be a DB foreign-key 500 or a silent no-match into a clean 400.
