@@ -131,6 +131,16 @@ export class OrdersController {
 
   // ─── Status transitions (role-specific) ──────────────────────────────────────
 
+  @Post(':id/status/en-route')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep marks that they are en route to pickup' })
+  markRepEnRoute(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.repTransition(id, OrderStatus.REP_EN_ROUTE_PICKUP, req.user.sub);
+  }
+
   @Post(':id/status/picked-up')
   @Roles(Role.REP)
   @ApiOperation({ summary: 'Rep marks order as picked up' })
@@ -138,7 +148,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.PICKED_UP, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.PICKED_UP, req.user.sub);
   }
 
   @Post(':id/status/in-progress')
@@ -168,7 +178,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.REP_COLLECTED, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.REP_COLLECTED, req.user.sub);
   }
 
   @Post(':id/status/out-for-delivery')
@@ -178,7 +188,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.OUT_FOR_DELIVERY, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.OUT_FOR_DELIVERY, req.user.sub);
   }
 
   @Post(':id/status/delivered')
@@ -188,7 +198,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.DELIVERED, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.DELIVERED, req.user.sub);
   }
 
   // ─── Customer: confirm delivery ───────────────────────────────────────────────

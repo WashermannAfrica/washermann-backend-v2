@@ -479,6 +479,29 @@ export class OrdersService {
     return order;
   }
 
+  // ─── Rep-driven status transitions (ownership-checked) ───────────────────────
+
+  /** Only the rep assigned to this order may act on it. */
+  private async assertRepAssigned(order: Order, repUserId: string): Promise<void> {
+    if (order.repId) {
+      const rep = await this.repRepository.findOne({ where: { id: order.repId } });
+      if (!rep || rep.userId !== repUserId) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+    }
+  }
+
+  /**
+   * A rep-initiated status change. Verifies the caller is the assigned rep,
+   * then defers to the state-machine guard in transition() (which rejects any
+   * illegal move with a clean 400).
+   */
+  async repTransition(orderId: string, toStatus: OrderStatus, repUserId: string) {
+    const order = await this.findOne(orderId);
+    await this.assertRepAssigned(order, repUserId);
+    return this.transition(orderId, toStatus, repUserId, 'rep');
+  }
+
   // ─── Rep logs garment count at pickup ────────────────────────────────────────
 
   async logGarmentCount(orderId: string, repUserId: string, dto: LogGarmentCountDto) {
