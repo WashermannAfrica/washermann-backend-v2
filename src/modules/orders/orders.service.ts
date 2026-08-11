@@ -479,6 +479,24 @@ export class OrdersService {
     return order;
   }
 
+  // ─── Rep marks that they are en route to pickup ──────────────────────────────
+
+  async markRepEnRoute(orderId: string, repUserId: string) {
+    const order = await this.findOne(orderId);
+
+    // Only the rep assigned to this order may advance it.
+    if (order.repId) {
+      const rep = await this.repRepository.findOne({ where: { id: order.repId } });
+      if (!rep || rep.userId !== repUserId) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+    }
+
+    // The state-machine guard inside transition() rejects anything other than
+    // SCHEDULED → REP_EN_ROUTE_PICKUP with a clean 400.
+    return this.transition(orderId, OrderStatus.REP_EN_ROUTE_PICKUP, repUserId, 'rep');
+  }
+
   // ─── Rep logs garment count at pickup ────────────────────────────────────────
 
   async logGarmentCount(orderId: string, repUserId: string, dto: LogGarmentCountDto) {

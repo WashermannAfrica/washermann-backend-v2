@@ -131,6 +131,16 @@ export class OrdersController {
 
   // ─── Status transitions (role-specific) ──────────────────────────────────────
 
+  @Post(':id/status/en-route')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep marks that they are en route to pickup' })
+  markRepEnRoute(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.markRepEnRoute(id, req.user.sub);
+  }
+
   @Post(':id/status/picked-up')
   @Roles(Role.REP)
   @ApiOperation({ summary: 'Rep marks order as picked up' })
