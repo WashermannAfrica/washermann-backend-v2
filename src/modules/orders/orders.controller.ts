@@ -158,7 +158,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.IN_PROGRESS, req.user.sub, 'vendor');
+    return this.ordersService.vendorTransition(id, OrderStatus.IN_PROGRESS, req.user.sub);
   }
 
   @Post(':id/status/ready-for-delivery')
@@ -168,7 +168,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.READY_FOR_DELIVERY, req.user.sub, 'vendor');
+    return this.ordersService.vendorTransition(id, OrderStatus.READY_FOR_DELIVERY, req.user.sub);
   }
 
   @Post(':id/status/rep-collected')
