@@ -459,6 +459,13 @@ export class OrdersService {
     );
 
     // Fire transition-based notifications
+    if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
+      this.notificationsService.notifyOrderRepEnRoute({
+        customerId: order.customerId,
+        repId:      order.repId!,
+        orderRef:   order.reference,
+      });
+    }
     if (toStatus === OrderStatus.PICKED_UP) {
       this.notificationsService.notifyOrderPickedUp({
         customerId: order.customerId,
