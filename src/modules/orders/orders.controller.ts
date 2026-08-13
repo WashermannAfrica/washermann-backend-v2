@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { RepsService } from '../reps/reps.service';
+import { VendorsService } from '../vendors/vendors.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { LogGarmentCountDto } from './dto/garment-log.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
@@ -35,6 +36,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly repsService: RepsService,
+    private readonly vendorsService: VendorsService,
   ) {}
 
   // ─── Customer: place order ────────────────────────────────────────────────────
@@ -98,6 +100,21 @@ export class OrdersController {
   ) {
     const rep = await this.repsService.findByUserId(req.user.sub);
     return this.ordersService.findAll({ page, limit, repId: rep.id, status });
+  }
+
+  // ─── Vendor: my assigned orders ───────────────────────────────────────────────
+
+  @Get('vendor/me')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'List own assigned orders (vendor)' })
+  async vendorOrders(
+    @Request() req: { user: { sub: string } },
+    @Query('page',   new DefaultValuePipe(1),  ParseIntPipe) page: number,
+    @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('status') status?: OrderStatus,
+  ) {
+    const vendor = await this.vendorsService.findByUserId(req.user.sub);
+    return this.ordersService.findAll({ page, limit, vendorId: vendor.id, status });
   }
 
   // ─── Get one order ────────────────────────────────────────────────────────────
