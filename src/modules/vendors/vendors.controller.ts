@@ -147,6 +147,22 @@ export class VendorsController {
     );
   }
 
+  @Post(':id/revert-to-pending')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Revert a vendor to pending review (admin)',
+    description:
+      'Full undo of an accidental verification: returns the vendor to pending_review, ' +
+      'clears the verification stamp, sets them unavailable, and revokes the vendor role ' +
+      'on the user account.',
+  })
+  revertToPending(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.vendorsService.revertToPending(id, req.user.sub);
+  }
+
   // ─── Documents ────────────────────────────────────────────────────────────────
 
   @Get(':id/documents')

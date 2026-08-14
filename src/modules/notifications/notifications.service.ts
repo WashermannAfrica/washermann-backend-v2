@@ -205,7 +205,7 @@ export class NotificationsService {
   }
 
   async sendCompanyInvite(data: { companyName: string; ownerEmail: string; inviteToken: string; deepLinkBase: string }) {
-    const inviteLink = `${data.deepLinkBase}/company/activate?token=${data.inviteToken}`;
+    const inviteLink = `${data.deepLinkBase}/activate?token=${data.inviteToken}`;
     const template   = companyInviteTemplate({ companyName: data.companyName, inviteLink });
     await this.emailService.send({ to: data.ownerEmail, subject: template.subject, html: template.html });
   }
@@ -313,6 +313,34 @@ export class NotificationsService {
   /**
    * Fire when a rep marks an order as PICKED_UP.
    */
+  async notifyOrderRepEnRoute(params: {
+    customerId: string;
+    repId:      string;
+    orderRef:   string;
+  }) {
+    const [customer, repInfo] = await Promise.all([
+      this.getUser(params.customerId),
+      this.getRepUser(params.repId),
+    ]);
+
+    const repName = repInfo.user?.fullName ?? 'Your rep';
+    const meta    = { orderRef: params.orderRef };
+
+    fire(async () => {
+      const customerVars: Record<string, string | number> = {
+        customerName: customer?.fullName ?? '',
+        orderRef:     params.orderRef,
+        repName,
+      };
+
+      await Promise.all([
+        customer?.fcmToken && this.sendPush('order.rep_en_route.customer', customer.fcmToken, customerVars, { orderRef: params.orderRef }),
+        customer && this.sendInApp('order.rep_en_route.customer', customer.id, customerVars, 'order', meta),
+        customer?.phone && this.sendWhatsapp('order.rep_en_route.customer', customer.phone, customerVars),
+      ]);
+    }, this.logger, 'order.rep_en_route');
+  }
+
   async notifyOrderPickedUp(params: {
     customerId: string;
     vendorId:   string;

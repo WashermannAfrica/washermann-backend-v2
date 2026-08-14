@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { RepsService } from '../reps/reps.service';
+import { VendorsService } from '../vendors/vendors.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { LogGarmentCountDto } from './dto/garment-log.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
@@ -35,6 +36,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly repsService: RepsService,
+    private readonly vendorsService: VendorsService,
   ) {}
 
   // ─── Customer: place order ────────────────────────────────────────────────────
@@ -100,6 +102,21 @@ export class OrdersController {
     return this.ordersService.findAll({ page, limit, repId: rep.id, status });
   }
 
+  // ─── Vendor: my assigned orders ───────────────────────────────────────────────
+
+  @Get('vendor/me')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'List own assigned orders (vendor)' })
+  async vendorOrders(
+    @Request() req: { user: { sub: string } },
+    @Query('page',   new DefaultValuePipe(1),  ParseIntPipe) page: number,
+    @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('status') status?: OrderStatus,
+  ) {
+    const vendor = await this.vendorsService.findByUserId(req.user.sub);
+    return this.ordersService.findAll({ page, limit, vendorId: vendor.id, status });
+  }
+
   // ─── Get one order ────────────────────────────────────────────────────────────
 
   @Get(':id')
@@ -131,6 +148,16 @@ export class OrdersController {
 
   // ─── Status transitions (role-specific) ──────────────────────────────────────
 
+  @Post(':id/status/en-route')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep marks that they are en route to pickup' })
+  markRepEnRoute(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.repTransition(id, OrderStatus.REP_EN_ROUTE_PICKUP, req.user.sub);
+  }
+
   @Post(':id/status/picked-up')
   @Roles(Role.REP)
   @ApiOperation({ summary: 'Rep marks order as picked up' })
@@ -138,7 +165,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.PICKED_UP, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.PICKED_UP, req.user.sub);
   }
 
   @Post(':id/status/in-progress')
@@ -148,7 +175,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.IN_PROGRESS, req.user.sub, 'vendor');
+    return this.ordersService.vendorTransition(id, OrderStatus.IN_PROGRESS, req.user.sub);
   }
 
   @Post(':id/status/ready-for-delivery')
@@ -158,7 +185,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.READY_FOR_DELIVERY, req.user.sub, 'vendor');
+    return this.ordersService.vendorTransition(id, OrderStatus.READY_FOR_DELIVERY, req.user.sub);
   }
 
   @Post(':id/status/rep-collected')
@@ -168,7 +195,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.REP_COLLECTED, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.REP_COLLECTED, req.user.sub);
   }
 
   @Post(':id/status/out-for-delivery')
@@ -178,7 +205,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.OUT_FOR_DELIVERY, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.OUT_FOR_DELIVERY, req.user.sub);
   }
 
   @Post(':id/status/delivered')
@@ -188,7 +215,7 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.transition(id, OrderStatus.DELIVERED, req.user.sub, 'rep');
+    return this.ordersService.repTransition(id, OrderStatus.DELIVERED, req.user.sub);
   }
 
   // ─── Customer: confirm delivery ───────────────────────────────────────────────

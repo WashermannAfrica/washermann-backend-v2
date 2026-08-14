@@ -5,6 +5,7 @@ import { Company } from './company.entity';
 import { CompanyEmployee } from './company-employee.entity';
 
 export enum TierDuration {
+  DAILY     = 'daily',
   WEEKLY    = 'weekly',
   MONTHLY   = 'monthly',
   QUARTERLY = 'quarterly',
@@ -47,6 +48,14 @@ export class Tier extends BaseEntity {
     nullable: false,
   })
   duration: TierDuration;
+
+  @ApiProperty({
+    example: 1,
+    description:
+      'Recurrence interval multiplier applied to `duration` — e.g. interval 3 + duration "daily" = every 3 days.',
+  })
+  @Column({ name: 'interval_count', type: 'int', default: 1 })
+  intervalCount: number;
 
   @ApiProperty({ example: 0, description: 'Max WP a single worker can spend per cycle (0 = no cap)' })
   @Column({

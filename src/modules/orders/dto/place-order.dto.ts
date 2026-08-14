@@ -3,6 +3,9 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsLatitude,
+  IsLongitude,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -57,22 +60,29 @@ export class PlaceOrderDto {
   @IsUUID()
   bundleId?: string;
 
-  @ApiProperty({ description: 'UUID of the pickup area' })
+  @ApiPropertyOptional({
+    description:
+      'UUID of the pickup area. Optional — the area is DERIVED server-side from the ' +
+      'pickup coordinates; this is only a fallback if geofencing cannot resolve a point.',
+  })
+  @IsOptional()
   @IsUUID()
-  areaId: string;
+  areaId?: string;
 
   @ApiProperty({ description: 'Full pickup address text' })
   @IsString()
   @MaxLength(1000)
   pickupAddress: string;
 
-  @ApiPropertyOptional({ description: 'GPS latitude of pickup address' })
-  @IsOptional()
-  pickupLatitude?: number;
+  @ApiProperty({ description: 'GPS latitude of the pickup address — required; used to match the service area' })
+  @IsNotEmpty()
+  @IsLatitude()
+  pickupLatitude: number;
 
-  @ApiPropertyOptional({ description: 'GPS longitude of pickup address' })
-  @IsOptional()
-  pickupLongitude?: number;
+  @ApiProperty({ description: 'GPS longitude of the pickup address — required; used to match the service area' })
+  @IsNotEmpty()
+  @IsLongitude()
+  pickupLongitude: number;
 
   @ApiProperty({ description: 'ISO 8601 scheduled pickup datetime' })
   @IsDateString()

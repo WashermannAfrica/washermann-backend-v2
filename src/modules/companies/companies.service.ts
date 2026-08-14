@@ -102,9 +102,10 @@ export class CompaniesService {
       JSON.stringify({ companyId: company.id, ownerEmail }),
     );
 
-    const deepLinkBase = this.configService.get<string>(
-      'app.deepLinkBase',
-      'https://app.washermann.com',
+    // Activation happens in the company WEB portal, not the mobile deep link.
+    const companyPortalUrl = this.configService.get<string>(
+      'app.companyPortalUrl',
+      'http://localhost:3002',
     );
 
     // Fire and forget — network errors must not block the admin's response
@@ -113,7 +114,7 @@ export class CompaniesService {
         companyName: company.name,
         ownerEmail,
         inviteToken,
-        deepLinkBase,
+        deepLinkBase: companyPortalUrl,
       })
       .catch((err) =>
         this.logger.error(`Company invite email failed: ${err.message}`),
@@ -395,8 +396,9 @@ export class CompaniesService {
       companyId,
       name: dto.name,
       pointsPerCycle: dto.pointsPerCycle,
-      monthlyOrderLimit: dto.monthlyOrderLimit,
-      itemLimit: dto.itemLimit,
+      monthlyOrderLimit: dto.monthlyOrderLimit ?? 0,
+      itemLimit: dto.itemLimit ?? 0,
+      intervalCount: dto.intervalCount ?? 1,
       duration: dto.duration,
       spendingCapPerCycle: dto.spendingCapPerCycle ?? 0,
     });
@@ -420,6 +422,7 @@ export class CompaniesService {
       if (dto.pointsPerCycle !== undefined)     tier.pointsPerCycle = dto.pointsPerCycle;
       if (dto.monthlyOrderLimit !== undefined)  tier.monthlyOrderLimit = dto.monthlyOrderLimit;
       if (dto.itemLimit !== undefined)          tier.itemLimit = dto.itemLimit;
+      if (dto.intervalCount !== undefined)      tier.intervalCount = dto.intervalCount;
       if (dto.duration !== undefined)           tier.duration = dto.duration;
       if (dto.spendingCapPerCycle !== undefined) tier.spendingCapPerCycle = dto.spendingCapPerCycle;
 
@@ -434,6 +437,7 @@ export class CompaniesService {
     if (dto.pointsPerCycle !== undefined)     pendingChanges.pointsPerCycle = dto.pointsPerCycle;
     if (dto.monthlyOrderLimit !== undefined)  pendingChanges.monthlyOrderLimit = dto.monthlyOrderLimit;
     if (dto.itemLimit !== undefined)          pendingChanges.itemLimit = dto.itemLimit;
+    if (dto.intervalCount !== undefined)      pendingChanges.intervalCount = dto.intervalCount;
     if (dto.duration !== undefined)           pendingChanges.duration = dto.duration;
     if (dto.spendingCapPerCycle !== undefined) pendingChanges.spendingCapPerCycle = dto.spendingCapPerCycle;
 

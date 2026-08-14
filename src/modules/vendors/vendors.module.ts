@@ -11,6 +11,7 @@ import { VendorsController } from './vendors.controller';
 import { VendorsService } from './vendors.service';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
+import { AreasModule } from '../areas/areas.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { PlatformConfigModule } from '../platform-config/platform-config.module'
     ]),
     ReferralsModule,
     PlatformConfigModule,
+    AreasModule,
   ],
   controllers: [VendorsController],
   providers: [VendorsService],

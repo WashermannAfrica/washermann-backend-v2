@@ -48,6 +48,7 @@ export default registerAs('app', () => ({
   deepLinkBase: process.env.DEEP_LINK_BASE || 'https://app.washermann.com',
   salesRepPortalUrl: process.env.SALES_REP_PORTAL_URL || 'http://localhost:3005',
   adminPortalUrl: process.env.ADMIN_PORTAL_URL || 'http://localhost:3001',
+  companyPortalUrl: process.env.COMPANY_PORTAL_URL || 'http://localhost:3002',
   landingUrl: process.env.LANDING_URL || 'http://localhost:3003',
   landingRevalidateSecret: process.env.LANDING_REVALIDATE_SECRET || '',
 }));

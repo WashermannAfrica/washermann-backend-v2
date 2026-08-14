@@ -6,10 +6,12 @@ import { RepPseudoLedgerEntry } from '../../database/entities/rep-pseudo-ledger-
 import { User } from '../../database/entities/user.entity';
 import { RepsController } from './reps.controller';
 import { RepsService } from './reps.service';
+import { AreasModule } from '../areas/areas.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Rep, RepPseudoWallet, RepPseudoLedgerEntry, User]),
+    AreasModule,
   ],
   controllers: [RepsController],
   providers: [RepsService],

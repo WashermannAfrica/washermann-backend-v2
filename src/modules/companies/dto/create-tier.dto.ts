@@ -14,15 +14,38 @@ export class CreateTierDto {
   @Min(0)
   pointsPerCycle: number;
 
-  @ApiProperty({ example: 4, description: 'Max orders per billing cycle' })
+  @ApiProperty({
+    example: 4,
+    required: false,
+    default: 0,
+    description: 'Max orders per billing cycle (0 = unlimited). Optional — set later in tier settings if omitted.',
+  })
+  @IsOptional()
   @IsInt()
   @Min(0)
-  monthlyOrderLimit: number;
+  monthlyOrderLimit?: number = 0;
 
-  @ApiProperty({ example: 10, description: 'Max items per order' })
+  @ApiProperty({
+    example: 10,
+    required: false,
+    default: 0,
+    description: 'Max items per order (0 = unlimited). Optional — set later in tier settings if omitted.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  itemLimit?: number = 0;
+
+  @ApiProperty({
+    example: 1,
+    required: false,
+    default: 1,
+    description: 'Recurrence interval multiplier for `duration` (e.g. 3 + "daily" = every 3 days).',
+  })
+  @IsOptional()
   @IsInt()
   @Min(1)
-  itemLimit: number;
+  intervalCount?: number = 1;
 
   @ApiProperty({ enum: TierDuration, default: TierDuration.MONTHLY, required: false })
   @IsOptional()
