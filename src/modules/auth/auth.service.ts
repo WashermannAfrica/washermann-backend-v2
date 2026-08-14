@@ -599,7 +599,8 @@ export class AuthService {
    * available / receive orders until an admin verifies it.
    */
   async registerVendor(dto: VendorSignupDto) {
-    await this.assertIdentifierNotTaken(dto.email, undefined);
+    const phone = dto.phone.trim();
+    await this.assertIdentifierNotTaken(dto.email, phone);
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
@@ -607,7 +608,7 @@ export class AuthService {
       const newUser = manager.create(User, {
         fullName: dto.fullName.trim(),
         email: dto.email.toLowerCase().trim(),
-        phone: null,
+        phone,
         passwordHash,
         roles: [Role.VENDOR],
         status: UserStatus.ACTIVE,
@@ -619,7 +620,7 @@ export class AuthService {
       const vendor = manager.create(Vendor, {
         userId: newUser.id,
         businessName: null,
-        phone: null,
+        phone,
         areaIds: [],
         verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
         isAvailable: false,

@@ -177,6 +177,29 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: `📦 *Laundry Picked Up*\n\nHi {{customerName}}, your laundry for order *{{orderRef}}* has been collected and is heading to the vendor. We'll update you when it's done.`,
   },
 
+  // ── Rep En Route to Pickup ───────────────────────────────────────────────────
+
+  {
+    key: 'order.rep_en_route.customer', channel: 'push',
+    name: 'Rep On The Way — Customer Push',
+    variables: ['orderRef', 'repName'],
+    subject: 'Your rep is on the way 🚗',
+    body: '{{repName}} is on the way to pick up your laundry for order {{orderRef}}.',
+  },
+  {
+    key: 'order.rep_en_route.customer', channel: 'in_app',
+    name: 'Rep On The Way — Customer In-App',
+    variables: ['orderRef', 'repName'],
+    subject: 'Your rep is on the way',
+    body: '{{repName}} is heading to your address to collect order {{orderRef}}.',
+  },
+  {
+    key: 'order.rep_en_route.customer', channel: 'whatsapp',
+    name: 'Rep On The Way — Customer WhatsApp',
+    variables: ['customerName', 'orderRef', 'repName'],
+    body: `🚗 *Your rep is on the way*\n\nHi {{customerName}}, {{repName}} is heading to your address to pick up your laundry for order *{{orderRef}}*. Please have it ready.`,
+  },
+
   // ── Delivered ────────────────────────────────────────────────────────────────
 
   {

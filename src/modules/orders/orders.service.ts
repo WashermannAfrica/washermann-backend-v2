@@ -459,6 +459,13 @@ export class OrdersService {
     );
 
     // Fire transition-based notifications
+    if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
+      this.notificationsService.notifyOrderRepEnRoute({
+        customerId: order.customerId,
+        repId:      order.repId!,
+        orderRef:   order.reference,
+      });
+    }
     if (toStatus === OrderStatus.PICKED_UP) {
       this.notificationsService.notifyOrderPickedUp({
         customerId: order.customerId,
@@ -500,6 +507,26 @@ export class OrdersService {
     const order = await this.findOne(orderId);
     await this.assertRepAssigned(order, repUserId);
     return this.transition(orderId, toStatus, repUserId, 'rep');
+  }
+
+  /** Only the vendor assigned to this order may act on it. */
+  private async assertVendorAssigned(order: Order, vendorUserId: string): Promise<void> {
+    if (order.vendorId) {
+      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+      if (!vendor || vendor.userId !== vendorUserId) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+    }
+  }
+
+  /**
+   * A vendor-initiated status change. Verifies the caller is the assigned
+   * vendor, then defers to the state-machine guard in transition().
+   */
+  async vendorTransition(orderId: string, toStatus: OrderStatus, vendorUserId: string) {
+    const order = await this.findOne(orderId);
+    await this.assertVendorAssigned(order, vendorUserId);
+    return this.transition(orderId, toStatus, vendorUserId, 'vendor');
   }
 
   // ─── Rep logs garment count at pickup ────────────────────────────────────────
