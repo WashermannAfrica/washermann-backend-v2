@@ -13,6 +13,7 @@ import { SalesRepService } from './sales-rep.service';
 import { AuthModule } from '../auth/auth.module';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RepsModule } from '../reps/reps.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuthModule,
     ReferralsModule,
     NotificationsModule,
+    RepsModule,
   ],
   controllers: [SalesRepController],
   providers: [SalesRepService],

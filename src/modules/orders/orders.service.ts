@@ -167,24 +167,32 @@ export class OrdersService {
     // 0. Profile-completion gate — customer must have phone + saved address
     await this.usersService.assertOrderEligibility(customerId);
 
-    // 0. Geofence resolution — when pickup coordinates are provided, the AREA IS
-    //    DERIVED SERVER-SIDE (client areaId is only a legacy fallback for orders
-    //    without coordinates). Outside all circles → route to the nearest covered
-    //    area (never reject); the resolver logs the miss as a coverage gap.
+    // 0. Geofence resolution — the AREA IS DERIVED SERVER-SIDE from the required
+    //    pickup coordinates. Inside a coverage circle → that area (covered); outside
+    //    all circles → the nearest area (never reject; logged as a coverage gap).
+    //    The client areaId is only a fallback for the edge case where no area has
+    //    any location circle configured yet.
     let areaId = dto.areaId;
     let areaLocationId: string | null = null;
     let coverageMatched = true;
-    if (dto.pickupLatitude != null && dto.pickupLongitude != null) {
-      const resolution = await this.areasService.resolveAreaForPoint(
-        dto.pickupLatitude,
-        dto.pickupLongitude,
-        { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
+    const resolution = await this.areasService.resolveAreaForPoint(
+      dto.pickupLatitude,
+      dto.pickupLongitude,
+      { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
+    );
+    if (resolution) {
+      areaId = resolution.area.id;
+      areaLocationId = resolution.covered ? resolution.location.id : null;
+      coverageMatched = resolution.covered;
+    } else if (areaId) {
+      // No area has location circles yet — trust the fallback areaId but validate it
+      // exists (clean 400 instead of a raw area_id FK 500).
+      await this.areasService.findOne(areaId);
+    }
+    if (!areaId) {
+      throw new BadRequestException(
+        'Could not determine a service area for these coordinates, and no fallback area was provided.',
       );
-      if (resolution) {
-        areaId = resolution.area.id;
-        areaLocationId = resolution.covered ? resolution.location.id : null;
-        coverageMatched = resolution.covered;
-      }
     }
 
     // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
@@ -451,6 +459,13 @@ export class OrdersService {
     );
 
     // Fire transition-based notifications
+    if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
+      this.notificationsService.notifyOrderRepEnRoute({
+        customerId: order.customerId,
+        repId:      order.repId!,
+        orderRef:   order.reference,
+      });
+    }
     if (toStatus === OrderStatus.PICKED_UP) {
       this.notificationsService.notifyOrderPickedUp({
         customerId: order.customerId,
@@ -469,6 +484,49 @@ export class OrdersService {
     }
 
     return order;
+  }
+
+  // ─── Rep-driven status transitions (ownership-checked) ───────────────────────
+
+  /** Only the rep assigned to this order may act on it. */
+  private async assertRepAssigned(order: Order, repUserId: string): Promise<void> {
+    if (order.repId) {
+      const rep = await this.repRepository.findOne({ where: { id: order.repId } });
+      if (!rep || rep.userId !== repUserId) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+    }
+  }
+
+  /**
+   * A rep-initiated status change. Verifies the caller is the assigned rep,
+   * then defers to the state-machine guard in transition() (which rejects any
+   * illegal move with a clean 400).
+   */
+  async repTransition(orderId: string, toStatus: OrderStatus, repUserId: string) {
+    const order = await this.findOne(orderId);
+    await this.assertRepAssigned(order, repUserId);
+    return this.transition(orderId, toStatus, repUserId, 'rep');
+  }
+
+  /** Only the vendor assigned to this order may act on it. */
+  private async assertVendorAssigned(order: Order, vendorUserId: string): Promise<void> {
+    if (order.vendorId) {
+      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+      if (!vendor || vendor.userId !== vendorUserId) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+    }
+  }
+
+  /**
+   * A vendor-initiated status change. Verifies the caller is the assigned
+   * vendor, then defers to the state-machine guard in transition().
+   */
+  async vendorTransition(orderId: string, toStatus: OrderStatus, vendorUserId: string) {
+    const order = await this.findOne(orderId);
+    await this.assertVendorAssigned(order, vendorUserId);
+    return this.transition(orderId, toStatus, vendorUserId, 'vendor');
   }
 
   // ─── Rep logs garment count at pickup ────────────────────────────────────────

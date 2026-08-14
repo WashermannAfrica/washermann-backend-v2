@@ -1,13 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 /**
  * Public vendor self-registration.
  *
- * Collects only the essentials to create the account; business name, phone,
- * NIN/CAC, documents, bank details and address are captured afterwards in the
- * KYC flow (PATCH /vendors/me/profile, /upload/vendor/document). The account is
- * created in PENDING_REVIEW and cannot go available until an admin verifies it.
+ * Collects the essentials to create the account (name, email, phone, password);
+ * business name, NIN/CAC, documents, bank details and address are captured
+ * afterwards in the KYC flow (PATCH /vendors/me/profile, /upload/vendor/document).
+ * The account is created in PENDING_REVIEW and cannot go available until an admin
+ * verifies it.
  */
 export class VendorSignupDto {
   @ApiProperty({ example: 'Adaeze Okafor' })
@@ -18,6 +19,12 @@ export class VendorSignupDto {
   @ApiProperty({ example: 'vendor@example.com' })
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
+
+  @ApiProperty({ example: '+2348012345678' })
+  @IsNotEmpty()
+  @IsString()
+  @Matches(/^\+?[0-9]{10,15}$/, { message: 'Invalid phone number format' })
+  phone: string;
 
   @ApiProperty({ example: 'StrongP@ssw0rd', minLength: 8 })
   @IsNotEmpty()

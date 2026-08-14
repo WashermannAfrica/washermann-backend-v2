@@ -28,8 +28,18 @@ export class UpdateTierDto {
   @ApiProperty({ example: 10, required: false })
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(0)
   itemLimit?: number;
+
+  @ApiProperty({
+    example: 1,
+    required: false,
+    description: 'Recurrence interval multiplier for `duration` (e.g. 3 + "daily" = every 3 days).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  intervalCount?: number;
 
   @ApiProperty({ enum: TierDuration, required: false })
   @IsOptional()

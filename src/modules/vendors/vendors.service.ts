@@ -29,6 +29,7 @@ import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { AreasService } from '../areas/areas.service';
 
 @Injectable()
 export class VendorsService {
@@ -62,6 +63,7 @@ export class VendorsService {
     private redisService: RedisService,
     private referralsService: ReferralsService,
     private platformConfigService: PlatformConfigService,
+    private areasService: AreasService,
   ) {}
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
@@ -73,6 +75,8 @@ export class VendorsService {
     if (existing) {
       throw new ConflictException('A user with this email or phone already exists');
     }
+
+    await this.areasService.assertAreasExist(dto.areaIds ?? []);
 
     const result = await this.dataSource.transaction(async (manager) => {
       const user = manager.create(User, {
@@ -212,7 +216,10 @@ export class VendorsService {
 
     if (dto.businessName != null) vendor.businessName = dto.businessName.trim();
     if (dto.phone        != null) vendor.phone        = dto.phone.trim();
-    if (dto.areaIds      != null) vendor.areaIds      = dto.areaIds;
+    if (dto.areaIds      != null) {
+      await this.areasService.assertAreasExist(dto.areaIds);
+      vendor.areaIds = dto.areaIds;
+    }
     if (dto.isAvailable  != null) {
       // Only verified vendors can toggle available
       if (dto.isAvailable && vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
@@ -292,6 +299,41 @@ export class VendorsService {
       this.notificationsService.notifyVendorSuspended({ vendorId, reason });
     }
 
+    return saved;
+  }
+
+  // ─── Admin: Revert a verification to pending review ─────────────────────────
+  /**
+   * Full undo of an accidental verification: returns the vendor to
+   * `pending_review` as if never actioned, clears the verification stamp,
+   * takes them offline, and REVOKES the `vendor` role on the user account
+   * (which `verify` granted). Use this when a vendor was verified by mistake
+   * and should go back into the review queue.
+   */
+  async revertToPending(vendorId: string, adminId: string) {
+    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    if (vendor.verificationStatus === VendorVerificationStatus.PENDING_REVIEW) {
+      throw new BadRequestException('Vendor is already pending review');
+    }
+
+    vendor.verificationStatus = VendorVerificationStatus.PENDING_REVIEW;
+    vendor.verifiedAt         = null;
+    vendor.verifiedBy         = null;
+    vendor.rejectionReason    = null;
+    vendor.isAvailable        = false; // can't receive orders while unreviewed
+    const saved = await this.vendorRepository.save(vendor);
+
+    // Revoke the vendor role that verify() granted, so an accidental
+    // verification is fully rolled back and no vendor-guarded route stays open.
+    const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
+    if (user && user.roles.includes(Role.VENDOR)) {
+      user.roles = user.roles.filter((r) => r !== Role.VENDOR);
+      await this.userRepository.save(user);
+    }
+
+    this.logger.log(`Vendor ${vendorId} reverted to pending_review by admin ${adminId}`);
     return saved;
   }
 

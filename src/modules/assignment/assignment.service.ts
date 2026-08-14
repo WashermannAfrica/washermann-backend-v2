@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -482,10 +482,35 @@ export class AssignmentService {
 
   // ─── Admin manual assignment ──────────────────────────────────────────────────
 
+  /** Order states from which an admin may (re)assign a rep. */
+  private static readonly REP_ASSIGNABLE_STATES: OrderStatus[] = [
+    OrderStatus.PAID,
+    OrderStatus.BROADCASTING_REP,
+    OrderStatus.REP_ASSIGNED,
+  ];
+
   async adminAssignRep(orderId: string, repId: string, adminId: string) {
     const order = await this.orderRepository.findOne({ where: { id: orderId } });
-    if (!order) return null;
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
+    // The path param must be a reps.id (the rep PROFILE id), not the user id.
+    // Without this check a bad id reaches the orders.rep_id FK and surfaces as a raw 500.
+    const rep = await this.repRepository.findOne({ where: { id: repId } });
+    if (!rep) {
+      throw new NotFoundException(
+        `Rep ${repId} not found — pass the reps.id (rep profile id), not the user id`,
+      );
+    }
+    if (rep.status !== RepStatus.ACTIVE) {
+      throw new BadRequestException(`Rep ${repId} is not active (status=${rep.status})`);
+    }
+    if (!AssignmentService.REP_ASSIGNABLE_STATES.includes(order.status)) {
+      throw new BadRequestException(
+        `Order ${order.reference} cannot have a rep assigned from status '${order.status}'`,
+      );
+    }
+
+    const fromStatus = order.status;
     order.repId  = repId;
     order.status = OrderStatus.REP_ASSIGNED;
     await this.orderRepository.save(order);
@@ -495,7 +520,7 @@ export class AssignmentService {
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
         orderId,
-        fromStatus: order.status,
+        fromStatus,
         toStatus:   OrderStatus.REP_ASSIGNED,
         triggeredBy: adminId,
         triggeredByRole: 'admin',
@@ -506,10 +531,37 @@ export class AssignmentService {
     return order;
   }
 
+  /** Order states from which an admin may (re)assign a vendor. */
+  private static readonly VENDOR_ASSIGNABLE_STATES: OrderStatus[] = [
+    OrderStatus.REP_ASSIGNED,
+    OrderStatus.BROADCASTING_VENDOR,
+    OrderStatus.VENDOR_ASSIGNED,
+  ];
+
   async adminAssignVendor(orderId: string, vendorId: string, adminId: string) {
     const order = await this.orderRepository.findOne({ where: { id: orderId } });
-    if (!order) return null;
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
+    // The path param must be a vendors.id (vendor PROFILE id), not the user id —
+    // otherwise a bad id hits the orders.vendor_id FK and surfaces as a raw 500.
+    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    if (!vendor) {
+      throw new NotFoundException(
+        `Vendor ${vendorId} not found — pass the vendors.id (vendor profile id), not the user id`,
+      );
+    }
+    if (vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
+      throw new BadRequestException(
+        `Vendor ${vendorId} is not verified (status=${vendor.verificationStatus})`,
+      );
+    }
+    if (!AssignmentService.VENDOR_ASSIGNABLE_STATES.includes(order.status)) {
+      throw new BadRequestException(
+        `Order ${order.reference} cannot have a vendor assigned from status '${order.status}'`,
+      );
+    }
+
+    const fromStatus = order.status;
     order.vendorId = vendorId;
     order.status   = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
@@ -519,7 +571,7 @@ export class AssignmentService {
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
         orderId,
-        fromStatus: order.status,
+        fromStatus,
         toStatus:   OrderStatus.VENDOR_ASSIGNED,
         triggeredBy: adminId,
         triggeredByRole: 'admin',
