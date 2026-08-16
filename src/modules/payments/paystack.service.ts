@@ -424,6 +424,37 @@ export class PaystackService {
 
   // ─── Private: Paystack API calls ──────────────────────────────────────────────
 
+  // ─── Bank list (for payout account entry) ─────────────────────────────────────
+
+  private banksCache: { at: number; banks: Array<{ name: string; code: string }> } | null = null;
+  private static readonly BANKS_TTL_MS = 24 * 60 * 60 * 1000; // banks rarely change
+
+  /** Nigerian bank list from Paystack, cached 24h. Used to populate payout bank pickers. */
+  async listBanks(): Promise<Array<{ name: string; code: string }>> {
+    if (this.banksCache && Date.now() - this.banksCache.at < PaystackService.BANKS_TTL_MS) {
+      return this.banksCache.banks;
+    }
+    const secretKey = this.configService.get<string>('paystack.secretKey');
+    const baseUrl = this.configService.get<string>('paystack.baseUrl');
+    try {
+      const res = await axios.get(`${baseUrl}/bank?country=nigeria&currency=NGN`, {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        timeout: 10_000,
+      });
+      const banks: Array<{ name: string; code: string }> = (res.data?.data ?? [])
+        .map((b: { name: string; code: string }) => ({ name: b.name, code: b.code }))
+        .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+      this.banksCache = { at: Date.now(), banks };
+      return banks;
+    } catch (err: any) {
+      const message = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      this.logger.error(`Paystack bank list failed: ${message}`);
+      // Serve a stale cache if we have one, rather than breaking the payout form.
+      if (this.banksCache) return this.banksCache.banks;
+      throw new BadRequestException(`Could not load bank list: ${message}`);
+    }
+  }
+
   private async paystackInitialize(params: {
     email: string;
     amount: number;

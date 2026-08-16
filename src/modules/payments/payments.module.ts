@@ -7,6 +7,7 @@ import { ConversionRateController } from './conversion-rate.controller';
 import { PaystackService } from './paystack.service';
 import { TopupGuardService } from './topup-guard.service';
 import { WebhooksController } from './webhooks.controller';
+import { PaymentsController } from './payments.controller';
 import { WalletsModule } from '../wallets/wallets.module';
 import { VaultsModule } from '../vaults/vaults.module';
 import { CompaniesModule } from '../companies/companies.module';
@@ -21,6 +22,7 @@ import { CompaniesModule } from '../companies/companies.module';
   controllers: [
     ConversionRateController,
     WebhooksController,
+    PaymentsController,
   ],
   providers: [
     ConversionRateService,
