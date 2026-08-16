@@ -25,6 +25,14 @@ class AdjustReferralDto {
   @IsOptional() @IsString() note?: string;
 }
 
+class ReconcileRewardDto {
+  @IsNumber() fromValue: number;
+  @IsNumber() toValue: number;
+  @IsOptional() @IsIn(['sales_rep', 'rep', 'customer', 'vendor'], { each: true })
+  referrerTypes?: Array<'sales_rep' | 'rep' | 'customer' | 'vendor'>;
+  @IsOptional() @IsString() note?: string;
+}
+
 @ApiTags('Referrals')
 @Controller('referrals')
 export class ReferralsController {
@@ -105,5 +113,25 @@ export class ReferralsController {
     @CurrentUser('id') adminId: string,
   ) {
     return this.service.adjustReferral(id, adminId, dto.rewardAmount, dto.note);
+  }
+
+  @Post('admin/reconcile-reward')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Admin: bulk-correct referrals frozen at a wrong reward value (e.g. 1000→500). ' +
+      'Defaults to rep/sales_rep referrers; includes already-paid records. Audited.',
+  })
+  reconcileReward(
+    @Body() dto: ReconcileRewardDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.service.reconcileRewardValue(adminId, {
+      fromValue: dto.fromValue,
+      toValue: dto.toValue,
+      referrerTypes: dto.referrerTypes,
+      note: dto.note,
+    });
   }
 }
