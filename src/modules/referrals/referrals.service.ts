@@ -197,6 +197,53 @@ export class ReferralsService implements OnModuleInit {
     return ref;
   }
 
+  /**
+   * Admin bulk correction: re-price every referral whose SNAPSHOTTED reward
+   * value equals `fromValue` down/up to `toValue`. Fixes a mis-set reward rule
+   * that was already frozen onto existing referrals (config changes alone don't
+   * touch them). Updates the snapshot `rewardValue` (so any not-yet-unlocked
+   * referrals compute the corrected amount later) and the computed
+   * `rewardAmount` wherever it currently equals `fromValue`.
+   *
+   * By default targets rep/sales_rep referrers. Already-paid referrals are
+   * INCLUDED — their record is corrected, but note this does NOT reclaim money
+   * already disbursed; it only makes the record and liability totals accurate.
+   */
+  async reconcileRewardValue(
+    adminId: string,
+    opts: { fromValue: number; toValue: number; referrerTypes?: ReferrerType[]; note?: string },
+  ): Promise<{ matched: number; amountsCorrected: number; paidAffected: number }> {
+    const referrerTypes: ReferrerType[] =
+      opts.referrerTypes?.length ? opts.referrerTypes : ['rep', 'sales_rep'];
+    const from = Math.round(opts.fromValue * 100) / 100;
+    const to = Math.round(opts.toValue * 100) / 100;
+
+    const candidates = await this.referrals.find({ where: { referrerType: In(referrerTypes) } });
+    const matches = candidates.filter((r) => Number(r.rewardValue) === from);
+
+    let amountsCorrected = 0;
+    let paidAffected = 0;
+    for (const ref of matches) {
+      ref.rewardValue = to;
+      if (ref.rewardAmount != null && Number(ref.rewardAmount) === from) {
+        ref.rewardAmount = to;
+        amountsCorrected++;
+        if (ref.status === 'paid') paidAffected++;
+      }
+      ref.reviewedBy = adminId;
+      const stamp = `Reward reconciled ${from}→${to}`;
+      ref.adminNote = ref.adminNote ? `${ref.adminNote} | ${stamp}` : stamp;
+    }
+    if (matches.length) await this.referrals.save(matches);
+
+    this.logger.log(
+      `Reconciled ${matches.length} referral(s) ${from}→${to} ` +
+        `(${amountsCorrected} amounts, ${paidAffected} already-paid) by ${adminId}` +
+        (opts.note ? ` — ${opts.note}` : ''),
+    );
+    return { matched: matches.length, amountsCorrected, paidAffected };
+  }
+
   /** Admin: portfolio summary — counts by status and outstanding reward liability by currency. */
   async summary() {
     const all = await this.referrals.find();
