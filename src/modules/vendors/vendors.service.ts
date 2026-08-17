@@ -327,11 +327,11 @@ export class VendorsService {
 
     // Revoke the vendor role that verify() granted, so an accidental
     // verification is fully rolled back and no vendor-guarded route stays open.
-    const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
-    if (user && user.roles.includes(Role.VENDOR)) {
-      user.roles = user.roles.filter((r) => r !== Role.VENDOR);
-      await this.userRepository.save(user);
-    }
+    // const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
+    // if (user && user.roles.includes(Role.VENDOR)) {
+    //   user.roles = user.roles.filter((r) => r !== Role.VENDOR);
+    //   await this.userRepository.save(user);
+    // }
 
     this.logger.log(`Vendor ${vendorId} reverted to pending_review by admin ${adminId}`);
     return saved;
