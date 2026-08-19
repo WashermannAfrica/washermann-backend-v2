@@ -583,10 +583,28 @@ export class OrdersService {
       });
     }
 
-    // Transition to WITH_VENDOR
-    await this.transition(orderId, OrderStatus.WITH_VENDOR, repUserId, 'rep', dto.note);
-
+    // NOTE: logging does NOT move the order to WITH_VENDOR. Garments may be
+    // logged at one location and physically handed to the vendor elsewhere —
+    // the rep marks the handover separately via markWithVendor().
     return order;
+  }
+
+  // ─── Rep marks the order handed to the vendor ────────────────────────────────
+
+  async markWithVendor(orderId: string, repUserId: string) {
+    const order = await this.findOne(orderId);
+    await this.assertRepAssigned(order, repUserId);
+
+    // The earnings split (from the garment log) must exist first — garments are
+    // logged, then the batch is handed to the vendor.
+    if (!order.vendorShareWP || !order.repShareWP || order.platformShareWP == null) {
+      throw new BadRequestException(
+        'Log the garment count before marking the order as with the vendor.',
+      );
+    }
+
+    // The state-machine guard allows this only from PICKED_UP → WITH_VENDOR.
+    return this.transition(orderId, OrderStatus.WITH_VENDOR, repUserId, 'rep');
   }
 
   // ─── Complete order & release escrow ─────────────────────────────────────────

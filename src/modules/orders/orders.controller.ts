@@ -168,6 +168,18 @@ export class OrdersController {
     return this.ordersService.repTransition(id, OrderStatus.PICKED_UP, req.user.sub);
   }
 
+  @Post(':id/status/with-vendor')
+  @Roles(Role.REP)
+  @ApiOperation({
+    summary: 'Rep marks the order as handed to the vendor (requires garments logged first)',
+  })
+  markWithVendor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.markWithVendor(id, req.user.sub);
+  }
+
   @Post(':id/status/in-progress')
   @Roles(Role.VENDOR)
   @ApiOperation({ summary: 'Vendor marks order as in progress (washing started)' })
