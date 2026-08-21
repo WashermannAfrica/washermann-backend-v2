@@ -253,16 +253,35 @@ export class CompaniesService {
 
   // ─── Platform-Admin: list / get / status ─────────────────────────────────────
 
-  async listCompanies(page = 1, limit = 20, search?: string) {
+  async listCompanies(
+    page = 1,
+    limit = 20,
+    search?: string,
+    status?: string,
+    activationStatus?: string,
+    sortBy?: string,
+    sortDir?: 'ASC' | 'DESC',
+  ) {
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'c.createdAt',
+      name: 'c.name',
+      status: 'c.status',
+      activation: 'c.activationStatus',
+    };
+    const sortCol = SORTABLE[sortBy ?? ''] ?? 'c.createdAt';
+    const dir = sortDir === 'ASC' ? 'ASC' : 'DESC';
+
     const qb = this.companyRepository
       .createQueryBuilder('c')
-      .orderBy('c.createdAt', 'DESC')
+      .orderBy(sortCol, dir)
       .skip((page - 1) * limit)
       .take(limit);
 
     if (search) {
       qb.andWhere('(c.name ILIKE :q OR c.ownerEmail ILIKE :q)', { q: `%${search}%` });
     }
+    if (status) qb.andWhere('c.status = :st', { st: status });
+    if (activationStatus) qb.andWhere('c.activationStatus = :as', { as: activationStatus });
 
     const [companies, total] = await qb.getManyAndCount();
     return {

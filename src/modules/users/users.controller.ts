@@ -176,12 +176,18 @@ export class UsersController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['ASC', 'DESC'] })
   listUsers(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
     @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'ASC' | 'DESC',
   ) {
-    return this.usersService.listUsers(Number(page), Number(limit), search);
+    return this.usersService.listUsers(Number(page), Number(limit), search, status, sortBy, sortDir);
   }
 
   @Get(':id')
