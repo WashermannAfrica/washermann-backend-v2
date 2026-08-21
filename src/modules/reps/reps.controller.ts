@@ -45,6 +45,8 @@ export class RepsController {
   @ApiQuery({ name: 'status',            required: false, enum: RepStatus })
   @ApiQuery({ name: 'isAvailable',       required: false, type: Boolean })
   @ApiQuery({ name: 'flaggedForReview',  required: false, type: Boolean })
+  @ApiQuery({ name: 'sortBy',            required: false, type: String })
+  @ApiQuery({ name: 'sortDir',           required: false, enum: ['ASC', 'DESC'] })
   findAll(
     @Query('page',             new DefaultValuePipe(1),  ParseIntPipe) page: number,
     @Query('limit',            new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -52,9 +54,11 @@ export class RepsController {
     @Query('status')           status?: RepStatus,
     @Query('isAvailable')      isAvailable?: string,
     @Query('flaggedForReview') flaggedForReview?: string,
+    @Query('sortBy')           sortBy?: string,
+    @Query('sortDir')          sortDir?: 'ASC' | 'DESC',
   ) {
     return this.repsService.findAll({
-      page, limit, search, status,
+      page, limit, search, status, sortBy, sortDir,
       isAvailable:      isAvailable === 'true' ? true : isAvailable === 'false' ? false : undefined,
       flaggedForReview: flaggedForReview === 'true' ? true : flaggedForReview === 'false' ? false : undefined,
     });

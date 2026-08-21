@@ -361,13 +361,26 @@ export class OrdersService {
     status?: OrderStatus;
     areaId?: string;
     search?: string;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
+    // Whitelist sortable columns — never interpolate a raw sort key into SQL.
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'o.createdAt',
+      date: 'o.createdAt',
+      amount: 'o.totalWP',
+      status: 'o.status',
+      reference: 'o.reference',
+    };
+    const sortCol = SORTABLE[query.sortBy ?? ''] ?? 'o.createdAt';
+    const sortDir = query.sortDir === 'ASC' ? 'ASC' : 'DESC';
+
     const qb = this.orderRepository
       .createQueryBuilder('o')
-      .orderBy('o.createdAt', 'DESC')
+      .orderBy(sortCol, sortDir)
       .skip((page - 1) * limit)
       .take(limit);
 

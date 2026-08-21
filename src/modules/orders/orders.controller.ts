@@ -63,6 +63,8 @@ export class OrdersController {
   @ApiQuery({ name: 'status',     required: false, enum: OrderStatus })
   @ApiQuery({ name: 'areaId',     required: false, type: String })
   @ApiQuery({ name: 'search',     required: false, type: String })
+  @ApiQuery({ name: 'sortBy',     required: false, type: String })
+  @ApiQuery({ name: 'sortDir',    required: false, enum: ['ASC', 'DESC'] })
   findAll(
     @Query('page',       new DefaultValuePipe(1),  ParseIntPipe) page: number,
     @Query('limit',      new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -72,8 +74,10 @@ export class OrdersController {
     @Query('status')     status?: OrderStatus,
     @Query('areaId')     areaId?: string,
     @Query('search')     search?: string,
+    @Query('sortBy')     sortBy?: string,
+    @Query('sortDir')    sortDir?: 'ASC' | 'DESC',
   ) {
-    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, search });
+    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, search, sortBy, sortDir });
   }
 
   // ─── Customer: my orders ──────────────────────────────────────────────────────
