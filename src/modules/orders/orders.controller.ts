@@ -62,6 +62,7 @@ export class OrdersController {
   @ApiQuery({ name: 'vendorId',   required: false, type: String })
   @ApiQuery({ name: 'status',     required: false, enum: OrderStatus })
   @ApiQuery({ name: 'areaId',     required: false, type: String })
+  @ApiQuery({ name: 'serviceType', required: false, enum: ['wash_fold', 'wash_iron'] })
   @ApiQuery({ name: 'search',     required: false, type: String })
   @ApiQuery({ name: 'sortBy',     required: false, type: String })
   @ApiQuery({ name: 'sortDir',    required: false, enum: ['ASC', 'DESC'] })
@@ -73,11 +74,12 @@ export class OrdersController {
     @Query('vendorId')   vendorId?: string,
     @Query('status')     status?: OrderStatus,
     @Query('areaId')     areaId?: string,
+    @Query('serviceType') serviceType?: string,
     @Query('search')     search?: string,
     @Query('sortBy')     sortBy?: string,
     @Query('sortDir')    sortDir?: 'ASC' | 'DESC',
   ) {
-    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, search, sortBy, sortDir });
+    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, serviceType, search, sortBy, sortDir });
   }
 
   // ─── Customer: my orders ──────────────────────────────────────────────────────

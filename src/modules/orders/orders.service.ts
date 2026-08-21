@@ -360,6 +360,7 @@ export class OrdersService {
     vendorId?: string;
     status?: OrderStatus;
     areaId?: string;
+    serviceType?: string;
     search?: string;
     sortBy?: string;
     sortDir?: 'ASC' | 'DESC';
@@ -389,6 +390,7 @@ export class OrdersService {
     if (query.vendorId)   qb.andWhere('o.vendorId = :v', { v: query.vendorId });
     if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
     if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
+    if (query.serviceType) qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
     if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
     const [data, total] = await qb.getManyAndCount();
