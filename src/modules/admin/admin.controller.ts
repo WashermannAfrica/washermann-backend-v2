@@ -19,4 +19,10 @@ export class AdminController {
   getOverview() {
     return this.adminService.getOverviewStats();
   }
+
+  @Get('analytics')
+  @ApiOperation({ summary: '[Admin] Dashboard analytics: revenue, counts, monthly series, activity' })
+  getAnalytics() {
+    return this.adminService.getAnalytics();
+  }
 }

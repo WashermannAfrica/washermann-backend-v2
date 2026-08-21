@@ -147,9 +147,22 @@ export class VendorsService {
     search?: string;
     verificationStatus?: VendorVerificationStatus;
     isAvailable?: boolean;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+
+    // Whitelist sortable columns — never interpolate a raw key into SQL.
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'v.createdAt',
+      joined: 'v.createdAt',
+      name: 'u.fullName',
+      status: 'v.verificationStatus',
+      rating: 'v.rating',
+    };
+    const sortCol = SORTABLE[query.sortBy ?? ''] ?? 'v.createdAt';
+    const sortDir = query.sortDir === 'ASC' ? 'ASC' : 'DESC';
 
     const qb = this.vendorRepository
       .createQueryBuilder('v')
@@ -160,7 +173,7 @@ export class VendorsService {
       .addSelect('COALESCE(w.total_earned, 0)', 'earnedwp')
       .addSelect('COALESCE(w.balance, 0)', 'balancewp')
       .addSelect('(SELECT COUNT(*) FROM orders o WHERE o.vendor_id = v.id)', 'ordercount')
-      .orderBy('v.createdAt', 'DESC')
+      .orderBy(sortCol, sortDir)
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -327,11 +340,11 @@ export class VendorsService {
 
     // Revoke the vendor role that verify() granted, so an accidental
     // verification is fully rolled back and no vendor-guarded route stays open.
-    const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
-    if (user && user.roles.includes(Role.VENDOR)) {
-      user.roles = user.roles.filter((r) => r !== Role.VENDOR);
-      await this.userRepository.save(user);
-    }
+    // const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
+    // if (user && user.roles.includes(Role.VENDOR)) {
+    //   user.roles = user.roles.filter((r) => r !== Role.VENDOR);
+    //   await this.userRepository.save(user);
+    // }
 
     this.logger.log(`Vendor ${vendorId} reverted to pending_review by admin ${adminId}`);
     return saved;
