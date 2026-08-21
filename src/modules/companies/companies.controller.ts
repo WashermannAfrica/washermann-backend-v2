@@ -100,11 +100,21 @@ export class CompaniesController {
   @ApiOperation({ summary: '[Admin] List all companies' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'activationStatus', required: false, type: String })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['ASC', 'DESC'] })
   listCompanies(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('activationStatus') activationStatus?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'ASC' | 'DESC',
   ) {
-    return this.companiesService.listCompanies(Number(page), Number(limit));
+    return this.companiesService.listCompanies(Number(page), Number(limit), search, status, activationStatus, sortBy, sortDir);
   }
 
   @Get(':companyId')

@@ -62,6 +62,10 @@ export class OrdersController {
   @ApiQuery({ name: 'vendorId',   required: false, type: String })
   @ApiQuery({ name: 'status',     required: false, enum: OrderStatus })
   @ApiQuery({ name: 'areaId',     required: false, type: String })
+  @ApiQuery({ name: 'serviceType', required: false, enum: ['wash_fold', 'wash_iron'] })
+  @ApiQuery({ name: 'search',     required: false, type: String })
+  @ApiQuery({ name: 'sortBy',     required: false, type: String })
+  @ApiQuery({ name: 'sortDir',    required: false, enum: ['ASC', 'DESC'] })
   findAll(
     @Query('page',       new DefaultValuePipe(1),  ParseIntPipe) page: number,
     @Query('limit',      new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -70,8 +74,12 @@ export class OrdersController {
     @Query('vendorId')   vendorId?: string,
     @Query('status')     status?: OrderStatus,
     @Query('areaId')     areaId?: string,
+    @Query('serviceType') serviceType?: string,
+    @Query('search')     search?: string,
+    @Query('sortBy')     sortBy?: string,
+    @Query('sortDir')    sortDir?: 'ASC' | 'DESC',
   ) {
-    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId });
+    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, serviceType, search, sortBy, sortDir });
   }
 
   // ─── Customer: my orders ──────────────────────────────────────────────────────
@@ -120,9 +128,9 @@ export class OrdersController {
   // ─── Get one order ────────────────────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get order by ID' })
+  @ApiOperation({ summary: 'Get order by ID (enriched: customer/company/area names)' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.ordersService.findOne(id);
+    return this.ordersService.getDetail(id);
   }
 
   // ─── Get status history ───────────────────────────────────────────────────────
@@ -166,6 +174,18 @@ export class OrdersController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.ordersService.repTransition(id, OrderStatus.PICKED_UP, req.user.sub);
+  }
+
+  @Post(':id/status/with-vendor')
+  @Roles(Role.REP)
+  @ApiOperation({
+    summary: 'Rep marks the order as handed to the vendor (requires garments logged first)',
+  })
+  markWithVendor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.markWithVendor(id, req.user.sub);
   }
 
   @Post(':id/status/in-progress')
