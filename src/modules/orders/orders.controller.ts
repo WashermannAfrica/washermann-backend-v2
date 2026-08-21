@@ -128,9 +128,9 @@ export class OrdersController {
   // ─── Get one order ────────────────────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get order by ID' })
+  @ApiOperation({ summary: 'Get order by ID (enriched: customer/company/area names)' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.ordersService.findOne(id);
+    return this.ordersService.getDetail(id);
   }
 
   // ─── Get status history ───────────────────────────────────────────────────────
