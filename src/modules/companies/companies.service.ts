@@ -253,13 +253,18 @@ export class CompaniesService {
 
   // ─── Platform-Admin: list / get / status ─────────────────────────────────────
 
-  async listCompanies(page = 1, limit = 20) {
-    const [companies, total] = await this.companyRepository.findAndCount({
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+  async listCompanies(page = 1, limit = 20, search?: string) {
+    const qb = this.companyRepository
+      .createQueryBuilder('c')
+      .orderBy('c.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
 
+    if (search) {
+      qb.andWhere('(c.name ILIKE :q OR c.ownerEmail ILIKE :q)', { q: `%${search}%` });
+    }
+
+    const [companies, total] = await qb.getManyAndCount();
     return {
       data: companies.map((c) => this.sanitizeCompany(c)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },

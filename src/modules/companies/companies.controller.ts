@@ -100,11 +100,13 @@ export class CompaniesController {
   @ApiOperation({ summary: '[Admin] List all companies' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
   listCompanies(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
+    @Query('search') search?: string,
   ) {
-    return this.companiesService.listCompanies(Number(page), Number(limit));
+    return this.companiesService.listCompanies(Number(page), Number(limit), search);
   }
 
   @Get(':companyId')

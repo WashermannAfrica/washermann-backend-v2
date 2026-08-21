@@ -38,8 +38,8 @@ export class StaffController {
 
   @Get()
   @ApiOperation({ summary: 'List all platform staff (Admin)' })
-  list(@Query('page') page = 1, @Query('limit') limit = 20) {
-    return this.staffService.listStaff(Number(page), Number(limit));
+  list(@Query('page') page = 1, @Query('limit') limit = 20, @Query('search') search?: string) {
+    return this.staffService.listStaff(Number(page), Number(limit), search);
   }
 
   @Get(':id')

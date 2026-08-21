@@ -360,6 +360,7 @@ export class OrdersService {
     vendorId?: string;
     status?: OrderStatus;
     areaId?: string;
+    search?: string;
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -375,6 +376,7 @@ export class OrdersService {
     if (query.vendorId)   qb.andWhere('o.vendorId = :v', { v: query.vendorId });
     if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
     if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
+    if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
     const [data, total] = await qb.getManyAndCount();
     return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };

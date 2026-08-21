@@ -175,11 +175,13 @@ export class UsersController {
   @ApiOperation({ summary: '[Admin] List all users' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
   listUsers(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
+    @Query('search') search?: string,
   ) {
-    return this.usersService.listUsers(Number(page), Number(limit));
+    return this.usersService.listUsers(Number(page), Number(limit), search);
   }
 
   @Get(':id')
