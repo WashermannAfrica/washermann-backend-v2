@@ -149,18 +149,32 @@ export class RepsService {
     status?: RepStatus;
     isAvailable?: boolean;
     flaggedForReview?: boolean;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
+    // Whitelist sortable columns — never interpolate a raw key into SQL.
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'r.createdAt',
+      joined: 'r.createdAt',
+      name: 'u.fullName',
+      status: 'r.status',
+      rating: 'r.rating',
+    };
     const qb = this.repRepository
       .createQueryBuilder('r')
       .leftJoin('r.user', 'u')
       .addSelect(['u.id', 'u.fullName', 'u.email', 'u.phone'])
-      .orderBy('r.assignmentPriority', 'ASC')
-      .addOrderBy('r.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
+
+    if (query.sortBy && SORTABLE[query.sortBy]) {
+      qb.orderBy(SORTABLE[query.sortBy], query.sortDir === 'ASC' ? 'ASC' : 'DESC');
+    } else {
+      qb.orderBy('r.assignmentPriority', 'ASC').addOrderBy('r.createdAt', 'DESC');
+    }
 
     if (query.status)           qb.andWhere('r.status = :status', { status: query.status });
     if (query.isAvailable != null) qb.andWhere('r.isAvailable = :avail', { avail: query.isAvailable });

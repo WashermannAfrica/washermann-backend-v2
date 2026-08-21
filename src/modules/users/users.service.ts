@@ -211,13 +211,37 @@ export class UsersService {
     return { data: this.sanitizeUser(user) };
   }
 
-  async listUsers(page = 1, limit = 20) {
-    const [users, total] = await this.userRepository.findAndCount({
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+  async listUsers(
+    page = 1,
+    limit = 20,
+    search?: string,
+    status?: string,
+    sortBy?: string,
+    sortDir?: 'ASC' | 'DESC',
+  ) {
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'u.createdAt',
+      name: 'u.fullName',
+      email: 'u.email',
+      status: 'u.status',
+    };
+    const sortCol = SORTABLE[sortBy ?? ''] ?? 'u.createdAt';
+    const dir = sortDir === 'ASC' ? 'ASC' : 'DESC';
 
+    const qb = this.userRepository
+      .createQueryBuilder('u')
+      .orderBy(sortCol, dir)
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (search) {
+      qb.andWhere('(u.fullName ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)', {
+        q: `%${search}%`,
+      });
+    }
+    if (status) qb.andWhere('u.status = :st', { st: status });
+
+    const [users, total] = await qb.getManyAndCount();
     return {
       data: users.map((u) => this.sanitizeUser(u)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },

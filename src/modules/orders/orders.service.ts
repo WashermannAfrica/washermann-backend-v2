@@ -12,6 +12,7 @@ import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { Order } from '../../database/entities/order.entity';
+import { Company } from '../../database/entities/company.entity';
 import { OrderEscrow } from '../../database/entities/order-escrow.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
 import { RatingEvent } from '../../database/entities/rating-event.entity';
@@ -360,13 +361,33 @@ export class OrdersService {
     vendorId?: string;
     status?: OrderStatus;
     areaId?: string;
+    serviceType?: string;
+    search?: string;
+    sortBy?: string;
+    sortDir?: 'ASC' | 'DESC';
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
+    // Whitelist sortable columns — never interpolate a raw sort key into SQL.
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'o.createdAt',
+      date: 'o.createdAt',
+      amount: 'o.totalWP',
+      status: 'o.status',
+      reference: 'o.reference',
+    };
+    const sortCol = SORTABLE[query.sortBy ?? ''] ?? 'o.createdAt';
+    const sortDir = query.sortDir === 'ASC' ? 'ASC' : 'DESC';
+
     const qb = this.orderRepository
       .createQueryBuilder('o')
-      .orderBy('o.createdAt', 'DESC')
+      // Enrich rows with the customer/company/area names the admin list shows,
+      // instead of leaving the UI with raw UUIDs.
+      .leftJoin('o.customer', 'cust').addSelect(['cust.id', 'cust.fullName', 'cust.email'])
+      .leftJoin('o.area', 'ar').addSelect(['ar.id', 'ar.name'])
+      .leftJoinAndMapOne('o.company', Company, 'co', 'co.id = o.company_id')
+      .orderBy(sortCol, sortDir)
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -375,9 +396,24 @@ export class OrdersService {
     if (query.vendorId)   qb.andWhere('o.vendorId = :v', { v: query.vendorId });
     if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
     if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
+    if (query.serviceType) qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
+    if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
-    const [data, total] = await qb.getManyAndCount();
+    const [rows, total] = await qb.getManyAndCount();
+    const data = rows.map((o) => this.decorate(o));
     return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+  }
+
+  /** Flatten the joined customer/company/area onto the order for the UI. */
+  private decorate(o: Order) {
+    const anyO = o as Order & { customer?: { fullName?: string; email?: string }; company?: { name?: string }; area?: { name?: string } };
+    return {
+      ...o,
+      customerName: anyO.customer?.fullName ?? null,
+      customerEmail: anyO.customer?.email ?? null,
+      companyName: anyO.company?.name ?? null,
+      areaName: anyO.area?.name ?? null,
+    };
   }
 
   // ─── Get one order ────────────────────────────────────────────────────────────
@@ -386,6 +422,19 @@ export class OrdersService {
     const order = await this.orderRepository.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  /** Admin order detail — enriched with customer/company/area names for the drawer. */
+  async getDetail(id: string) {
+    const order = await this.orderRepository
+      .createQueryBuilder('o')
+      .leftJoin('o.customer', 'cust').addSelect(['cust.id', 'cust.fullName', 'cust.email', 'cust.phone'])
+      .leftJoin('o.area', 'ar').addSelect(['ar.id', 'ar.name'])
+      .leftJoinAndMapOne('o.company', Company, 'co', 'co.id = o.company_id')
+      .where('o.id = :id', { id })
+      .getOne();
+    if (!order) throw new NotFoundException('Order not found');
+    return this.decorate(order);
   }
 
   async findByReference(ref: string) {

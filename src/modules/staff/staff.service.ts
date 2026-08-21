@@ -90,16 +90,38 @@ export class StaffService {
 
   // ─── List staff ───────────────────────────────────────────────────────────────
 
-  async listStaff(page: number, limit: number): Promise<{ data: object[]; meta: object }> {
-    const [users, total] = await this.userRepo
+  async listStaff(
+    page: number,
+    limit: number,
+    search?: string,
+    status?: string,
+    sortBy?: string,
+    sortDir?: 'ASC' | 'DESC',
+  ): Promise<{ data: object[]; meta: object }> {
+    const SORTABLE: Record<string, string> = {
+      createdAt: 'user.createdAt',
+      name: 'user.fullName',
+      email: 'user.email',
+      status: 'user.status',
+    };
+    const sortCol = SORTABLE[sortBy ?? ''] ?? 'user.createdAt';
+    const dir = sortDir === 'ASC' ? 'ASC' : 'DESC';
+
+    const qb = this.userRepo
       .createQueryBuilder('user')
       // roles is a simple-array (comma-separated text); split then overlap so we
       // match whole roles exactly (avoids 'admin' matching 'company_admin').
       .where(`string_to_array(user.roles, ',') && ARRAY[:...roles]::text[]`, { roles: STAFF_ROLES })
-      .orderBy('user.createdAt', 'DESC')
+      .orderBy(sortCol, dir)
       .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
+      .take(limit);
+
+    if (search) {
+      qb.andWhere('(user.fullName ILIKE :q OR user.email ILIKE :q)', { q: `%${search}%` });
+    }
+    if (status) qb.andWhere('user.status = :st', { st: status });
+
+    const [users, total] = await qb.getManyAndCount();
 
     return {
       data: users.map((u) => this.sanitizeStaff(u)),

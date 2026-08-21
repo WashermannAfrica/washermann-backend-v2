@@ -47,15 +47,19 @@ export class VendorsController {
   @ApiQuery({ name: 'search',             required: false, type: String })
   @ApiQuery({ name: 'verificationStatus', required: false, enum: VendorVerificationStatus })
   @ApiQuery({ name: 'isAvailable',        required: false, type: Boolean })
+  @ApiQuery({ name: 'sortBy',             required: false, type: String })
+  @ApiQuery({ name: 'sortDir',            required: false, enum: ['ASC', 'DESC'] })
   findAll(
     @Query('page',               new DefaultValuePipe(1),  ParseIntPipe) page: number,
     @Query('limit',              new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('search')             search?: string,
     @Query('verificationStatus') verificationStatus?: VendorVerificationStatus,
     @Query('isAvailable')        isAvailable?: string,
+    @Query('sortBy')             sortBy?: string,
+    @Query('sortDir')            sortDir?: 'ASC' | 'DESC',
   ) {
     return this.vendorsService.findAll({
-      page, limit, search, verificationStatus,
+      page, limit, search, verificationStatus, sortBy, sortDir,
       isAvailable: isAvailable === 'true' ? true : isAvailable === 'false' ? false : undefined,
     });
   }
