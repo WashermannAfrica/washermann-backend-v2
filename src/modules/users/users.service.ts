@@ -8,9 +8,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../database/entities/user.entity';
 import { Address } from '../../database/entities/address.entity';
+import { Order } from '../../database/entities/order.entity';
+import { Wallet } from '../../database/entities/wallet.entity';
+import { CompanyEmployee } from '../../database/entities/company-employee.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+
+const DONE_ORDER_STATUSES = ['delivered', 'completed'];
 
 @Injectable()
 export class UsersService {
@@ -19,6 +24,12 @@ export class UsersService {
     private userRepository: Repository<User>,
     @InjectRepository(Address)
     private addressRepository: Repository<Address>,
+    @InjectRepository(Order)
+    private orderRepository: Repository<Order>,
+    @InjectRepository(Wallet)
+    private walletRepository: Repository<Wallet>,
+    @InjectRepository(CompanyEmployee)
+    private companyEmployeeRepository: Repository<CompanyEmployee>,
   ) {}
 
   // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -209,6 +220,74 @@ export class UsersService {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     return { data: this.sanitizeUser(user) };
+  }
+
+  /**
+   * Enriched detail for the admin user page: the user, their wallet, order
+   * summary + recent orders, and their company memberships. Everything here is
+   * real data — the admin detail page must not fall back to fixtures.
+   */
+  async getUserDetail(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [wallet, orders, memberships, agg] = await Promise.all([
+      this.walletRepository.findOne({ where: { userId } }),
+      this.orderRepository.find({
+        where: { customerId: userId },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      }),
+      this.companyEmployeeRepository
+        .createQueryBuilder('e')
+        .leftJoin('e.company', 'c')
+        .leftJoin('e.tier', 't')
+        .select([
+          'e.id AS id',
+          'e.company_id AS "companyId"',
+          'e.assignment_status AS "status"',
+          'c.name AS "companyName"',
+          't.name AS "tierName"',
+        ])
+        .where('e.user_id = :userId', { userId })
+        .getRawMany<{ id: string; companyId: string; status: string; companyName: string | null; tierName: string | null }>(),
+      this.orderRepository
+        .createQueryBuilder('o')
+        .select('COUNT(*)', 'total')
+        .addSelect(
+          `COUNT(*) FILTER (WHERE o.status IN (:...done))`,
+          'completed',
+        )
+        .addSelect('COALESCE(SUM(o.naira_equivalent_snapshot), 0)', 'spent')
+        .where('o.customer_id = :userId', { userId })
+        .setParameter('done', DONE_ORDER_STATUSES)
+        .getRawOne<{ total: string; completed: string; spent: string }>(),
+    ]);
+
+    return {
+      data: {
+        user: this.sanitizeUser(user),
+        wallet: {
+          balanceWP: wallet ? Number(wallet.balance) : 0,
+          fiatKobo: wallet ? Number(wallet.fiatBalanceKobo ?? 0) : 0,
+        },
+        stats: {
+          totalOrders: Number(agg?.total ?? 0),
+          completedOrders: Number(agg?.completed ?? 0),
+          totalSpentNaira: Number(agg?.spent ?? 0),
+        },
+        orders: orders.map((o) => ({
+          id: o.id,
+          reference: o.reference,
+          serviceType: o.serviceType,
+          status: o.status,
+          totalWP: Number(o.totalWP),
+          nairaEquivalentSnapshot: o.nairaEquivalentSnapshot != null ? Number(o.nairaEquivalentSnapshot) : null,
+          createdAt: o.createdAt,
+        })),
+        memberships,
+      },
+    };
   }
 
   async listUsers(

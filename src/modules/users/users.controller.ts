@@ -196,4 +196,11 @@ export class UsersController {
   getUserById(@Param('id', ParseUUIDPipe) userId: string) {
     return this.usersService.getUserById(userId);
   }
+
+  @Get(':id/detail')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '[Admin] Enriched user detail: wallet, order summary, recent orders, memberships' })
+  getUserDetail(@Param('id', ParseUUIDPipe) userId: string) {
+    return this.usersService.getUserDetail(userId);
+  }
 }
