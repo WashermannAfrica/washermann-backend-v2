@@ -111,14 +111,31 @@ export class AreasService {
       take: limit,
     });
 
-    // Attach per-area rep/vendor counts for the cards.
-    const data = await Promise.all(
-      areas.map(async (area) => ({
-        ...area,
-        repsCount: await this.countServing(this.repRepository, 'rep', area.id),
-        vendorsCount: await this.countServing(this.vendorRepository, 'vendor', area.id),
-      })),
-    );
+    // Attach per-area staffing counts (total + "verified" per actor type) for the
+    // cards and the admin coverage filter. Computed with a handful of set-based
+    // grouped queries rather than a per-area loop (avoids an N+1).
+    const [
+      vendorsByArea,
+      verifiedVendorsByArea,
+      repsByArea,
+      verifiedRepsByArea,
+      verifiedSalesRepsByArea,
+    ] = await Promise.all([
+      this.countByAreaJsonb('vendors'),
+      this.countByAreaJsonb('vendors', "verification_status = 'verified'"),
+      this.countByAreaJsonb('reps'),
+      this.countByAreaJsonb('reps', "status = 'active'"),
+      this.countVerifiedSalesRepsByArea(),
+    ]);
+
+    const data = areas.map((area) => ({
+      ...area,
+      repsCount: repsByArea.get(area.id) ?? 0,
+      vendorsCount: vendorsByArea.get(area.id) ?? 0,
+      verifiedVendorsCount: verifiedVendorsByArea.get(area.id) ?? 0,
+      verifiedRepsCount: verifiedRepsByArea.get(area.id) ?? 0,
+      verifiedSalesRepsCount: verifiedSalesRepsByArea.get(area.id) ?? 0,
+    }));
 
     return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
@@ -510,6 +527,44 @@ export class AreasService {
       .createQueryBuilder(alias)
       .where(`${alias}.area_ids @> :a::jsonb`, { a: JSON.stringify([areaId]) })
       .getCount();
+  }
+
+  /**
+   * Count, per area, the rows in `vendors`/`reps` whose JSONB `area_ids` contains
+   * that area — optionally constrained by a status predicate. Returns a Map of
+   * areaId → count. `table` is a fixed internal literal and `predicate` is a
+   * hard-coded constant (never user input), so this is not injectable.
+   */
+  private async countByAreaJsonb(
+    table: 'vendors' | 'reps',
+    predicate?: string,
+  ): Promise<Map<string, number>> {
+    const rows: Array<{ area_id: string; count: string }> = await this.dataSource.query(
+      `SELECT elem AS area_id, COUNT(*)::int AS count
+         FROM ${table} t, jsonb_array_elements_text(t.area_ids) AS elem
+        ${predicate ? `WHERE ${predicate}` : ''}
+        GROUP BY elem`,
+    );
+    return new Map(rows.map((r) => [r.area_id, Number(r.count)]));
+  }
+
+  /**
+   * Count verified sales reps per area. Sales reps aren't area-scoped by id — they
+   * store the *town* they registered under (`sales_rep_applications.area_of_lagos`),
+   * which is chosen from the admin-curated location list. We map that town name
+   * back to its area via `area_locations.name → area_id` (case-insensitive).
+   * "Verified" = the onboarding assessment was passed. Returns areaId → count.
+   */
+  private async countVerifiedSalesRepsByArea(): Promise<Map<string, number>> {
+    const rows: Array<{ area_id: string; count: string }> = await this.dataSource.query(
+      `SELECT al.area_id AS area_id, COUNT(DISTINCT sr.id)::int AS count
+         FROM sales_reps sr
+         JOIN sales_rep_applications sra ON sra.id = sr.application_id
+         JOIN area_locations al ON LOWER(al.name) = LOWER(sra.area_of_lagos)
+        WHERE sr.assessment_passed = true
+        GROUP BY al.area_id`,
+    );
+    return new Map(rows.map((r) => [r.area_id, Number(r.count)]));
   }
 
   private async validateAreaIds(ids: string[]) {
