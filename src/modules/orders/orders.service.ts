@@ -37,6 +37,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
 import { AreasService } from '../areas/areas.service';
 import { AssignmentService } from '../assignment/assignment.service';
+import { CatalogueService } from '../catalogue/catalogue.service';
+import type { GarmentLogLine } from '../../database/entities/order.entity';
 
 /**
  * The order state machine. `transition()` only allows a move that appears here
@@ -116,6 +118,7 @@ export class OrdersService {
     private assignmentService: AssignmentService,
     private dataSource: DataSource,
     private configService: ConfigService,
+    private catalogueService: CatalogueService,
   ) {}
 
   // ─── Place order ─────────────────────────────────────────────────────────────
@@ -595,47 +598,81 @@ export class OrdersService {
       throw new BadRequestException('Garment count can only be logged at pickup');
     }
 
-    // Calculate vendor share from garment log
-    const vendorShareCalc = await this.calculateVendorShare(order.vendorId!, dto.garmentLog);
-    const config          = await this.platformConfigService.getConfig();
-    const rate            = await this.pricingService.getActiveConversionRate();
+    // Resolve the log into structured, priced lines. Each line is priced against
+    // the ORDER'S vendor: their own approved price if they have one for the item,
+    // otherwise the system median (P50) with the gap recorded.
+    const { lines, totalNaira, totalWP, unpriced } = await this.resolveAndPriceGarmentLog(
+      order.vendorId!,
+      dto,
+    );
 
-    const vendorShareWP          = vendorShareCalc.totalWP;
-    const vendorShareNairaSnapshot = vendorShareCalc.totalNaira;
+    const config = await this.platformConfigService.getConfig();
+
+    const vendorShareWP            = totalWP;
+    const vendorShareNairaSnapshot = totalNaira;
     // Rep share = the wash-rep commission baked into the price (the charge funds the
     // rep). Falls back to the legacy flat repSharePercent for pre-catalogue orders.
-    const snapCharges            = (order.pricingSnapshot as any).charges;
-    const repShareWP             = snapCharges?.commissionWP != null
+    const snapCharges     = (order.pricingSnapshot as any).charges;
+    const repShareWP      = snapCharges?.commissionWP != null
       ? snapCharges.commissionWP
       : Math.floor(order.totalWP * (config.repSharePercent / 100));
-    const transportWP            = (order.pricingSnapshot as any).transportWP ?? 0;
-    const platformShareWP        = order.totalWP - vendorShareWP - repShareWP - transportWP;
+    const transportWP     = (order.pricingSnapshot as any).transportWP ?? 0;
+    const platformShareWP = order.totalWP - vendorShareWP - repShareWP - transportWP;
 
-    order.garmentLog              = dto.garmentLog;
-    order.vendorShareWP           = vendorShareWP;
+    order.garmentLog               = { lines };
+    order.vendorShareWP            = vendorShareWP;
     order.vendorShareNairaSnapshot = vendorShareNairaSnapshot;
-    order.repShareWP              = repShareWP;
-    order.platformShareWP         = Math.max(0, platformShareWP);
-    order.unpricedGarmentTypes    = vendorShareCalc.unpricedTypes.length ? vendorShareCalc.unpricedTypes : null;
+    order.repShareWP               = repShareWP;
+    order.platformShareWP          = Math.max(0, platformShareWP);
+    order.unpricedGarmentTypes     = unpriced.length ? unpriced.map((u) => u.name) : null;
 
     await this.orderRepository.save(order);
 
-    // Send the vendor the full garment list for the order (their ₦ earning +
-    // any items they have no price for flagged inline). Fire-and-forget.
+    // Order history: a non-transition audit note so the unpriced situation is
+    // visible in the order's timeline (to admin and vendor).
+    const itemCount = lines.reduce((s, l) => s + l.count, 0);
+    const unpricedNames = unpriced.map((u) => u.name);
+    const historyNote = unpriced.length
+      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (mean) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
+      : `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}).`;
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        orderId:         order.id,
+        fromStatus:      order.status,
+        toStatus:        order.status,
+        triggeredBy:     repUserId,
+        triggeredByRole: 'rep',
+        note:            historyNote.slice(0, 1000),
+      }),
+    );
+
+    // Notify the vendor (full list, unpriced flagged inline) + the admin (only
+    // when the vendor was missing a price for something). Fire-and-forget.
     if (order.vendorId) {
       this.notificationsService.notifyVendorGarmentsLogged({
         vendorId:      order.vendorId,
         orderRef:      order.reference,
-        garmentLog:    dto.garmentLog,
-        unpricedTypes: vendorShareCalc.unpricedTypes,
+        entries:       lines.map((l) => ({ name: l.name, count: l.count, unpriced: !l.pricedByVendor })),
+        unpricedNames,
         earningNaira:  vendorShareNairaSnapshot,
       });
+      if (unpriced.length) {
+        this.notificationsService.notifyAdminOrderUnpricedItems({
+          vendorId:      order.vendorId,
+          orderRef:      order.reference,
+          unpricedNames,
+        });
+      }
     }
 
     // NOTE: logging does NOT move the order to WITH_VENDOR. Garments may be
     // logged at one location and physically handed to the vendor elsewhere —
     // the rep marks the handover separately via markWithVendor().
-    return order;
+    return {
+      ...order,
+      // Surface the unpriced items to the caller (rep app / admin) in the response.
+      unpricedItems: unpriced,
+    };
   }
 
   // ─── Rep marks the order handed to the vendor ────────────────────────────────
@@ -873,37 +910,91 @@ export class OrdersService {
 
   // ─── Vendor share calculation ─────────────────────────────────────────────────
 
-  private async calculateVendorShare(vendorId: string, garmentLog: Record<string, number>) {
+  /**
+   * Resolve a rep's garment log into structured, priced lines. Every line is
+   * priced against the ORDER'S vendor:
+   *  - if the vendor has an approved price for the item → 100% of that price
+   *    ("pricedByVendor");
+   *  - if not → the system arithmetic mean across other vendors, and the item is
+   *    recorded as `unpriced` (flagged to vendor + admin + order history).
+   *
+   * Prefers the item-based `items` payload (ids validated against the catalogue);
+   * falls back to the legacy free-text `garmentLog` map (garment-type match).
+   * Both paths return the same structured shape.
+   */
+  private async resolveAndPriceGarmentLog(
+    vendorId: string,
+    dto: LogGarmentCountDto,
+  ): Promise<{
+    lines: GarmentLogLine[];
+    totalNaira: number;
+    totalWP: number;
+    unpriced: { itemId: string | null; name: string }[];
+  }> {
     const activePricing = await this.vendorsService.getActivePricing(vendorId);
     const rate          = await this.pricingService.getActiveConversionRate();
-
     // Drift Option 2: mint at the rate LOCKED on the vendor's active sheet at
     // approval (falls back to the live rate for pre-lock legacy sheets).
     const pointsPerUnit = activePricing?.pointsPerUnitSnapshot ?? rate.pointsPerUnit;
 
-    let totalNaira = 0;
-    const unpricedTypes: string[] = [];
+    const liveItems = (activePricing?.items ?? []).filter((i) => isPriceItemLive(i));
 
-    const priceMap: Record<string, number> = {};
-    for (const item of activePricing?.items ?? []) {
-      if (!isPriceItemLive(item)) continue; // skip pending/rejected price lines
-      priceMap[item.garmentType] = item.priceNaira;
-    }
-
-    for (const [garmentType, count] of Object.entries(garmentLog)) {
-      let priceNaira = priceMap[garmentType];
-      if (priceNaira == null) {
-        // Vendor has no price for this type: pay them the AVERAGE of vendors who
-        // do price it (customer already paid P70 at order time), and flag the
-        // order so the vendor is told to set a price.
-        unpricedTypes.push(garmentType);
-        priceNaira = (await this.vendorsService.averageLivePriceForGarment(garmentType, vendorId)) ?? 0;
+    // ── Preferred: item-based log (validate ids against the catalogue) ──────────
+    if (dto.items?.length) {
+      const ids = dto.items.map((i) => i.itemId);
+      const catalogueItems = await this.catalogueService.getItemsByIds(ids);
+      const byId = new Map(catalogueItems.map((c) => [c.id, c]));
+      const missing = [...new Set(ids)].filter((id) => !byId.has(id));
+      if (missing.length) {
+        throw new BadRequestException(`Unknown catalogue item id(s): ${missing.join(', ')}`);
       }
-      totalNaira += priceNaira * count;
+
+      const vendorPriceByItem = new Map<string, number>();
+      for (const item of liveItems) {
+        if (item.itemId && item.priceNaira > 0) vendorPriceByItem.set(item.itemId, item.priceNaira);
+      }
+
+      const lines: GarmentLogLine[] = [];
+      const unpriced: { itemId: string | null; name: string }[] = [];
+      let totalNaira = 0;
+      for (const entry of dto.items) {
+        const cat = byId.get(entry.itemId)!;
+        let unit = vendorPriceByItem.get(entry.itemId);
+        const pricedByVendor = unit != null && unit > 0;
+        if (!pricedByVendor) {
+          // Vendor hasn't priced it → pay the system arithmetic mean; flag the gap.
+          unit = (await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId)) ?? 0;
+          unpriced.push({ itemId: entry.itemId, name: cat.name });
+        }
+        totalNaira += (unit ?? 0) * entry.count;
+        lines.push({ itemId: entry.itemId, name: cat.name, count: entry.count, unitPriceNaira: unit ?? 0, pricedByVendor });
+      }
+      return { lines, totalNaira, totalWP: Math.round(totalNaira * pointsPerUnit), unpriced };
     }
 
-    const totalWP = Math.round(totalNaira * pointsPerUnit);
-    return { totalNaira, totalWP, unpricedTypes };
+    // ── Legacy: free-text { garmentType: count } map ────────────────────────────
+    const typeEntries = Object.entries(dto.garmentLog ?? {}).filter(([, c]) => Number(c) > 0);
+    if (!typeEntries.length) {
+      throw new BadRequestException('Log at least one garment item.');
+    }
+    const vendorPriceByType = new Map<string, number>();
+    for (const item of liveItems) vendorPriceByType.set(item.garmentType, item.priceNaira);
+
+    const lines: GarmentLogLine[] = [];
+    const unpriced: { itemId: string | null; name: string }[] = [];
+    let totalNaira = 0;
+    for (const [type, countRaw] of typeEntries) {
+      const count = Number(countRaw);
+      let unit = vendorPriceByType.get(type);
+      const pricedByVendor = unit != null && unit > 0;
+      if (!pricedByVendor) {
+        unit = (await this.vendorsService.averageLivePriceForGarment(type, vendorId)) ?? 0;
+        unpriced.push({ itemId: null, name: type });
+      }
+      totalNaira += (unit ?? 0) * count;
+      lines.push({ itemId: null, name: type, count, unitPriceNaira: unit ?? 0, pricedByVendor });
+    }
+    return { lines, totalNaira, totalWP: Math.round(totalNaira * pointsPerUnit), unpriced };
   }
 
   // ─── Rating recalculation ─────────────────────────────────────────────────────

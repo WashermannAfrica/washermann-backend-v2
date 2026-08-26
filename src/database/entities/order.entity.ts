@@ -51,9 +51,37 @@ export interface PricingSnapshot {
   calculatedAt: string;
 }
 
-/** Garment count logged by rep at pickup */
-export interface GarmentLog {
-  [garmentType: string]: number;  // e.g. { shirt: 15, trouser: 8, dress: 4 }
+/** One logged garment line (item-based logging). */
+export interface GarmentLogLine {
+  /** Canonical catalogue item id (null only for legacy free-text logs). */
+  itemId: string | null;
+  /** Item name snapshotted at log time — safe against later catalogue renames. */
+  name: string;
+  count: number;
+  /** ₦ per unit used for the vendor's earning on this line. */
+  unitPriceNaira: number;
+  /** true = the vendor's own approved price; false = system median (P50) fallback. */
+  pricedByVendor: boolean;
+}
+
+/** Structured garment log (item-based) — what new orders store. */
+export interface StructuredGarmentLog {
+  lines: GarmentLogLine[];
+}
+
+/** Legacy free-text garment map, e.g. { shirt: 15, trouser: 8 }. */
+export type LegacyGarmentMap = Record<string, number>;
+
+/**
+ * Garment count logged by the rep at pickup. New orders store a
+ * {@link StructuredGarmentLog} (`{ lines: [...] }`); orders logged before the
+ * catalogue migration may hold the legacy `{ garmentType: count }` map.
+ */
+export type GarmentLog = StructuredGarmentLog | LegacyGarmentMap;
+
+/** Narrow a stored garment log to the structured item-based shape. */
+export function isStructuredGarmentLog(log: GarmentLog | null | undefined): log is StructuredGarmentLog {
+  return !!log && typeof log === 'object' && Array.isArray((log as StructuredGarmentLog).lines);
 }
 
 /**

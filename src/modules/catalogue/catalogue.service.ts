@@ -2,7 +2,7 @@ import {
   Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { In, Repository, DataSource } from 'typeorm';
 import { CatalogueCategory } from '../../database/entities/catalogue-category.entity';
 import { CatalogueSubCategory } from '../../database/entities/catalogue-subcategory.entity';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
@@ -148,6 +148,13 @@ export class CatalogueService implements OnModuleInit {
     const item = await this.items.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Item not found');
     return item;
+  }
+
+  /** Fetch several items by id at once (used to validate a rep's garment log). */
+  async getItemsByIds(ids: string[]): Promise<CatalogueItem[]> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return [];
+    return this.items.find({ where: { id: In(unique) } });
   }
 
   async createItem(dto: CreateItemDto, adminId: string) {
