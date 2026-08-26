@@ -521,6 +521,42 @@ export class VendorsService {
     return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
   }
 
+  /**
+   * System reference (P50 / median) for a CATALOGUE ITEM the assigned vendor did
+   * NOT price: the median of the live approved prices across every other vendor's
+   * latest active sheet (matched by catalogue item id). Returns null when no
+   * vendor prices the item. Used as the garment-log fallback price.
+   */
+  async medianLivePriceForItem(itemId: string, excludeVendorId?: string): Promise<number | null> {
+    const sheets = await this.pricingRepository
+      .createQueryBuilder('p')
+      .where('p.approvedAt IS NOT NULL')
+      .andWhere('p.effectiveFrom <= NOW()')
+      .orderBy('p.effectiveFrom', 'DESC')
+      .getMany();
+
+    const seenVendors = new Set<string>();
+    const prices: number[] = [];
+    for (const sheet of sheets) {
+      if (seenVendors.has(sheet.vendorId)) continue; // only each vendor's latest active sheet
+      seenVendors.add(sheet.vendorId);
+      if (excludeVendorId && sheet.vendorId === excludeVendorId) continue;
+      for (const item of sheet.items) {
+        if (!isPriceItemLive(item)) continue;
+        if (item.itemId === itemId && item.priceNaira > 0) {
+          prices.push(item.priceNaira);
+          break;
+        }
+      }
+    }
+    if (!prices.length) return null;
+
+    prices.sort((a, b) => a - b);
+    const mid = Math.floor(prices.length / 2);
+    const median = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
+    return Math.round(median * 100) / 100;
+  }
+
   /** Load a proposal that is still open for review (not fully finalized as rejected). */
   private async loadReviewableProposal(pricingId: string): Promise<VendorPricing> {
     const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });

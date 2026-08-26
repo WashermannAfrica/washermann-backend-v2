@@ -835,8 +835,10 @@ export class NotificationsService {
   async notifyVendorGarmentsLogged(params: {
     vendorId:      string;
     orderRef:      string;
-    garmentLog:    Record<string, number>;
-    unpricedTypes: string[];
+    /** Every logged line, with whether the vendor had priced it. */
+    entries:       { name: string; count: number; unpriced: boolean }[];
+    /** Names of the items the vendor had no price for (P50 used). */
+    unpricedNames: string[];
     earningNaira:  number;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
@@ -844,26 +846,25 @@ export class NotificationsService {
 
     const pretty = (s: string) =>
       s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
-    const unpricedSet = new Set(params.unpricedTypes);
-    const entries = Object.entries(params.garmentLog).filter(([, count]) => Number(count) > 0);
-    const itemCount = entries.reduce((sum, [, count]) => sum + Number(count), 0);
+    const entries = params.entries.filter((e) => Number(e.count) > 0);
+    const itemCount = entries.reduce((sum, e) => sum + Number(e.count), 0);
 
     const itemsRowsHtml = entries
-      .map(([type, count]) => {
-        const flag = unpricedSet.has(type)
-          ? ' <em style="color:#c62828;font-style:normal;font-size:12px;">· no price set — market average used</em>'
+      .map((e) => {
+        const flag = e.unpriced
+          ? ' <em style="color:#c62828;font-style:normal;font-size:12px;">· no price set — system median (P50) used</em>'
           : '';
-        return `<div class="info-row"><span>${pretty(type)}${flag}</span><span>× ${count}</span></div>`;
+        return `<div class="info-row"><span>${pretty(e.name)}${flag}</span><span>× ${e.count}</span></div>`;
       })
       .join('');
-    const itemsText = entries.map(([type, count]) => `${pretty(type)} × ${count}`).join(', ');
+    const itemsText = entries.map((e) => `${pretty(e.name)} × ${e.count}`).join(', ');
 
-    const unpricedText = params.unpricedTypes.map(pretty).join(', ');
-    const unpricedNote = params.unpricedTypes.length
-      ? ` Note: you have no price set for ${unpricedText} — the market average was used for your earnings on ${params.unpricedTypes.length > 1 ? 'those items' : 'that item'}. Set your own price from your dashboard.`
+    const unpricedText = params.unpricedNames.map(pretty).join(', ');
+    const unpricedNote = params.unpricedNames.length
+      ? ` Note: you have no price set for ${unpricedText} — the system median (P50) was used for your earnings on ${params.unpricedNames.length > 1 ? 'those items' : 'that item'}. Set your own price from your dashboard.`
       : '';
-    const unpricedNoteHtml = params.unpricedTypes.length
-      ? `<p style="color:#c62828;">You have <strong>no price set</strong> for: <strong>${unpricedText}</strong>. Your earnings on ${params.unpricedTypes.length > 1 ? 'these items' : 'this item'} used the <strong>average price of other vendors</strong> — set your own price from your dashboard so future orders pay <em>your</em> rate.</p>`
+    const unpricedNoteHtml = params.unpricedNames.length
+      ? `<p style="color:#c62828;">You have <strong>no price set</strong> for: <strong>${unpricedText}</strong>. Your earnings on ${params.unpricedNames.length > 1 ? 'these items' : 'this item'} used the <strong>system median (P50) of other vendors</strong> — set your own price from your dashboard so future orders pay <em>your</em> rate.</p>`
       : '';
 
     const vars: Record<string, string | number> = {
@@ -873,7 +874,7 @@ export class NotificationsService {
       itemsText,
       itemCount,
       earningNaira:     Math.round(params.earningNaira).toLocaleString(),
-      unpricedCount:    params.unpricedTypes.length,
+      unpricedCount:    params.unpricedNames.length,
       unpricedNote,
       unpricedNoteHtml,
     };
@@ -885,6 +886,41 @@ export class NotificationsService {
         this.sendInApp('order.garments_logged.vendor', vendor.userId, vars, 'order', { orderRef: params.orderRef }),
       ]);
     }, this.logger, 'order.garments_logged.vendor');
+  }
+
+  /**
+   * Alert admins when a rep logs garments an order's vendor has NOT priced — the
+   * order's vendor share fell back to the system median (P50), so admin should
+   * check the catalogue/vendor pricing. Email (to the admin inbox) + in-app to
+   * every active admin. Fire-and-forget.
+   */
+  async notifyAdminOrderUnpricedItems(params: {
+    vendorId:      string;
+    orderRef:      string;
+    unpricedNames: string[];
+  }) {
+    if (!params.unpricedNames.length) return;
+    const { vendor } = await this.getVendorUser(params.vendorId);
+    const pretty = (s: string) =>
+      s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+    const unpricedText = params.unpricedNames.map(pretty).join(', ');
+
+    const vars: Record<string, string | number> = {
+      orderRef:      params.orderRef,
+      vendorName:    vendor?.businessName ?? 'the vendor',
+      unpricedText,
+      unpricedCount: params.unpricedNames.length,
+    };
+    const meta = { orderRef: params.orderRef };
+
+    fire(async () => {
+      const admins = await this.adminUsers();
+      const adminEmail = this.adminEmail();
+      await Promise.all([
+        adminEmail && this.sendEmail('order.garments_unpriced.admin', adminEmail, vars),
+        ...admins.map((a) => this.sendInApp('order.garments_unpriced.admin', a.id, vars, 'order', meta)),
+      ]);
+    }, this.logger, 'order.garments_unpriced.admin');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
