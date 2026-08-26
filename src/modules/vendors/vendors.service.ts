@@ -522,12 +522,14 @@ export class VendorsService {
   }
 
   /**
-   * System reference (P50 / median) for a CATALOGUE ITEM the assigned vendor did
-   * NOT price: the median of the live approved prices across every other vendor's
-   * latest active sheet (matched by catalogue item id). Returns null when no
-   * vendor prices the item. Used as the garment-log fallback price.
+   * System reference (arithmetic MEAN) for a CATALOGUE ITEM the assigned vendor
+   * did NOT price: the average of the live approved prices across every other
+   * vendor's latest active sheet (matched by catalogue item id). Returns null
+   * when no vendor prices the item. Used as the garment-log fallback price —
+   * vendors who set their own price are paid 100% of it; vendors who didn't are
+   * paid this mean.
    */
-  async medianLivePriceForItem(itemId: string, excludeVendorId?: string): Promise<number | null> {
+  async averageLivePriceForItem(itemId: string, excludeVendorId?: string): Promise<number | null> {
     const sheets = await this.pricingRepository
       .createQueryBuilder('p')
       .where('p.approvedAt IS NOT NULL')
@@ -550,11 +552,7 @@ export class VendorsService {
       }
     }
     if (!prices.length) return null;
-
-    prices.sort((a, b) => a - b);
-    const mid = Math.floor(prices.length / 2);
-    const median = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
-    return Math.round(median * 100) / 100;
+    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
   }
 
   /** Load a proposal that is still open for review (not fully finalized as rejected). */

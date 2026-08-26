@@ -633,7 +633,7 @@ export class OrdersService {
     const itemCount = lines.reduce((s, l) => s + l.count, 0);
     const unpricedNames = unpriced.map((u) => u.name);
     const historyNote = unpriced.length
-      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system median (P50) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
+      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (mean) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
       : `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}).`;
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -913,8 +913,9 @@ export class OrdersService {
   /**
    * Resolve a rep's garment log into structured, priced lines. Every line is
    * priced against the ORDER'S vendor:
-   *  - if the vendor has an approved price for the item → that price ("pricedByVendor");
-   *  - if not → the system median (P50) across other vendors, and the item is
+   *  - if the vendor has an approved price for the item → 100% of that price
+   *    ("pricedByVendor");
+   *  - if not → the system arithmetic mean across other vendors, and the item is
    *    recorded as `unpriced` (flagged to vendor + admin + order history).
    *
    * Prefers the item-based `items` payload (ids validated against the catalogue);
@@ -961,8 +962,8 @@ export class OrdersService {
         let unit = vendorPriceByItem.get(entry.itemId);
         const pricedByVendor = unit != null && unit > 0;
         if (!pricedByVendor) {
-          // Vendor hasn't priced it → pay the system median (P50); flag the gap.
-          unit = (await this.vendorsService.medianLivePriceForItem(entry.itemId, vendorId)) ?? 0;
+          // Vendor hasn't priced it → pay the system arithmetic mean; flag the gap.
+          unit = (await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId)) ?? 0;
           unpriced.push({ itemId: entry.itemId, name: cat.name });
         }
         totalNaira += (unit ?? 0) * entry.count;

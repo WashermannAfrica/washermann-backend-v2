@@ -733,7 +733,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Garments Logged — Unpriced Items (Admin Email)',
     subject: 'Order {{orderRef}} — {{unpricedCount}} item(s) not priced by {{vendorName}}',
     variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
-    body: 'On order {{orderRef}}, {{vendorName}} has no price for: {{unpricedText}}. The system median (P50) was used for the vendor share. Review the catalogue / vendor pricing.',
+    body: 'On order {{orderRef}}, {{vendorName}} has no price for: {{unpricedText}}. The system average (mean) was used for the vendor share. Review the catalogue / vendor pricing.',
     htmlBody: buildEmailHtml(`
       <p>Heads up,</p>
       <p>On order <strong>{{orderRef}}</strong>, the assigned vendor <strong>{{vendorName}}</strong> has <strong>no price set</strong> for:</p>
@@ -741,7 +741,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
         <div class="highlight-value" style="font-size:18px;">{{unpricedText}}</div>
         <div class="highlight-label">{{unpricedCount}} unpriced item(s)</div>
       </div>
-      <p>The vendor share for these items used the <strong>system median (P50)</strong> across other vendors. Consider confirming the item is in the catalogue and nudging the vendor to set their own price.</p>
+      <p>The vendor share for these items used the <strong>system average (mean)</strong> across other vendors. Consider confirming the item is in the catalogue and nudging the vendor to set their own price.</p>
     `),
   },
   {
@@ -749,7 +749,7 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     name: 'Garments Logged — Unpriced Items (Admin In-App)',
     variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
     subject: 'Order {{orderRef}}: {{unpricedCount}} unpriced item(s)',
-    body: '{{vendorName}} has no price for {{unpricedText}} on {{orderRef}} — system median (P50) used.',
+    body: '{{vendorName}} has no price for {{unpricedText}} on {{orderRef}} — system average (mean) used.',
   },
 
   // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────

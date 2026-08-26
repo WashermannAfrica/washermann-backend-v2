@@ -852,7 +852,7 @@ export class NotificationsService {
     const itemsRowsHtml = entries
       .map((e) => {
         const flag = e.unpriced
-          ? ' <em style="color:#c62828;font-style:normal;font-size:12px;">· no price set — system median (P50) used</em>'
+          ? ' <em style="color:#c62828;font-style:normal;font-size:12px;">· no price set — system average used</em>'
           : '';
         return `<div class="info-row"><span>${pretty(e.name)}${flag}</span><span>× ${e.count}</span></div>`;
       })
@@ -861,10 +861,10 @@ export class NotificationsService {
 
     const unpricedText = params.unpricedNames.map(pretty).join(', ');
     const unpricedNote = params.unpricedNames.length
-      ? ` Note: you have no price set for ${unpricedText} — the system median (P50) was used for your earnings on ${params.unpricedNames.length > 1 ? 'those items' : 'that item'}. Set your own price from your dashboard.`
+      ? ` Note: you have no price set for ${unpricedText} — the system average was used for your earnings on ${params.unpricedNames.length > 1 ? 'those items' : 'that item'}. Set your own price from your dashboard to earn your full rate.`
       : '';
     const unpricedNoteHtml = params.unpricedNames.length
-      ? `<p style="color:#c62828;">You have <strong>no price set</strong> for: <strong>${unpricedText}</strong>. Your earnings on ${params.unpricedNames.length > 1 ? 'these items' : 'this item'} used the <strong>system median (P50) of other vendors</strong> — set your own price from your dashboard so future orders pay <em>your</em> rate.</p>`
+      ? `<p style="color:#c62828;">You have <strong>no price set</strong> for: <strong>${unpricedText}</strong>. Your earnings on ${params.unpricedNames.length > 1 ? 'these items' : 'this item'} used the <strong>system average across other vendors</strong> — set your own price from your dashboard and you'll be paid <em>100% of your rate</em> on future orders.</p>`
       : '';
 
     const vars: Record<string, string | number> = {
