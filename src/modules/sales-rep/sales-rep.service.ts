@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { SalesRepApplication } from '../../database/entities/sales-rep-application.entity';
 import { SalesRep } from '../../database/entities/sales-rep.entity';
 import { TutorialStep } from '../../database/entities/tutorial-step.entity';
@@ -345,6 +345,38 @@ export class SalesRepService implements OnModuleInit {
     };
   }
 
+  // ─── Admin: lifecycle (suspend / reactivate / archive) ────────────────────────
+
+  /** Freeze a sales rep — reversible. They can't request payouts while suspended. */
+  async suspendSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'suspended';
+    await this.reps.save(profile);
+    return { data: { status: profile.status }, message: 'Sales rep suspended' };
+  }
+
+  /** Lift a suspension / un-archive — sets the rep back to active. */
+  async reactivateSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'active';
+    profile.deactivatedAt = null;
+    await this.reps.save(profile);
+    return { data: { status: profile.status }, message: 'Sales rep reactivated' };
+  }
+
+  /**
+   * Archive (soft-delete) a sales rep. Never hard-deleted — referral and payout
+   * history must survive. Sets deactivatedAt (hidden from the default list) and
+   * suspends them so no new payouts can be requested.
+   */
+  async deleteSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'suspended';
+    profile.deactivatedAt = new Date();
+    await this.reps.save(profile);
+    return { data: null, message: 'Sales rep removed' };
+  }
+
   // ─── Payouts ──────────────────────────────────────────────────────────────────
   private async availableCashReferrals(userId: string): Promise<Referral[]> {
     return this.referrals.find({
@@ -456,11 +488,14 @@ export class SalesRepService implements OnModuleInit {
   }
 
   // ─── Admin: sales reps ────────────────────────────────────────────────────────
-  async listSalesReps(query: { status?: string; page?: number; limit?: number }) {
+  async listSalesReps(query: { status?: string; page?: number; limit?: number; includeArchived?: boolean }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(200, Math.max(1, query.limit ?? 50));
+    // Archived (soft-deleted) reps are hidden unless explicitly requested.
+    const base: Record<string, unknown> = query.includeArchived ? {} : { deactivatedAt: IsNull() };
+    if (query.status) base.status = query.status;
     const [data, total] = await this.reps.findAndCount({
-      where: query.status ? { status: query.status as any } : {},
+      where: base,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
