@@ -179,6 +179,7 @@ export class UsersController {
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortDir', required: false, enum: ['ASC', 'DESC'] })
+  @ApiQuery({ name: 'customersOnly', required: false, type: Boolean, description: 'Exclude vendors/reps/company/staff — customers only' })
   listUsers(
     @Query('page') page = 1,
     @Query('limit') limit = 20,
@@ -186,8 +187,17 @@ export class UsersController {
     @Query('status') status?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: 'ASC' | 'DESC',
+    @Query('customersOnly') customersOnly?: string,
   ) {
-    return this.usersService.listUsers(Number(page), Number(limit), search, status, sortBy, sortDir);
+    return this.usersService.listUsers(
+      Number(page),
+      Number(limit),
+      search,
+      status,
+      sortBy,
+      sortDir,
+      customersOnly === 'true',
+    );
   }
 
   @Get(':id')
