@@ -134,11 +134,12 @@ export function redact(value: unknown, depth = 0): unknown {
   return value;
 }
 
-function actorTypeFromRoles(roles?: string[]): string {
+export function primaryActorType(roles?: string[]): string {
   if (!roles || roles.length === 0) return 'guest';
   for (const r of ROLE_PRIORITY) if (roles.includes(r)) return r;
   return roles[0];
 }
+const actorTypeFromRoles = primaryActorType;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const shortId = (id?: string | null) => (id && UUID_RE.test(id) ? `#${id.slice(0, 8)}` : id ? `#${id}` : '');

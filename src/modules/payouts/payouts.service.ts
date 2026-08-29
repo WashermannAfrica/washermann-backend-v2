@@ -19,6 +19,7 @@ import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { PaystackService } from '../payments/paystack.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PayoutsService {
@@ -45,6 +46,7 @@ export class PayoutsService {
     private platformConfigService: PlatformConfigService,
     private paystackService: PaystackService,
     private notificationsService: NotificationsService,
+    private readonly audit: AuditService,
   ) {}
 
   // ─── Vendor: request payout ───────────────────────────────────────────────────
@@ -199,6 +201,32 @@ export class PayoutsService {
         payoutId:      payout.id,
       });
     }
+
+    // Rich money audit: the admin approved (and Paystack settled/failed) a vendor
+    // cash payout. Actor = the approving admin.
+    const failed = payout.status === PayoutStatus.FAILED;
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: failed ? 'payout.vendor.failed' : 'payout.vendor.approved',
+      description: failed
+        ? `Vendor payout of ₦${Number(payout.nairaAmount).toLocaleString()} (${Number(payout.amountWP).toLocaleString()} WP) FAILED — ${payout.failureReason ?? 'transfer error'} (payout ${payout.id})`
+        : `Approved vendor payout of ₦${Number(payout.nairaAmount).toLocaleString()} (${Number(payout.amountWP).toLocaleString()} WP) to ${payout.accountName} · ${payout.accountNumber} — status ${payout.status}`,
+      targetType: 'payout',
+      targetId: payout.id,
+      targetLabel: `₦${Number(payout.nairaAmount).toLocaleString()} → ${payout.accountName}`,
+      success: !failed,
+      metadata: {
+        vendorId: payout.vendorId,
+        nairaAmount: Number(payout.nairaAmount),
+        amountWP: Number(payout.amountWP),
+        status: payout.status,
+        bankCode: payout.bankCode,
+        accountNumber: payout.accountNumber,
+        paystackReference: payout.paystackReference ?? null,
+        failureReason: payout.failureReason ?? null,
+      },
+    });
 
     return payout;
   }

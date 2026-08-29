@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { AuditLog } from '../../database/entities/audit-log.entity';
+import { User } from '../../database/entities/user.entity';
+import { primaryActorType } from './audit-describe';
 
 export interface RecordAuditInput {
   app?: string;
@@ -44,7 +46,32 @@ export class AuditService {
 
   constructor(
     @InjectRepository(AuditLog) private readonly repo: Repository<AuditLog>,
+    @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
+
+  /**
+   * Record an event attributed to a specific user, resolving their name + type
+   * for the "Who" column. Fire-and-forget — call with `void`. Use this from
+   * service-level money/security instrumentation where you have the actor's id
+   * but not their name (e.g. webhooks, crons, ledger movements).
+   */
+  async recordWithActor(
+    actorUserId: string | null,
+    event: Omit<RecordAuditInput, 'actorId' | 'actorName' | 'actorType'> & { actorType?: string },
+  ): Promise<void> {
+    let actorName: string | null = null;
+    let actorType = event.actorType ?? 'system';
+    if (actorUserId) {
+      try {
+        const u = await this.users.findOne({ where: { id: actorUserId }, select: ['id', 'fullName', 'roles'] });
+        if (u) {
+          actorName = u.fullName;
+          if (!event.actorType) actorType = primaryActorType(u.roles as unknown as string[]);
+        }
+      } catch { /* name is best-effort */ }
+    }
+    this.record({ ...event, actorId: actorUserId, actorName, actorType });
+  }
 
   /**
    * Persist one audit row. Fire-and-forget: never throws into the caller and
