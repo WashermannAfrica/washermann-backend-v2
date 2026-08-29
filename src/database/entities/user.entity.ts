@@ -22,7 +22,11 @@ export class User extends BaseEntity {
 
   @ApiHideProperty()
   @Exclude()
-  @Column({ name: 'password_hash', type: 'varchar', nullable: true })
+  // select:false → never returned by default finds/relations, so it can't leak
+  // through any endpoint that serialises a User (the app has no global
+  // ClassSerializerInterceptor, so @Exclude alone is not enforced at runtime).
+  // Read it explicitly (addSelect) only where auth needs to compare it.
+  @Column({ name: 'password_hash', type: 'varchar', nullable: true, select: false })
   passwordHash: string;
 
   @ApiProperty({ enum: Role, isArray: true })

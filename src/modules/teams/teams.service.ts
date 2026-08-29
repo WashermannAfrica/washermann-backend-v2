@@ -105,10 +105,11 @@ export class TeamsService {
     });
     if (!team) throw new NotFoundException('Team not found');
 
-    // Only surface active members (consistent with listMembers).
-    team.members = (team.members ?? []).filter((m) => m.isActive);
+    // Only surface active members, and expose a SAFE subset of each member's
+    // user (never the raw User entity — it carries passwordHash / tokens).
+    const members = (team.members ?? []).filter((m) => m.isActive).map((m) => this.sanitizeMember(m));
 
-    return { data: team };
+    return { data: { ...team, members } };
   }
 
   // ─── Update ───────────────────────────────────────────────────────────────────
