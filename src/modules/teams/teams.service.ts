@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Team } from '../../database/entities/team.entity';
 import { TeamMember } from '../../database/entities/team-member.entity';
 import { User } from '../../database/entities/user.entity';
@@ -31,40 +31,45 @@ export class TeamsService {
     private memberRepository: Repository<TeamMember>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private dataSource: DataSource,
   ) {}
 
   // ─── Create ───────────────────────────────────────────────────────────────────
 
   async createTeam(ownerId: string, dto: CreateTeamDto) {
-    const team = this.teamRepository.create({
-      name: dto.name,
-      description: dto.description ?? null,
-      ownerId,
-      industry: dto.industry ?? null,
-      address: dto.address ?? null,
-      website: dto.website ?? null,
-      memberCount: dto.memberCount ?? null,
-      isActive: true,
+    // Team + owner-member + role grant must all land together, or none.
+    const team = await this.dataSource.transaction(async (manager) => {
+      const t = manager.create(Team, {
+        name: dto.name,
+        description: dto.description ?? null,
+        ownerId,
+        industry: dto.industry ?? null,
+        address: dto.address ?? null,
+        website: dto.website ?? null,
+        memberCount: 1, // the owner; kept in sync on every membership change
+        isActive: true,
+      });
+      await manager.save(t);
+
+      // The creator is automatically the owner member.
+      await manager.save(
+        manager.create(TeamMember, {
+          teamId: t.id,
+          userId: ownerId,
+          role: TeamMemberRole.OWNER,
+          isActive: true,
+          joinedAt: new Date(),
+        }),
+      );
+
+      // Grant TEAM_OWNER role if not already held.
+      const owner = await manager.findOne(User, { where: { id: ownerId } });
+      if (owner && !owner.roles.includes(Role.TEAM_OWNER)) {
+        owner.roles = [...owner.roles, Role.TEAM_OWNER];
+        await manager.save(owner);
+      }
+      return t;
     });
-
-    await this.teamRepository.save(team);
-
-    // The creator is automatically the owner member
-    const ownerMember = this.memberRepository.create({
-      teamId: team.id,
-      userId: ownerId,
-      role: TeamMemberRole.OWNER,
-      isActive: true,
-      joinedAt: new Date(),
-    });
-    await this.memberRepository.save(ownerMember);
-
-    // Grant TEAM_OWNER role if not already held
-    const owner = await this.userRepository.findOne({ where: { id: ownerId } });
-    if (owner && !owner.roles.includes(Role.TEAM_OWNER)) {
-      owner.roles = [...owner.roles, Role.TEAM_OWNER];
-      await this.userRepository.save(owner);
-    }
 
     this.logger.log(`Team created: ${team.id} — "${team.name}" by user ${ownerId}`);
 
@@ -100,6 +105,9 @@ export class TeamsService {
     });
     if (!team) throw new NotFoundException('Team not found');
 
+    // Only surface active members (consistent with listMembers).
+    team.members = (team.members ?? []).filter((m) => m.isActive);
+
     return { data: team };
   }
 
@@ -120,7 +128,7 @@ export class TeamsService {
     if (dto.industry !== undefined)    team.industry = dto.industry ?? null;
     if (dto.address !== undefined)     team.address = dto.address ?? null;
     if (dto.website !== undefined)     team.website = dto.website ?? null;
-    if (dto.memberCount !== undefined) team.memberCount = dto.memberCount ?? null;
+    // memberCount is maintained automatically from the member rows — not user-set.
     if (dto.isActive !== undefined)    team.isActive = dto.isActive;
 
     await this.teamRepository.save(team);
@@ -135,9 +143,12 @@ export class TeamsService {
 
     const team = await this.findTeamOrFail(teamId);
 
-    // Soft-delete: deactivate instead of hard delete to preserve ledger links
+    // Soft-delete: deactivate rather than hard-delete so historical references
+    // survive. Scrub the owner's platform TEAM_OWNER role if they own no other
+    // active team.
     team.isActive = false;
     await this.teamRepository.save(team);
+    await this.scrubTeamOwnerRoleIfOrphaned(team.ownerId);
 
     this.logger.log(`Team deactivated: ${team.id} — "${team.name}" by user ${userId}`);
 
@@ -168,7 +179,8 @@ export class TeamsService {
       throw new BadRequestException('Email or phone is required');
     }
 
-    await this.assertTeamAccess(teamId, callerId, callerRoles);
+    // Only an OWNER or ADMIN (or platform admin) may add members.
+    await this.assertManagerAccess(teamId, callerId, callerRoles);
     await this.findTeamOrFail(teamId);
 
     const target = await this.userRepository.findOne({
@@ -194,6 +206,7 @@ export class TeamsService {
       existing.isActive = true;
       existing.joinedAt = new Date();
       await this.memberRepository.save(existing);
+      await this.syncMemberCount(teamId);
       return { data: this.sanitizeMember(existing), message: 'Member re-activated' };
     }
 
@@ -206,6 +219,7 @@ export class TeamsService {
     });
 
     await this.memberRepository.save(member);
+    await this.syncMemberCount(teamId);
 
     return { data: this.sanitizeMember(member), message: 'Member added' };
   }
@@ -216,37 +230,39 @@ export class TeamsService {
     callerId: string,
     callerRoles: Role[],
   ) {
-    await this.assertTeamAccess(teamId, callerId, callerRoles);
-
     const member = await this.memberRepository.findOne({
       where: { id: memberId, teamId },
     });
     if (!member) throw new NotFoundException('Member not found in this team');
 
-    // Protect the owner from removal unless caller is also owner
+    const isSelf = member.userId === callerId;
+
+    // A member may always remove THEMSELVES (leave). Removing anyone else
+    // requires OWNER/ADMIN (platform admin bypasses).
+    if (!isSelf) {
+      await this.assertManagerAccess(teamId, callerId, callerRoles);
+    } else {
+      await this.assertTeamAccess(teamId, callerId, callerRoles);
+    }
+
+    // Removing an OWNER: only an OWNER (or the owner leaving) may do it, and the
+    // last owner cannot leave without transferring first.
     if (member.role === TeamMemberRole.OWNER) {
-      await this.assertOwnerAccess(teamId, callerId, callerRoles);
+      if (!isSelf) await this.assertOwnerAccess(teamId, callerId, callerRoles);
       await this.assertNotLastOwner(teamId, member.userId);
     }
 
     member.isActive = false;
     await this.memberRepository.save(member);
 
-    // Scrub TEAM_OWNER role if no more owned teams
+    // If an owner left, keep the denormalised team.ownerId pointing at a real
+    // remaining owner, and scrub their TEAM_OWNER role if they own nothing else.
     if (member.role === TeamMemberRole.OWNER) {
-      const user = await this.userRepository.findOne({
-        where: { id: member.userId },
-      });
-      if (user) {
-        const stillOwner = await this.memberRepository.count({
-          where: { userId: member.userId, role: TeamMemberRole.OWNER, isActive: true },
-        });
-        if (stillOwner === 0 && user.roles.includes(Role.TEAM_OWNER)) {
-          user.roles = user.roles.filter((r) => r !== Role.TEAM_OWNER);
-          await this.userRepository.save(user);
-        }
-      }
+      await this.reassignTeamOwnerIfNeeded(teamId, member.userId);
+      await this.scrubTeamOwnerRoleIfOrphaned(member.userId);
     }
+
+    await this.syncMemberCount(teamId);
 
     return { data: null, message: 'Member removed from team' };
   }
@@ -258,7 +274,7 @@ export class TeamsService {
     callerId: string,
     callerRoles: Role[],
   ) {
-    // Only an owner can change roles (including promoting to owner = transfer)
+    // Only an owner (or platform admin) can change roles.
     await this.assertOwnerAccess(teamId, callerId, callerRoles);
 
     const member = await this.memberRepository.findOne({
@@ -266,34 +282,50 @@ export class TeamsService {
     });
     if (!member) throw new NotFoundException('Member not found in this team');
 
-    // Cannot demote the last owner
-    if (
-      member.role === TeamMemberRole.OWNER &&
-      dto.role !== TeamMemberRole.OWNER
-    ) {
+    if (member.role === dto.role) {
+      return { data: this.sanitizeMember(member), message: 'No change' };
+    }
+
+    // Promoting to OWNER is a TRANSFER: the promoted member becomes the sole
+    // owner; every other current owner is demoted to ADMIN and team.ownerId is
+    // repointed. This keeps exactly one owner and the denormalised field in sync.
+    if (dto.role === TeamMemberRole.OWNER) {
+      await this.dataSource.transaction(async (manager) => {
+        const currentOwners = await manager.find(TeamMember, {
+          where: { teamId, role: TeamMemberRole.OWNER, isActive: true },
+        });
+        for (const owner of currentOwners) {
+          if (owner.id === member.id) continue;
+          owner.role = TeamMemberRole.ADMIN;
+          await manager.save(owner);
+        }
+        member.role = TeamMemberRole.OWNER;
+        await manager.save(member);
+        await manager.update(Team, { id: teamId }, { ownerId: member.userId });
+      });
+
+      await this.grantTeamOwnerRole(member.userId);
+      // Demoted previous owners may no longer own any team.
+      const previousOwnerIds = (await this.memberRepository.find({
+        where: { teamId, role: TeamMemberRole.ADMIN, isActive: true },
+      })).map((m) => m.userId);
+      await Promise.all(previousOwnerIds.map((id) => this.scrubTeamOwnerRoleIfOrphaned(id)));
+
+      return { data: this.sanitizeMember(member), message: 'Ownership transferred' };
+    }
+
+    // Demoting an owner to a lower role — never allow removing the last owner.
+    if (member.role === TeamMemberRole.OWNER) {
       await this.assertNotLastOwner(teamId, member.userId);
     }
 
+    const wasOwner = member.role === TeamMemberRole.OWNER;
     member.role = dto.role;
     await this.memberRepository.save(member);
-
-    // Sync TEAM_OWNER JWT role
-    const user = await this.userRepository.findOne({
-      where: { id: member.userId },
-    });
-    if (user) {
-      if (dto.role === TeamMemberRole.OWNER && !user.roles.includes(Role.TEAM_OWNER)) {
-        user.roles = [...user.roles, Role.TEAM_OWNER];
-        await this.userRepository.save(user);
-      } else if (dto.role !== TeamMemberRole.OWNER) {
-        const stillOwner = await this.memberRepository.count({
-          where: { userId: user.id, role: TeamMemberRole.OWNER, isActive: true },
-        });
-        if (stillOwner === 0 && user.roles.includes(Role.TEAM_OWNER)) {
-          user.roles = user.roles.filter((r) => r !== Role.TEAM_OWNER);
-          await this.userRepository.save(user);
-        }
-      }
+    // dto.role is a non-owner role here; scrub the platform role if they just
+    // lost their last ownership.
+    if (wasOwner) {
+      await this.scrubTeamOwnerRoleIfOrphaned(member.userId);
     }
 
     return { data: this.sanitizeMember(member), message: 'Member role updated' };
@@ -340,7 +372,79 @@ export class TeamsService {
     }
   }
 
+  /**
+   * Member management (add/remove others) is limited to the team OWNER or ADMIN
+   * (or a platform ADMIN). A regular MEMBER has no management rights.
+   */
+  async assertManagerAccess(
+    teamId: string,
+    userId: string,
+    callerRoles: Role[],
+  ): Promise<void> {
+    if (callerRoles.includes(Role.ADMIN)) return;
+
+    const membership = await this.memberRepository.findOne({
+      where: { teamId, userId, isActive: true },
+    });
+
+    if (
+      !membership ||
+      (membership.role !== TeamMemberRole.OWNER && membership.role !== TeamMemberRole.ADMIN)
+    ) {
+      throw new ForbiddenException('Only a team owner or admin can manage members');
+    }
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** Recompute the denormalised member_count from the active member rows. */
+  private async syncMemberCount(teamId: string, manager?: EntityManager): Promise<void> {
+    const repo = manager ? manager.getRepository(TeamMember) : this.memberRepository;
+    const teamRepo = manager ? manager.getRepository(Team) : this.teamRepository;
+    const count = await repo.count({ where: { teamId, isActive: true } });
+    await teamRepo.update({ id: teamId }, { memberCount: count });
+  }
+
+  /**
+   * After an owner leaves, ensure team.ownerId still points at a real active
+   * owner. If none remains (shouldn't happen — last-owner is guarded), promote
+   * the earliest-joined admin, else the earliest member, to keep the invariant.
+   */
+  private async reassignTeamOwnerIfNeeded(teamId: string, leavingUserId: string): Promise<void> {
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team || team.ownerId !== leavingUserId) return;
+
+    const nextOwner = await this.memberRepository.findOne({
+      where: { teamId, role: TeamMemberRole.OWNER, isActive: true },
+      order: { joinedAt: 'ASC' },
+    });
+    if (nextOwner) {
+      team.ownerId = nextOwner.userId;
+      await this.teamRepository.save(team);
+    }
+  }
+
+  /** Grant the platform TEAM_OWNER role if the user doesn't already hold it. */
+  private async grantTeamOwnerRole(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (user && !user.roles.includes(Role.TEAM_OWNER)) {
+      user.roles = [...user.roles, Role.TEAM_OWNER];
+      await this.userRepository.save(user);
+    }
+  }
+
+  /** Remove the TEAM_OWNER role once a user owns no more active teams. */
+  private async scrubTeamOwnerRoleIfOrphaned(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || !user.roles.includes(Role.TEAM_OWNER)) return;
+    const stillOwner = await this.memberRepository.count({
+      where: { userId, role: TeamMemberRole.OWNER, isActive: true },
+    });
+    if (stillOwner === 0) {
+      user.roles = user.roles.filter((r) => r !== Role.TEAM_OWNER);
+      await this.userRepository.save(user);
+    }
+  }
 
   private async assertNotLastOwner(
     teamId: string,
