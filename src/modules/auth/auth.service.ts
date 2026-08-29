@@ -126,7 +126,7 @@ export class AuthService {
   // ─── Login ───────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto) {
-    const user = await this.findByIdentifier(dto.identifier);
+    const user = await this.findByIdentifier(dto.identifier, true); // needs the hash
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
@@ -791,13 +791,20 @@ export class AuthService {
 
   // ─── Misc helpers ─────────────────────────────────────────────────────────────
 
-  private async findByIdentifier(identifier: string): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: [
-        { email: identifier.toLowerCase() },
-        { phone: identifier },
-      ],
-    });
+  private async findByIdentifier(
+    identifier: string,
+    withPassword = false,
+  ): Promise<User | null> {
+    // passwordHash is select:false, so it's only loaded when a caller (login)
+    // explicitly needs it to compare — never returned to any response otherwise.
+    const qb = this.userRepository
+      .createQueryBuilder('u')
+      .where('u.email = :email OR u.phone = :phone', {
+        email: identifier.toLowerCase(),
+        phone: identifier,
+      });
+    if (withPassword) qb.addSelect('u.passwordHash');
+    return qb.getOne();
   }
 
   private async assertIdentifierNotTaken(email?: string, phone?: string) {

@@ -1,12 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
   MaxLength,
-  Min,
 } from 'class-validator';
 
 export class CreateTeamDto {
@@ -37,10 +35,4 @@ export class CreateTeamDto {
   @IsUrl({}, { message: 'Website must be a valid URL' })
   @MaxLength(255)
   website?: string;
-
-  @ApiProperty({ example: 10, required: false })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  memberCount?: number;
 }
