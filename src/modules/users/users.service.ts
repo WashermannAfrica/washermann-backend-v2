@@ -290,6 +290,23 @@ export class UsersService {
     };
   }
 
+  /**
+   * Roles that have their own dedicated admin module (Washermen, Reps, Companies,
+   * Staff). When `customersOnly` is set, users carrying any of these are excluded
+   * so the admin Users list is customers only.
+   */
+  private static readonly OWN_MODULE_ROLES = [
+    'vendor',
+    'rep',
+    'sales_rep',
+    'company_owner',
+    'company_admin',
+    'admin',
+    'finance',
+    'dispute_resolver',
+    'washerman',
+  ];
+
   async listUsers(
     page = 1,
     limit = 20,
@@ -297,6 +314,7 @@ export class UsersService {
     status?: string,
     sortBy?: string,
     sortDir?: 'ASC' | 'DESC',
+    customersOnly = false,
   ) {
     const SORTABLE: Record<string, string> = {
       createdAt: 'u.createdAt',
@@ -312,6 +330,16 @@ export class UsersService {
       .orderBy(sortCol, dir)
       .skip((page - 1) * limit)
       .take(limit);
+
+    // Customers only: must hold the `user` role and none of the own-module roles
+    // (vendors/reps/company/staff each live in their own admin module).
+    if (customersOnly) {
+      qb.andWhere(`string_to_array(u.roles, ',') && ARRAY['user']::text[]`);
+      qb.andWhere(
+        `NOT (string_to_array(u.roles, ',') && ARRAY[:...ownModuleRoles]::text[])`,
+        { ownModuleRoles: UsersService.OWN_MODULE_ROLES },
+      );
+    }
 
     if (search) {
       qb.andWhere('(u.fullName ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)', {
