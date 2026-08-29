@@ -69,6 +69,7 @@ import { SalesRepPayout } from './entities/sales-rep-payout.entity';
 // ─── Rate engine ──────────────────────────────────────────────────────────────
 import { RateConfig } from './entities/rate-config.entity';
 import { RateEpoch } from './entities/rate-epoch.entity';
+import { AuditLog } from './entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -114,6 +115,8 @@ import { RateEpoch } from './entities/rate-epoch.entity';
             AssessmentQuestion, AssessmentAttempt, SalesRepPayout,
             // Rate engine
             RateConfig, RateEpoch,
+            // Audit
+            AuditLog,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

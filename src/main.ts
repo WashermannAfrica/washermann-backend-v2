@@ -26,7 +26,7 @@ async function bootstrap() {
       configService.get<string>('app.frontendUrl') ||
       '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret', 'X-WM-Topup-Code'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Washermann-Secret', 'X-WM-Topup-Code', 'X-Client-App'],
     credentials: true,
   });
 

@@ -58,6 +58,8 @@ import { SalesRepModule } from './modules/sales-rep/sales-rep.module';
 import { RateEngineModule } from './modules/rate-engine/rate-engine.module';
 import { GamesModule } from './modules/games/games.module';
 import { BlogModule } from './modules/blog/blog.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
 
 @Module({
   imports: [
@@ -114,6 +116,7 @@ import { BlogModule } from './modules/blog/blog.module';
     RateEngineModule,
     GamesModule,
     BlogModule,
+    AuditModule,
   ],
 
   providers: [
@@ -126,6 +129,11 @@ import { BlogModule } from './modules/blog/blog.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
+    },
+    // Global audit trail — records every mutating request from any application
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
     // Global JWT guard — all routes require auth unless decorated with @Public()
     {
