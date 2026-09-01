@@ -1044,4 +1044,78 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     subject: 'Changes requested',
     body: '"{{postTitle}}": {{reviewNote}}',
   },
+
+  // ── Teams ───────────────────────────────────────────────────────────────────
+
+  {
+    key: 'team.member_added', channel: 'email',
+    name: 'Team — Added as Member (Email)',
+    subject: 'You\'ve been added to {{teamName}}',
+    variables: ['memberName', 'teamName', 'addedByName'],
+    body: 'Hi {{memberName}}, {{addedByName}} added you to the team "{{teamName}}" on Washermann.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p><strong>{{addedByName}}</strong> added you to the team <strong>{{teamName}}</strong> on Washermann.</p>
+      <p>You can now see the team and its members from your dashboard.</p>
+    `),
+  },
+  {
+    key: 'team.member_added', channel: 'in_app',
+    name: 'Team — Added as Member (In-App)',
+    variables: ['teamName', 'addedByName'],
+    subject: 'Added to {{teamName}}',
+    body: '{{addedByName}} added you to the team {{teamName}}.',
+  },
+  {
+    key: 'team.member_added', channel: 'push',
+    name: 'Team — Added as Member (Push)',
+    variables: ['teamName'],
+    subject: 'Added to {{teamName}}',
+    body: 'You\'ve been added to the team {{teamName}}.',
+  },
+
+  {
+    key: 'team.role_changed', channel: 'email',
+    name: 'Team — Role Changed (Email)',
+    subject: 'Your role in {{teamName}} is now {{roleLabel}}',
+    variables: ['memberName', 'teamName', 'role', 'roleLabel'],
+    body: 'Hi {{memberName}}, your role in the team "{{teamName}}" is now {{roleLabel}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p>Your role in the team <strong>{{teamName}}</strong> is now <strong>{{roleLabel}}</strong>.</p>
+    `),
+  },
+  {
+    key: 'team.role_changed', channel: 'in_app',
+    name: 'Team — Role Changed (In-App)',
+    variables: ['teamName', 'roleLabel'],
+    subject: 'Role updated in {{teamName}}',
+    body: 'You are now {{roleLabel}} of {{teamName}}.',
+  },
+  {
+    key: 'team.role_changed', channel: 'push',
+    name: 'Team — Role Changed (Push)',
+    variables: ['teamName', 'roleLabel'],
+    subject: 'Role updated',
+    body: 'You are now {{roleLabel}} of {{teamName}}.',
+  },
+
+  {
+    key: 'team.member_removed', channel: 'email',
+    name: 'Team — Removed from Team (Email)',
+    subject: 'You\'ve been removed from {{teamName}}',
+    variables: ['memberName', 'teamName'],
+    body: 'Hi {{memberName}}, you have been removed from the team "{{teamName}}".',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p>You have been removed from the team <strong>{{teamName}}</strong>.</p>
+    `),
+  },
+  {
+    key: 'team.member_removed', channel: 'in_app',
+    name: 'Team — Removed from Team (In-App)',
+    variables: ['teamName'],
+    subject: 'Removed from {{teamName}}',
+    body: 'You have been removed from the team {{teamName}}.',
+  },
 ];

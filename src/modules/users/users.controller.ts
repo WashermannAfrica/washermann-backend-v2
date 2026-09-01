@@ -21,7 +21,6 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CompaniesService } from '../companies/companies.service';
-import { TeamsService } from '../teams/teams.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -39,7 +38,6 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly companiesService: CompaniesService,
-    private readonly teamsService: TeamsService,
   ) {}
 
   // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -155,18 +153,8 @@ export class UsersController {
     return this.companiesService.getAdminCompanies(userId);
   }
 
-  // ─── Team memberships — team switcher ─────────────────────────────────────────
-
-  @Get('me/teams')
-  @ApiOperation({
-    summary: 'List all teams the current user belongs to',
-    description:
-      'Returns every active team membership including the user\'s role in each team. ' +
-      'Used to power the team switcher on the dashboard.',
-  })
-  getMyTeams(@CurrentUser('id') userId: string) {
-    return this.teamsService.getMyTeams(userId);
-  }
+  // Team memberships live under the Teams module: GET /teams/mine (the previous
+  // duplicate GET /users/me/teams was removed to keep one canonical endpoint).
 
   // ─── Admin Endpoints ──────────────────────────────────────────────────────────
 

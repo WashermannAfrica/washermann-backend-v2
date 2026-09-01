@@ -8,10 +8,9 @@ import { CompanyEmployee } from '../../database/entities/company-employee.entity
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { CompaniesModule } from '../companies/companies.module';
-import { TeamsModule } from '../teams/teams.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Address, Order, Wallet, CompanyEmployee]), CompaniesModule, TeamsModule],
+  imports: [TypeOrmModule.forFeature([User, Address, Order, Wallet, CompanyEmployee]), CompaniesModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

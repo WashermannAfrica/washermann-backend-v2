@@ -924,6 +924,63 @@ export class NotificationsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // TEAMS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Tell a user they were added to a team. */
+  async notifyTeamMemberAdded(params: { userId: string; teamName: string; addedByName?: string | null }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+      addedByName: params.addedByName ?? 'A team admin',
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.member_added', user.email, vars),
+        this.sendInApp('team.member_added', user.id, vars, 'account'),
+        user.fcmToken && this.sendPush('team.member_added', user.fcmToken, vars),
+      ]);
+    }, this.logger, 'team.member_added');
+  }
+
+  /** Tell a user their role in a team changed (incl. becoming the owner). */
+  async notifyTeamRoleChanged(params: { userId: string; teamName: string; role: string; isOwner: boolean }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+      role: params.role,
+      roleLabel: params.isOwner ? 'owner' : params.role,
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.role_changed', user.email, vars),
+        this.sendInApp('team.role_changed', user.id, vars, 'account'),
+        user.fcmToken && this.sendPush('team.role_changed', user.fcmToken, vars),
+      ]);
+    }, this.logger, 'team.role_changed');
+  }
+
+  /** Tell a user they were removed from a team. */
+  async notifyTeamMemberRemoved(params: { userId: string; teamName: string }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.member_removed', user.email, vars),
+        this.sendInApp('team.member_removed', user.id, vars, 'account'),
+      ]);
+    }, this.logger, 'team.member_removed');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // BLOG (maker-checker review)
   // ═══════════════════════════════════════════════════════════════════════════
 
