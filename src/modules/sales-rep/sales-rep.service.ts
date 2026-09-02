@@ -24,6 +24,7 @@ import { AuthService } from '../auth/auth.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RepsService } from '../reps/reps.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateSalesRepApplicationDto } from './dto/create-sales-rep-application.dto';
 import { SubmitAssessmentDto } from './dto/submit-assessment.dto';
 import { RequestSalesRepPayoutDto } from './dto/request-payout.dto';
@@ -52,6 +53,7 @@ export class SalesRepService implements OnModuleInit {
     private readonly referralsService: ReferralsService,
     private readonly notificationsService: NotificationsService,
     private readonly repsService: RepsService,
+    private readonly audit: AuditService,
   ) {}
 
   async onModuleInit() {
@@ -471,6 +473,21 @@ export class SalesRepService implements OnModuleInit {
       await manager.save(payout);
     });
     this.logger.log(`Sales-rep payout ${payout.id} approved/completed by ${adminId}`);
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: 'payout.sales_rep.approved',
+      description: `Approved sales-rep payout of ₦${Number(payout.amountNaira).toLocaleString()} — ${payout.referralIds.length} referral(s) marked paid (payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      targetLabel: `₦${Number(payout.amountNaira).toLocaleString()} sales-rep payout`,
+      metadata: {
+        salesRepUserId: payout.salesRepUserId,
+        amountNaira: Number(payout.amountNaira),
+        referralCount: payout.referralIds.length,
+        reference: payout.reference ?? null,
+      },
+    });
     return payout;
   }
 
@@ -484,6 +501,20 @@ export class SalesRepService implements OnModuleInit {
     payout.failureReason = reason ?? null;
     await this.payouts.save(payout);
     // referrals were never marked paid → they remain 'available' and re-requestable
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: 'payout.sales_rep.failed',
+      description: `Marked sales-rep payout of ₦${Number(payout.amountNaira).toLocaleString()} as FAILED${reason ? ` — ${reason}` : ''} (payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      success: false,
+      metadata: {
+        salesRepUserId: payout.salesRepUserId,
+        amountNaira: Number(payout.amountNaira),
+        failureReason: reason ?? null,
+      },
+    });
     return payout;
   }
 

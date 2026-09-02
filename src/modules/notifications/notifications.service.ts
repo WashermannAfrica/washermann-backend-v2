@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { User } from '../../database/entities/user.entity';
+import { DeviceToken } from '../../database/entities/device-token.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { GarmentPriceItem } from '../../database/entities/vendor-pricing.entity';
 import { Rep } from '../../database/entities/rep.entity';
@@ -47,6 +48,9 @@ export class NotificationsService {
 
     @InjectRepository(Rep)
     private repRepo: Repository<Rep>,
+
+    @InjectRepository(DeviceToken)
+    private deviceTokenRepo: Repository<DeviceToken>,
 
     private readonly emailService:    EmailService,
     private readonly smsService:      SmsService,
@@ -134,10 +138,30 @@ export class NotificationsService {
     await this.smsService.send({ to, message: tpl.body });
   }
 
-  private async sendPush(key: string, token: string, vars: Record<string, string | number>, data?: Record<string, string>) {
+  /**
+   * Push to ALL of a user's registered devices (multi-device), then prune any
+   * tokens FCM reports as dead. No-op if the user id is missing or has no devices.
+   */
+  private async sendPushToUser(
+    key: string,
+    userId: string | null | undefined,
+    vars: Record<string, string | number>,
+    data?: Record<string, string>,
+  ) {
+    if (!userId) return;
     const tpl = await this.templateService.render(key, 'push', vars);
     if (!tpl) return;
-    await this.pushService.send({ token, title: tpl.subject ?? '', body: tpl.body, data });
+    const devices = await this.deviceTokenRepo.find({ where: { userId } });
+    if (devices.length === 0) return;
+    const stale = await this.pushService.sendMulti(
+      devices.map((d) => d.token),
+      tpl.subject ?? '',
+      tpl.body,
+      data,
+    );
+    if (stale.length) {
+      await this.deviceTokenRepo.delete({ token: In(stale) }).catch(() => undefined);
+    }
   }
 
   private async sendWhatsapp(key: string, to: string, vars: Record<string, string | number>) {
@@ -271,7 +295,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail(key, user.email, vars),
         user.phone && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, user.id, vars, 'order', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -303,7 +327,7 @@ export class NotificationsService {
 
     fire(async () => {
       await Promise.all([
-        customer.fcmToken && this.sendPush(key, customer.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, customer.id, vars, 'order', meta),
         customer.phone && this.sendWhatsapp(key, customer.phone, vars),
       ]);
@@ -334,7 +358,7 @@ export class NotificationsService {
       };
 
       await Promise.all([
-        customer?.fcmToken && this.sendPush('order.rep_en_route.customer', customer.fcmToken, customerVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.rep_en_route.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
         customer && this.sendInApp('order.rep_en_route.customer', customer.id, customerVars, 'order', meta),
         customer?.phone && this.sendWhatsapp('order.rep_en_route.customer', customer.phone, customerVars),
       ]);
@@ -369,11 +393,11 @@ export class NotificationsService {
 
       await Promise.all([
         // Customer
-        customer?.fcmToken && this.sendPush('order.picked_up.customer', customer.fcmToken, customerVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.picked_up.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
         customer && this.sendInApp('order.picked_up.customer', customer.id, customerVars, 'order', meta),
         customer?.phone && this.sendWhatsapp('order.picked_up.customer', customer.phone, customerVars),
         // Vendor
-        vendorInfo.user?.fcmToken && this.sendPush('order.picked_up.vendor', vendorInfo.user.fcmToken, vendorVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.picked_up.vendor', vendorInfo.user?.id, vendorVars, { orderRef: params.orderRef }),
         vendorInfo.vendor && this.sendInApp('order.picked_up.vendor', vendorInfo.vendor.userId, vendorVars, 'order', meta),
         vendorInfo.user?.phone && this.sendWhatsapp('order.picked_up.vendor', vendorInfo.user.phone, vendorVars),
       ]);
@@ -409,7 +433,7 @@ export class NotificationsService {
       await Promise.all([
         customer.email    && this.sendEmail(key, customer.email, vars),
         customer.phone    && this.sendSms(key, customer.phone, vars),
-        customer.fcmToken && this.sendPush(key, customer.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, customer.id, vars, 'order', meta),
         customer.phone    && this.sendWhatsapp(key, customer.phone, vars),
       ]);
@@ -442,7 +466,7 @@ export class NotificationsService {
         const cv: Record<string, string | number> = { customerName: customer.fullName, orderRef: params.orderRef };
         await Promise.all([
           customer.email    && this.sendEmail('order.completed.customer', customer.email, cv),
-          customer.fcmToken && this.sendPush('order.completed.customer', customer.fcmToken, cv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.completed.customer', customer.id, cv, { orderRef: params.orderRef }),
           this.sendInApp('order.completed.customer', customer.id, cv, 'order', meta),
         ]);
       }
@@ -457,7 +481,7 @@ export class NotificationsService {
         };
         await Promise.all([
           vendorInfo.user?.email    && this.sendEmail('order.earning_credited.vendor', vendorInfo.user.email, vv),
-          vendorInfo.user?.fcmToken && this.sendPush('order.earning_credited.vendor', vendorInfo.user.fcmToken, vv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.earning_credited.vendor', vendorInfo.user?.id, vv, { orderRef: params.orderRef }),
           vendorInfo.vendor && this.sendInApp('order.earning_credited.vendor', vendorInfo.vendor.userId, vv, 'order', meta),
         ]);
       }
@@ -470,7 +494,7 @@ export class NotificationsService {
           earnedWP: params.repShareWP,
         };
         await Promise.all([
-          repInfo.user?.fcmToken && this.sendPush('order.earning_credited.rep', repInfo.user.fcmToken, rv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.earning_credited.rep', repInfo.user?.id, rv, { orderRef: params.orderRef }),
           repInfo.rep && this.sendInApp('order.earning_credited.rep', repInfo.rep.userId, rv, 'order', meta),
         ]);
       }
@@ -500,7 +524,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail(key, user.email, vars),
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, user.id, vars, 'order', meta),
       ]);
     }, this.logger, key);
@@ -535,7 +559,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef, orderId: params.orderId }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
         rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -566,7 +590,7 @@ export class NotificationsService {
 
     fire(async () => {
       await Promise.all([
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
       ]);
     }, this.logger, key);
@@ -595,7 +619,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef, orderId: params.orderId }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
         this.sendInApp(key, vendor.userId, vars, 'assignment', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -647,7 +671,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('rep.flagged_for_review', user.email, vars),
-        user.fcmToken && this.sendPush('rep.flagged_for_review', user.fcmToken, vars),
+        this.sendPushToUser('rep.flagged_for_review', user.id, vars),
         rep && this.sendInApp('rep.flagged_for_review', rep.userId, vars, 'account'),
       ]);
     }, this.logger, 'rep.flagged_for_review');
@@ -678,7 +702,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.application_received', user.email, vars),
         user.phone && this.sendSms('vendor.application_received', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.application_received', user.fcmToken, vars),
+        this.sendPushToUser('vendor.application_received', user.id, vars),
         this.sendInApp('vendor.application_received', user.id, vars, 'account'),
       ]);
     }, this.logger, 'vendor.application_received');
@@ -698,7 +722,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.account_rejected', user.email, vars),
         user.phone && this.sendSms('vendor.account_rejected', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_rejected', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_rejected', user.id, vars),
         this.sendInApp('vendor.account_rejected', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_rejected');
@@ -718,7 +742,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.account_suspended', user.email, vars),
         user.phone && this.sendSms('vendor.account_suspended', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_suspended', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_suspended', user.id, vars),
         this.sendInApp('vendor.account_suspended', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_suspended');
@@ -734,7 +758,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('vendor.account_verified', user.email, vars),
         user.phone    && this.sendSms('vendor.account_verified', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_verified', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_verified', user.id, vars),
         this.sendInApp('vendor.account_verified', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_verified');
@@ -769,7 +793,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('pricing.approved.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('pricing.approved.vendor', user.fcmToken, vars),
+        this.sendPushToUser('pricing.approved.vendor', user.id, vars),
         this.sendInApp('pricing.approved.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.approved.vendor');
@@ -820,7 +844,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('pricing.reviewed.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('pricing.reviewed.vendor', user.fcmToken, vars),
+        this.sendPushToUser('pricing.reviewed.vendor', user.id, vars),
         this.sendInApp('pricing.reviewed.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.reviewed.vendor');
@@ -882,7 +906,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('order.garments_logged.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('order.garments_logged.vendor', user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.garments_logged.vendor', user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp('order.garments_logged.vendor', vendor.userId, vars, 'order', { orderRef: params.orderRef }),
       ]);
     }, this.logger, 'order.garments_logged.vendor');
@@ -921,6 +945,180 @@ export class NotificationsService {
         ...admins.map((a) => this.sendInApp('order.garments_unpriced.admin', a.id, vars, 'order', meta)),
       ]);
     }, this.logger, 'order.garments_unpriced.admin');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DISPUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private prettyIssue(s: string) {
+    return s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  /** Confirm a new dispute to the customer + alert the resolver team. */
+  async notifyDisputeCreated(params: { userId: string; disputeRef: string; orderRef: string; issueType: string }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      orderRef: params.orderRef,
+      issueType: this.prettyIssue(params.issueType),
+      customerName: user?.fullName ?? 'there',
+    };
+    fire(async () => {
+      // Customer confirmation
+      if (user) {
+        await Promise.all([
+          user.email && this.sendEmail('dispute.created.customer', user.email, vars),
+          this.sendInApp('dispute.created.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
+          this.sendPushToUser('dispute.created.customer', user.id, vars, { disputeRef: params.disputeRef }),
+        ]);
+      }
+      // Resolver / admin alert
+      const staff = await this.disputeStaff();
+      const adminEmail = this.adminEmail();
+      await Promise.all([
+        adminEmail && this.sendEmail('dispute.created.admin', adminEmail, vars),
+        ...staff.map((s) => this.sendInApp('dispute.created.admin', s.id, vars, 'order', { disputeRef: params.disputeRef })),
+      ]);
+    }, this.logger, 'dispute.created');
+  }
+
+  /** Tell the customer their dispute moved along the timeline. */
+  async notifyDisputeUpdated(params: { userId: string; disputeRef: string; status: string; note: string | null }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      status: this.prettyIssue(params.status),
+      note: params.note ?? '',
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('dispute.updated.customer', user.email, vars),
+        this.sendInApp('dispute.updated.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
+        this.sendPushToUser('dispute.updated.customer', user.id, vars, { disputeRef: params.disputeRef }),
+      ]);
+    }, this.logger, 'dispute.updated');
+  }
+
+  /** Tell the customer their dispute was resolved or rejected. */
+  async notifyDisputeResolved(params: {
+    userId: string; disputeRef: string; rejected: boolean; outcome: string | null; note: string | null; refundedWp: number | null;
+  }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      outcome: params.rejected ? 'closed' : this.prettyIssue(params.outcome ?? 'resolved'),
+      note: params.note ?? '',
+      refundedWP: params.refundedWp ?? 0,
+    };
+    const key = params.rejected ? 'dispute.rejected.customer' : 'dispute.resolved.customer';
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail(key, user.email, vars),
+        this.sendInApp(key, user.id, vars, 'order', { disputeRef: params.disputeRef }),
+        this.sendPushToUser(key, user.id, vars, { disputeRef: params.disputeRef }),
+      ]);
+    }, this.logger, key);
+  }
+
+  /** Active admins + dispute resolvers — recipients for new-dispute alerts. */
+  private async disputeStaff(): Promise<User[]> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver']::text[]`)
+      .andWhere(`user.status = 'active'`)
+      .getMany();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUPPORT CHAT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** A user sent a support message — nudge the agents (in-app on the dashboard). */
+  async notifySupportNewUserMessage(params: { conversationId: string; fromName: string; preview: string }) {
+    const vars: Record<string, string | number> = {
+      fromName: params.fromName,
+      preview: params.preview.slice(0, 140),
+    };
+    const meta = { conversationId: params.conversationId };
+    fire(async () => {
+      const agents = await this.userRepo
+        .createQueryBuilder('user')
+        .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver','finance']::text[]`)
+        .andWhere(`user.status = 'active'`)
+        .getMany();
+      await Promise.all(agents.map((a) => this.sendInApp('support.new_message.agent', a.id, vars, 'general', meta)));
+    }, this.logger, 'support.new_message.agent');
+  }
+
+  /** Support replied — push + in-app the user so they come back to the chat. */
+  async notifySupportAgentReply(params: { userId: string; preview: string }) {
+    const vars: Record<string, string | number> = { preview: params.preview.slice(0, 140) };
+    fire(async () => {
+      await Promise.all([
+        this.sendInApp('support.reply.user', params.userId, vars, 'general'),
+        this.sendPushToUser('support.reply.user', params.userId, vars),
+      ]);
+    }, this.logger, 'support.reply.user');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TEAMS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Tell a user they were added to a team. */
+  async notifyTeamMemberAdded(params: { userId: string; teamName: string; addedByName?: string | null }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+      addedByName: params.addedByName ?? 'A team admin',
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.member_added', user.email, vars),
+        this.sendInApp('team.member_added', user.id, vars, 'account'),
+        this.sendPushToUser('team.member_added', user.id, vars),
+      ]);
+    }, this.logger, 'team.member_added');
+  }
+
+  /** Tell a user their role in a team changed (incl. becoming the owner). */
+  async notifyTeamRoleChanged(params: { userId: string; teamName: string; role: string; isOwner: boolean }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+      role: params.role,
+      roleLabel: params.isOwner ? 'owner' : params.role,
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.role_changed', user.email, vars),
+        this.sendInApp('team.role_changed', user.id, vars, 'account'),
+        this.sendPushToUser('team.role_changed', user.id, vars),
+      ]);
+    }, this.logger, 'team.role_changed');
+  }
+
+  /** Tell a user they were removed from a team. */
+  async notifyTeamMemberRemoved(params: { userId: string; teamName: string }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      memberName: user.fullName ?? 'there',
+      teamName: params.teamName,
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('team.member_removed', user.email, vars),
+        this.sendInApp('team.member_removed', user.id, vars, 'account'),
+      ]);
+    }, this.logger, 'team.member_removed');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1048,7 +1246,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('payout.approved.vendor', user.email, vars),
         user.phone    && this.sendSms('payout.approved.vendor', user.phone, vars),
-        user.fcmToken && this.sendPush('payout.approved.vendor', user.fcmToken, vars, { payoutId: params.payoutId }),
+        this.sendPushToUser('payout.approved.vendor', user.id, vars, { payoutId: params.payoutId }),
         this.sendInApp('payout.approved.vendor', vendor.userId, vars, 'payout', meta),
         user.phone    && this.sendWhatsapp('payout.approved.vendor', user.phone, vars),
       ]);
@@ -1081,7 +1279,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('payout.failed.vendor', user.email, vars),
         user.phone    && this.sendSms('payout.failed.vendor', user.phone, vars),
-        user.fcmToken && this.sendPush('payout.failed.vendor', user.fcmToken, vars, { payoutId: params.payoutId }),
+        this.sendPushToUser('payout.failed.vendor', user.id, vars, { payoutId: params.payoutId }),
         this.sendInApp('payout.failed.vendor', vendor.userId, vars, 'payout', meta),
       ]);
     }, this.logger, 'payout.failed.vendor');

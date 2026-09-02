@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -21,10 +22,10 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CompaniesService } from '../companies/companies.service';
-import { TeamsService } from '../teams/teams.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import { RegisterDeviceTokenDto, RemoveDeviceTokenDto } from './dto/fcm-token.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -39,7 +40,6 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly companiesService: CompaniesService,
-    private readonly teamsService: TeamsService,
   ) {}
 
   // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -74,13 +74,34 @@ export class UsersController {
   // ─── FCM token registration ───────────────────────────────────────────────────
 
   @Patch('me/fcm-token')
-  @ApiOperation({ summary: 'Register or update FCM device token for push notifications' })
-  @ApiResponse({ status: 200, description: 'FCM token saved' })
+  @ApiOperation({
+    summary: 'Register/refresh this device\'s FCM token for push (multi-device)',
+    description:
+      'Call after login and whenever FCM rotates the token. A user may have many ' +
+      'devices — each registers its own token and all receive pushes. Works for any ' +
+      'signed-in user (customer, vendor, wash rep, sales rep, admin).',
+  })
+  @ApiBody({ type: RegisterDeviceTokenDto })
+  @ApiResponse({ status: 200, description: 'Device registered for push' })
   updateFcmToken(
     @CurrentUser('id') userId: string,
-    @Body('token') token: string,
+    @Body() dto: RegisterDeviceTokenDto,
   ) {
-    return this.usersService.updateFcmToken(userId, token);
+    return this.usersService.updateFcmToken(userId, dto.token, dto.platform);
+  }
+
+  @Delete('me/fcm-token')
+  @ApiOperation({
+    summary: 'Unregister a device\'s FCM token (call on logout)',
+    description: 'Removes just this device so it stops receiving pushes; other devices keep theirs.',
+  })
+  @ApiBody({ type: RemoveDeviceTokenDto })
+  @ApiResponse({ status: 200, description: 'Device unregistered' })
+  removeFcmToken(
+    @CurrentUser('id') userId: string,
+    @Body() dto: RemoveDeviceTokenDto,
+  ) {
+    return this.usersService.removeFcmToken(userId, dto.token);
   }
 
   // ─── Addresses ────────────────────────────────────────────────────────────────
@@ -155,18 +176,8 @@ export class UsersController {
     return this.companiesService.getAdminCompanies(userId);
   }
 
-  // ─── Team memberships — team switcher ─────────────────────────────────────────
-
-  @Get('me/teams')
-  @ApiOperation({
-    summary: 'List all teams the current user belongs to',
-    description:
-      'Returns every active team membership including the user\'s role in each team. ' +
-      'Used to power the team switcher on the dashboard.',
-  })
-  getMyTeams(@CurrentUser('id') userId: string) {
-    return this.teamsService.getMyTeams(userId);
-  }
+  // Team memberships live under the Teams module: GET /teams/mine (the previous
+  // duplicate GET /users/me/teams was removed to keep one canonical endpoint).
 
   // ─── Admin Endpoints ──────────────────────────────────────────────────────────
 

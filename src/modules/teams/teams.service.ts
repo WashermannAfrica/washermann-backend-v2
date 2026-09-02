@@ -13,6 +13,7 @@ import { TeamMember } from '../../database/entities/team-member.entity';
 import { User } from '../../database/entities/user.entity';
 import { TeamMemberRole } from '../../common/enums/team-member-role.enum';
 import { Role } from '../../common/enums/roles.enum';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateTeamDto,
   UpdateTeamDto,
@@ -32,7 +33,14 @@ export class TeamsService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private dataSource: DataSource,
+    private notifications: NotificationsService,
   ) {}
+
+  /** Best-effort user full name (for notification copy). */
+  private async userName(userId: string): Promise<string | null> {
+    const u = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'fullName'] });
+    return u?.fullName ?? null;
+  }
 
   // ─── Create ───────────────────────────────────────────────────────────────────
 
@@ -182,7 +190,7 @@ export class TeamsService {
 
     // Only an OWNER or ADMIN (or platform admin) may add members.
     await this.assertManagerAccess(teamId, callerId, callerRoles);
-    await this.findTeamOrFail(teamId);
+    const team = await this.findTeamOrFail(teamId);
 
     const target = await this.userRepository.findOne({
       where: dto.email
@@ -208,6 +216,7 @@ export class TeamsService {
       existing.joinedAt = new Date();
       await this.memberRepository.save(existing);
       await this.syncMemberCount(teamId);
+      void this.notifications.notifyTeamMemberAdded({ userId: target.id, teamName: team.name, addedByName: await this.userName(callerId) });
       return { data: this.sanitizeMember(existing), message: 'Member re-activated' };
     }
 
@@ -221,6 +230,7 @@ export class TeamsService {
 
     await this.memberRepository.save(member);
     await this.syncMemberCount(teamId);
+    void this.notifications.notifyTeamMemberAdded({ userId: target.id, teamName: team.name, addedByName: await this.userName(callerId) });
 
     return { data: this.sanitizeMember(member), message: 'Member added' };
   }
@@ -265,6 +275,12 @@ export class TeamsService {
 
     await this.syncMemberCount(teamId);
 
+    // Notify the removed member — but not when they chose to leave themselves.
+    if (!isSelf) {
+      const team = await this.teamRepository.findOne({ where: { id: teamId }, select: ['id', 'name'] });
+      if (team) void this.notifications.notifyTeamMemberRemoved({ userId: member.userId, teamName: team.name });
+    }
+
     return { data: null, message: 'Member removed from team' };
   }
 
@@ -286,6 +302,8 @@ export class TeamsService {
     if (member.role === dto.role) {
       return { data: this.sanitizeMember(member), message: 'No change' };
     }
+
+    const team = await this.findTeamOrFail(teamId);
 
     // Promoting to OWNER is a TRANSFER: the promoted member becomes the sole
     // owner; every other current owner is demoted to ADMIN and team.ownerId is
@@ -312,6 +330,7 @@ export class TeamsService {
       })).map((m) => m.userId);
       await Promise.all(previousOwnerIds.map((id) => this.scrubTeamOwnerRoleIfOrphaned(id)));
 
+      void this.notifications.notifyTeamRoleChanged({ userId: member.userId, teamName: team.name, role: 'owner', isOwner: true });
       return { data: this.sanitizeMember(member), message: 'Ownership transferred' };
     }
 
@@ -329,6 +348,7 @@ export class TeamsService {
       await this.scrubTeamOwnerRoleIfOrphaned(member.userId);
     }
 
+    void this.notifications.notifyTeamRoleChanged({ userId: member.userId, teamName: team.name, role: dto.role, isOwner: false });
     return { data: this.sanitizeMember(member), message: 'Member role updated' };
   }
 
