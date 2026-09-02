@@ -1033,6 +1033,38 @@ export class NotificationsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // SUPPORT CHAT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** A user sent a support message — nudge the agents (in-app on the dashboard). */
+  async notifySupportNewUserMessage(params: { conversationId: string; fromName: string; preview: string }) {
+    const vars: Record<string, string | number> = {
+      fromName: params.fromName,
+      preview: params.preview.slice(0, 140),
+    };
+    const meta = { conversationId: params.conversationId };
+    fire(async () => {
+      const agents = await this.userRepo
+        .createQueryBuilder('user')
+        .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver','finance']::text[]`)
+        .andWhere(`user.status = 'active'`)
+        .getMany();
+      await Promise.all(agents.map((a) => this.sendInApp('support.new_message.agent', a.id, vars, 'general', meta)));
+    }, this.logger, 'support.new_message.agent');
+  }
+
+  /** Support replied — push + in-app the user so they come back to the chat. */
+  async notifySupportAgentReply(params: { userId: string; preview: string }) {
+    const vars: Record<string, string | number> = { preview: params.preview.slice(0, 140) };
+    fire(async () => {
+      await Promise.all([
+        this.sendInApp('support.reply.user', params.userId, vars, 'general'),
+        this.sendPushToUser('support.reply.user', params.userId, vars),
+      ]);
+    }, this.logger, 'support.reply.user');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // TEAMS
   // ═══════════════════════════════════════════════════════════════════════════
 

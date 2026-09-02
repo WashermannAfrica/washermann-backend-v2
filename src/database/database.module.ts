@@ -73,6 +73,8 @@ import { AuditLog } from './entities/audit-log.entity';
 import { DeviceToken } from './entities/device-token.entity';
 import { Dispute } from './entities/dispute.entity';
 import { DisputeEvent } from './entities/dispute-event.entity';
+import { SupportConversation } from './entities/support-conversation.entity';
+import { SupportMessage } from './entities/support-message.entity';
 
 @Module({
   imports: [
@@ -124,6 +126,8 @@ import { DisputeEvent } from './entities/dispute-event.entity';
             DeviceToken,
             // Disputes
             Dispute, DisputeEvent,
+            // Support chat
+            SupportConversation, SupportMessage,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

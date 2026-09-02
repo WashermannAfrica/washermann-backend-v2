@@ -1045,6 +1045,30 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: '"{{postTitle}}": {{reviewNote}}',
   },
 
+  // ── Support chat ────────────────────────────────────────────────────────────
+
+  {
+    key: 'support.new_message.agent', channel: 'in_app',
+    name: 'Support — New User Message (Agent In-App)',
+    variables: ['fromName', 'preview'],
+    subject: 'New support message from {{fromName}}',
+    body: '{{fromName}}: {{preview}}',
+  },
+  {
+    key: 'support.reply.user', channel: 'in_app',
+    name: 'Support — Agent Reply (User In-App)',
+    variables: ['preview'],
+    subject: 'Washermann Support replied',
+    body: '{{preview}}',
+  },
+  {
+    key: 'support.reply.user', channel: 'push',
+    name: 'Support — Agent Reply (User Push)',
+    variables: ['preview'],
+    subject: 'Washermann Support',
+    body: '{{preview}}',
+  },
+
   // ── Disputes ────────────────────────────────────────────────────────────────
 
   {

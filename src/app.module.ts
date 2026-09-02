@@ -61,6 +61,7 @@ import { BlogModule } from './modules/blog/blog.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { DisputesModule } from './modules/disputes/disputes.module';
+import { SupportModule } from './modules/support/support.module';
 
 @Module({
   imports: [
@@ -119,6 +120,7 @@ import { DisputesModule } from './modules/disputes/disputes.module';
     BlogModule,
     AuditModule,
     DisputesModule,
+    SupportModule,
   ],
 
   providers: [
