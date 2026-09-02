@@ -77,11 +77,22 @@ export class PushService implements OnModuleInit {
     }
   }
 
-  async sendMulti(tokens: string[], title: string, body: string, data?: Record<string, string>): Promise<void> {
-    if (!this.initialized || tokens.length === 0) return;
+  /**
+   * Fan a push out to many device tokens. Returns the tokens FCM reports as
+   * dead (unregistered / invalid) so the caller can prune them from storage.
+   */
+  async sendMulti(tokens: string[], title: string, body: string, data?: Record<string, string>): Promise<string[]> {
+    if (!this.initialized || tokens.length === 0) return [];
+
+    const stale: string[] = [];
+    const DEAD = new Set([
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+      'messaging/invalid-argument',
+    ]);
 
     // FCM sendEachForMulticast supports up to 500 tokens per call
-    const chunks = [];
+    const chunks: string[][] = [];
     for (let i = 0; i < tokens.length; i += 500) {
       chunks.push(tokens.slice(i, i + 500));
     }
@@ -95,10 +106,14 @@ export class PushService implements OnModuleInit {
           android:  { priority: 'high', notification: { sound: 'default', channelId: 'washermann_default' } },
           apns:     { payload: { aps: { sound: 'default', badge: 1 } } },
         });
+        res.responses.forEach((r, i) => {
+          if (!r.success && r.error && DEAD.has(r.error.code)) stale.push(chunk[i]);
+        });
         this.logger.log(`Push multicast: ${res.successCount}/${chunk.length} delivered — "${title}"`);
       } catch (err: any) {
         this.logger.error(`Push multicast failed: ${err?.message ?? err}`);
       }
     }
+    return stale;
   }
 }

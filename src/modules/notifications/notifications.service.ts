@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { User } from '../../database/entities/user.entity';
+import { DeviceToken } from '../../database/entities/device-token.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { GarmentPriceItem } from '../../database/entities/vendor-pricing.entity';
 import { Rep } from '../../database/entities/rep.entity';
@@ -47,6 +48,9 @@ export class NotificationsService {
 
     @InjectRepository(Rep)
     private repRepo: Repository<Rep>,
+
+    @InjectRepository(DeviceToken)
+    private deviceTokenRepo: Repository<DeviceToken>,
 
     private readonly emailService:    EmailService,
     private readonly smsService:      SmsService,
@@ -134,10 +138,30 @@ export class NotificationsService {
     await this.smsService.send({ to, message: tpl.body });
   }
 
-  private async sendPush(key: string, token: string, vars: Record<string, string | number>, data?: Record<string, string>) {
+  /**
+   * Push to ALL of a user's registered devices (multi-device), then prune any
+   * tokens FCM reports as dead. No-op if the user id is missing or has no devices.
+   */
+  private async sendPushToUser(
+    key: string,
+    userId: string | null | undefined,
+    vars: Record<string, string | number>,
+    data?: Record<string, string>,
+  ) {
+    if (!userId) return;
     const tpl = await this.templateService.render(key, 'push', vars);
     if (!tpl) return;
-    await this.pushService.send({ token, title: tpl.subject ?? '', body: tpl.body, data });
+    const devices = await this.deviceTokenRepo.find({ where: { userId } });
+    if (devices.length === 0) return;
+    const stale = await this.pushService.sendMulti(
+      devices.map((d) => d.token),
+      tpl.subject ?? '',
+      tpl.body,
+      data,
+    );
+    if (stale.length) {
+      await this.deviceTokenRepo.delete({ token: In(stale) }).catch(() => undefined);
+    }
   }
 
   private async sendWhatsapp(key: string, to: string, vars: Record<string, string | number>) {
@@ -271,7 +295,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail(key, user.email, vars),
         user.phone && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, user.id, vars, 'order', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -303,7 +327,7 @@ export class NotificationsService {
 
     fire(async () => {
       await Promise.all([
-        customer.fcmToken && this.sendPush(key, customer.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, customer.id, vars, 'order', meta),
         customer.phone && this.sendWhatsapp(key, customer.phone, vars),
       ]);
@@ -334,7 +358,7 @@ export class NotificationsService {
       };
 
       await Promise.all([
-        customer?.fcmToken && this.sendPush('order.rep_en_route.customer', customer.fcmToken, customerVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.rep_en_route.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
         customer && this.sendInApp('order.rep_en_route.customer', customer.id, customerVars, 'order', meta),
         customer?.phone && this.sendWhatsapp('order.rep_en_route.customer', customer.phone, customerVars),
       ]);
@@ -369,11 +393,11 @@ export class NotificationsService {
 
       await Promise.all([
         // Customer
-        customer?.fcmToken && this.sendPush('order.picked_up.customer', customer.fcmToken, customerVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.picked_up.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
         customer && this.sendInApp('order.picked_up.customer', customer.id, customerVars, 'order', meta),
         customer?.phone && this.sendWhatsapp('order.picked_up.customer', customer.phone, customerVars),
         // Vendor
-        vendorInfo.user?.fcmToken && this.sendPush('order.picked_up.vendor', vendorInfo.user.fcmToken, vendorVars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.picked_up.vendor', vendorInfo.user?.id, vendorVars, { orderRef: params.orderRef }),
         vendorInfo.vendor && this.sendInApp('order.picked_up.vendor', vendorInfo.vendor.userId, vendorVars, 'order', meta),
         vendorInfo.user?.phone && this.sendWhatsapp('order.picked_up.vendor', vendorInfo.user.phone, vendorVars),
       ]);
@@ -409,7 +433,7 @@ export class NotificationsService {
       await Promise.all([
         customer.email    && this.sendEmail(key, customer.email, vars),
         customer.phone    && this.sendSms(key, customer.phone, vars),
-        customer.fcmToken && this.sendPush(key, customer.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, customer.id, vars, 'order', meta),
         customer.phone    && this.sendWhatsapp(key, customer.phone, vars),
       ]);
@@ -442,7 +466,7 @@ export class NotificationsService {
         const cv: Record<string, string | number> = { customerName: customer.fullName, orderRef: params.orderRef };
         await Promise.all([
           customer.email    && this.sendEmail('order.completed.customer', customer.email, cv),
-          customer.fcmToken && this.sendPush('order.completed.customer', customer.fcmToken, cv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.completed.customer', customer.id, cv, { orderRef: params.orderRef }),
           this.sendInApp('order.completed.customer', customer.id, cv, 'order', meta),
         ]);
       }
@@ -457,7 +481,7 @@ export class NotificationsService {
         };
         await Promise.all([
           vendorInfo.user?.email    && this.sendEmail('order.earning_credited.vendor', vendorInfo.user.email, vv),
-          vendorInfo.user?.fcmToken && this.sendPush('order.earning_credited.vendor', vendorInfo.user.fcmToken, vv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.earning_credited.vendor', vendorInfo.user?.id, vv, { orderRef: params.orderRef }),
           vendorInfo.vendor && this.sendInApp('order.earning_credited.vendor', vendorInfo.vendor.userId, vv, 'order', meta),
         ]);
       }
@@ -470,7 +494,7 @@ export class NotificationsService {
           earnedWP: params.repShareWP,
         };
         await Promise.all([
-          repInfo.user?.fcmToken && this.sendPush('order.earning_credited.rep', repInfo.user.fcmToken, rv, { orderRef: params.orderRef }),
+          this.sendPushToUser('order.earning_credited.rep', repInfo.user?.id, rv, { orderRef: params.orderRef }),
           repInfo.rep && this.sendInApp('order.earning_credited.rep', repInfo.rep.userId, rv, 'order', meta),
         ]);
       }
@@ -500,7 +524,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail(key, user.email, vars),
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp(key, user.id, vars, 'order', meta),
       ]);
     }, this.logger, key);
@@ -535,7 +559,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef, orderId: params.orderId }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
         rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -566,7 +590,7 @@ export class NotificationsService {
 
     fire(async () => {
       await Promise.all([
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
         rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
       ]);
     }, this.logger, key);
@@ -595,7 +619,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.phone    && this.sendSms(key, user.phone, vars),
-        user.fcmToken && this.sendPush(key, user.fcmToken, vars, { orderRef: params.orderRef, orderId: params.orderId }),
+        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
         this.sendInApp(key, vendor.userId, vars, 'assignment', meta),
         user.phone && this.sendWhatsapp(key, user.phone, vars),
       ]);
@@ -647,7 +671,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('rep.flagged_for_review', user.email, vars),
-        user.fcmToken && this.sendPush('rep.flagged_for_review', user.fcmToken, vars),
+        this.sendPushToUser('rep.flagged_for_review', user.id, vars),
         rep && this.sendInApp('rep.flagged_for_review', rep.userId, vars, 'account'),
       ]);
     }, this.logger, 'rep.flagged_for_review');
@@ -678,7 +702,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.application_received', user.email, vars),
         user.phone && this.sendSms('vendor.application_received', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.application_received', user.fcmToken, vars),
+        this.sendPushToUser('vendor.application_received', user.id, vars),
         this.sendInApp('vendor.application_received', user.id, vars, 'account'),
       ]);
     }, this.logger, 'vendor.application_received');
@@ -698,7 +722,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.account_rejected', user.email, vars),
         user.phone && this.sendSms('vendor.account_rejected', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_rejected', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_rejected', user.id, vars),
         this.sendInApp('vendor.account_rejected', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_rejected');
@@ -718,7 +742,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('vendor.account_suspended', user.email, vars),
         user.phone && this.sendSms('vendor.account_suspended', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_suspended', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_suspended', user.id, vars),
         this.sendInApp('vendor.account_suspended', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_suspended');
@@ -734,7 +758,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('vendor.account_verified', user.email, vars),
         user.phone    && this.sendSms('vendor.account_verified', user.phone, vars),
-        user.fcmToken && this.sendPush('vendor.account_verified', user.fcmToken, vars),
+        this.sendPushToUser('vendor.account_verified', user.id, vars),
         this.sendInApp('vendor.account_verified', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'vendor.account_verified');
@@ -769,7 +793,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('pricing.approved.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('pricing.approved.vendor', user.fcmToken, vars),
+        this.sendPushToUser('pricing.approved.vendor', user.id, vars),
         this.sendInApp('pricing.approved.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.approved.vendor');
@@ -820,7 +844,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('pricing.reviewed.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('pricing.reviewed.vendor', user.fcmToken, vars),
+        this.sendPushToUser('pricing.reviewed.vendor', user.id, vars),
         this.sendInApp('pricing.reviewed.vendor', vendor.userId, vars, 'account'),
       ]);
     }, this.logger, 'pricing.reviewed.vendor');
@@ -882,7 +906,7 @@ export class NotificationsService {
     fire(async () => {
       await Promise.all([
         user.email    && this.sendEmail('order.garments_logged.vendor', user.email, vars),
-        user.fcmToken && this.sendPush('order.garments_logged.vendor', user.fcmToken, vars, { orderRef: params.orderRef }),
+        this.sendPushToUser('order.garments_logged.vendor', user.id, vars, { orderRef: params.orderRef }),
         this.sendInApp('order.garments_logged.vendor', vendor.userId, vars, 'order', { orderRef: params.orderRef }),
       ]);
     }, this.logger, 'order.garments_logged.vendor');
@@ -940,7 +964,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('team.member_added', user.email, vars),
         this.sendInApp('team.member_added', user.id, vars, 'account'),
-        user.fcmToken && this.sendPush('team.member_added', user.fcmToken, vars),
+        this.sendPushToUser('team.member_added', user.id, vars),
       ]);
     }, this.logger, 'team.member_added');
   }
@@ -959,7 +983,7 @@ export class NotificationsService {
       await Promise.all([
         user.email && this.sendEmail('team.role_changed', user.email, vars),
         this.sendInApp('team.role_changed', user.id, vars, 'account'),
-        user.fcmToken && this.sendPush('team.role_changed', user.fcmToken, vars),
+        this.sendPushToUser('team.role_changed', user.id, vars),
       ]);
     }, this.logger, 'team.role_changed');
   }
@@ -1105,7 +1129,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('payout.approved.vendor', user.email, vars),
         user.phone    && this.sendSms('payout.approved.vendor', user.phone, vars),
-        user.fcmToken && this.sendPush('payout.approved.vendor', user.fcmToken, vars, { payoutId: params.payoutId }),
+        this.sendPushToUser('payout.approved.vendor', user.id, vars, { payoutId: params.payoutId }),
         this.sendInApp('payout.approved.vendor', vendor.userId, vars, 'payout', meta),
         user.phone    && this.sendWhatsapp('payout.approved.vendor', user.phone, vars),
       ]);
@@ -1138,7 +1162,7 @@ export class NotificationsService {
       await Promise.all([
         user.email    && this.sendEmail('payout.failed.vendor', user.email, vars),
         user.phone    && this.sendSms('payout.failed.vendor', user.phone, vars),
-        user.fcmToken && this.sendPush('payout.failed.vendor', user.fcmToken, vars, { payoutId: params.payoutId }),
+        this.sendPushToUser('payout.failed.vendor', user.id, vars, { payoutId: params.payoutId }),
         this.sendInApp('payout.failed.vendor', vendor.userId, vars, 'payout', meta),
       ]);
     }, this.logger, 'payout.failed.vendor');

@@ -11,6 +11,7 @@ import { Address } from '../../database/entities/address.entity';
 import { Order } from '../../database/entities/order.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
+import { DeviceToken } from '../../database/entities/device-token.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -30,6 +31,8 @@ export class UsersService {
     private walletRepository: Repository<Wallet>,
     @InjectRepository(CompanyEmployee)
     private companyEmployeeRepository: Repository<CompanyEmployee>,
+    @InjectRepository(DeviceToken)
+    private deviceTokenRepository: Repository<DeviceToken>,
   ) {}
 
   // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -73,9 +76,36 @@ export class UsersService {
     return { data: this.sanitizeUser(user), message: 'Profile updated' };
   }
 
-  async updateFcmToken(userId: string, token: string) {
-    await this.userRepository.update({ id: userId }, { fcmToken: token || null });
-    return { message: 'FCM token updated' };
+  /**
+   * Register (or refresh) a device's FCM token for push. Multi-device: a user may
+   * have many tokens. Upsert on the token so re-registering the same device just
+   * refreshes it, and a device handed to another user re-points to them.
+   */
+  async updateFcmToken(userId: string, token: string, platform?: string) {
+    const t = (token ?? '').trim();
+    if (!t) throw new BadRequestException('token is required');
+    await this.deviceTokenRepository.upsert(
+      { userId, token: t, platform: platform ?? null, lastSeenAt: new Date() },
+      ['token'],
+    );
+    // Keep the legacy single column pointing at the most recent device (compat).
+    await this.userRepository.update({ id: userId }, { fcmToken: t });
+    return { message: 'Device registered for push' };
+  }
+
+  /** Unregister one device (call on logout). No-op if the token isn't ours. */
+  async removeFcmToken(userId: string, token: string) {
+    const t = (token ?? '').trim();
+    if (!t) throw new BadRequestException('token is required');
+    await this.deviceTokenRepository.delete({ userId, token: t });
+    // Clear the legacy column if it was this device.
+    await this.userRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({ fcmToken: null })
+      .where('id = :userId AND fcm_token = :t', { userId, t })
+      .execute();
+    return { message: 'Device unregistered' };
   }
 
   // ─── Addresses ───────────────────────────────────────────────────────────────

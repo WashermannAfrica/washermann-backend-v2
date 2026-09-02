@@ -70,6 +70,7 @@ import { SalesRepPayout } from './entities/sales-rep-payout.entity';
 import { RateConfig } from './entities/rate-config.entity';
 import { RateEpoch } from './entities/rate-epoch.entity';
 import { AuditLog } from './entities/audit-log.entity';
+import { DeviceToken } from './entities/device-token.entity';
 
 @Module({
   imports: [
@@ -117,6 +118,8 @@ import { AuditLog } from './entities/audit-log.entity';
             RateConfig, RateEpoch,
             // Audit
             AuditLog,
+            // Push
+            DeviceToken,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
