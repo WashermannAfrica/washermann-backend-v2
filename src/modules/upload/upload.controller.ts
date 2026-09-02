@@ -97,6 +97,29 @@ export class UploadController {
     return this.uploadService.uploadBlogImage(file);
   }
 
+  // ─── Customer: upload dispute evidence ────────────────────────────────────────
+
+  @Post('dispute-evidence')
+  @UseInterceptors(FileInterceptor('file', multerMemory))
+  @ApiOperation({
+    summary: 'Upload a dispute evidence image (any authenticated user)',
+    description: 'Accepts JPEG, PNG, or WebP. Max 5 MB. Returns { url }. Upload each image, then pass the urls in POST /disputes.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary', description: 'Evidence image (jpg/png/webp, max 5 MB)' } },
+      required: ['file'],
+    },
+  })
+  uploadDisputeEvidence(
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.uploadService.uploadDisputeEvidence(req.user.sub, file);
+  }
+
   // ─── Vendor: upload business logo ─────────────────────────────────────────────
 
   @Post('vendor/logo')

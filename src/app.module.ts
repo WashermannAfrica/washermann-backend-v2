@@ -60,6 +60,7 @@ import { GamesModule } from './modules/games/games.module';
 import { BlogModule } from './modules/blog/blog.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { DisputesModule } from './modules/disputes/disputes.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { AuditInterceptor } from './modules/audit/audit.interceptor';
     GamesModule,
     BlogModule,
     AuditModule,
+    DisputesModule,
   ],
 
   providers: [

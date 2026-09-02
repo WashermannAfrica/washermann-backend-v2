@@ -948,6 +948,91 @@ export class NotificationsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // DISPUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private prettyIssue(s: string) {
+    return s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  /** Confirm a new dispute to the customer + alert the resolver team. */
+  async notifyDisputeCreated(params: { userId: string; disputeRef: string; orderRef: string; issueType: string }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      orderRef: params.orderRef,
+      issueType: this.prettyIssue(params.issueType),
+      customerName: user?.fullName ?? 'there',
+    };
+    fire(async () => {
+      // Customer confirmation
+      if (user) {
+        await Promise.all([
+          user.email && this.sendEmail('dispute.created.customer', user.email, vars),
+          this.sendInApp('dispute.created.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
+          this.sendPushToUser('dispute.created.customer', user.id, vars, { disputeRef: params.disputeRef }),
+        ]);
+      }
+      // Resolver / admin alert
+      const staff = await this.disputeStaff();
+      const adminEmail = this.adminEmail();
+      await Promise.all([
+        adminEmail && this.sendEmail('dispute.created.admin', adminEmail, vars),
+        ...staff.map((s) => this.sendInApp('dispute.created.admin', s.id, vars, 'order', { disputeRef: params.disputeRef })),
+      ]);
+    }, this.logger, 'dispute.created');
+  }
+
+  /** Tell the customer their dispute moved along the timeline. */
+  async notifyDisputeUpdated(params: { userId: string; disputeRef: string; status: string; note: string | null }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      status: this.prettyIssue(params.status),
+      note: params.note ?? '',
+    };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('dispute.updated.customer', user.email, vars),
+        this.sendInApp('dispute.updated.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
+        this.sendPushToUser('dispute.updated.customer', user.id, vars, { disputeRef: params.disputeRef }),
+      ]);
+    }, this.logger, 'dispute.updated');
+  }
+
+  /** Tell the customer their dispute was resolved or rejected. */
+  async notifyDisputeResolved(params: {
+    userId: string; disputeRef: string; rejected: boolean; outcome: string | null; note: string | null; refundedWp: number | null;
+  }) {
+    const user = await this.userRepo.findOne({ where: { id: params.userId } });
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      disputeRef: params.disputeRef,
+      outcome: params.rejected ? 'closed' : this.prettyIssue(params.outcome ?? 'resolved'),
+      note: params.note ?? '',
+      refundedWP: params.refundedWp ?? 0,
+    };
+    const key = params.rejected ? 'dispute.rejected.customer' : 'dispute.resolved.customer';
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail(key, user.email, vars),
+        this.sendInApp(key, user.id, vars, 'order', { disputeRef: params.disputeRef }),
+        this.sendPushToUser(key, user.id, vars, { disputeRef: params.disputeRef }),
+      ]);
+    }, this.logger, key);
+  }
+
+  /** Active admins + dispute resolvers — recipients for new-dispute alerts. */
+  private async disputeStaff(): Promise<User[]> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver']::text[]`)
+      .andWhere(`user.status = 'active'`)
+      .getMany();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // TEAMS
   // ═══════════════════════════════════════════════════════════════════════════
 
