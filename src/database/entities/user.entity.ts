@@ -60,6 +60,10 @@ export class User extends BaseEntity {
   @Column({ name: 'fcm_token', type: 'varchar', length: 1000, nullable: true })
   fcmToken: string | null;
 
+  @ApiProperty({ nullable: true, description: 'Set when the account is deleted (soft-delete + PII anonymised)' })
+  @Column({ name: 'deleted_at', type: 'timestamp with time zone', nullable: true })
+  deletedAt: Date | null;
+
   // ─── Relations (populated in later phases) ──────────────────────────────────
   @OneToMany(() => Address, (address) => address.user, { cascade: true })
   addresses: Address[];

@@ -948,6 +948,18 @@ export class NotificationsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // ACCOUNT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Confirm to the (now-anonymised) user that their account was deleted. */
+  async notifyAccountDeleted(params: { email: string; name: string }) {
+    const vars: Record<string, string | number> = { name: params.name || 'there' };
+    fire(async () => {
+      await this.sendEmail('account.deleted.customer', params.email, vars);
+    }, this.logger, 'account.deleted');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // DISPUTES
   // ═══════════════════════════════════════════════════════════════════════════
 
