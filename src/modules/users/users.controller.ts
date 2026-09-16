@@ -26,6 +26,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
 import { RegisterDeviceTokenDto, RemoveDeviceTokenDto } from './dto/fcm-token.dto';
+import { DeleteAccountDto, UpdateUserStatusDto } from './dto/delete-account.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -102,6 +103,24 @@ export class UsersController {
     @Body() dto: RemoveDeviceTokenDto,
   ) {
     return this.usersService.removeFcmToken(userId, dto.token);
+  }
+
+  // ─── Account deletion (self-service) ───────────────────────────────────────────
+
+  @Post('me/delete-account')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete my account (right to erasure)',
+    description:
+      'Permanently closes the account: personal data is anonymised and all sessions/' +
+      'devices are revoked; financial and order history is retained (attributed to an ' +
+      'anonymised id) as required by law. Blocked while the wallet has a balance, an ' +
+      'order is in progress, or a dispute is open. Business (vendor/rep/company/staff) ' +
+      'accounts must contact support.',
+  })
+  @ApiResponse({ status: 200, description: 'Account deleted' })
+  deleteMyAccount(@CurrentUser('id') userId: string, @Body() dto: DeleteAccountDto) {
+    return this.usersService.deleteMyAccount(userId, dto.password, dto.reason);
   }
 
   // ─── Addresses ────────────────────────────────────────────────────────────────
@@ -223,5 +242,24 @@ export class UsersController {
   @ApiOperation({ summary: '[Admin] Enriched user detail: wallet, order summary, recent orders, memberships' })
   getUserDetail(@Param('id', ParseUUIDPipe) userId: string) {
     return this.usersService.getUserDetail(userId);
+  }
+
+  @Patch(':id/status')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '[Admin] Suspend or reactivate a user account' })
+  setUserStatus(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Body() dto: UpdateUserStatusDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.usersService.setUserStatus(userId, dto.status, adminId);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Delete a user account (soft-delete + anonymise; history retained)' })
+  adminDeleteUser(@Param('id', ParseUUIDPipe) userId: string, @CurrentUser('id') adminId: string) {
+    return this.usersService.adminDeleteUser(userId, adminId);
   }
 }

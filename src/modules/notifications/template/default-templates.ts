@@ -1069,6 +1069,21 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: '{{preview}}',
   },
 
+  // ── Account ─────────────────────────────────────────────────────────────────
+
+  {
+    key: 'account.deleted.customer', channel: 'email',
+    name: 'Account Deleted — Customer (Email)',
+    subject: 'Your Washermann account has been deleted',
+    variables: ['name'],
+    body: 'Hi {{name}}, your Washermann account has been deleted and your personal data anonymised. Financial and order records are retained only as required by law. Sorry to see you go.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{name}}</strong>,</p>
+      <p>Your Washermann account has been <strong>deleted</strong> and your personal data anonymised. As required by law, financial and order records are retained (attributed to an anonymised id) and are no longer linked to your identity.</p>
+      <p>Sorry to see you go. You're welcome back any time.</p>
+    `),
+  },
+
   // ── Disputes ────────────────────────────────────────────────────────────────
 
   {
