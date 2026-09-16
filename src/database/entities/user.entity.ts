@@ -22,7 +22,11 @@ export class User extends BaseEntity {
 
   @ApiHideProperty()
   @Exclude()
-  @Column({ name: 'password_hash', type: 'varchar', nullable: true })
+  // select:false → never returned by default finds/relations, so it can't leak
+  // through any endpoint that serialises a User (the app has no global
+  // ClassSerializerInterceptor, so @Exclude alone is not enforced at runtime).
+  // Read it explicitly (addSelect) only where auth needs to compare it.
+  @Column({ name: 'password_hash', type: 'varchar', nullable: true, select: false })
   passwordHash: string;
 
   @ApiProperty({ enum: Role, isArray: true })
@@ -55,6 +59,10 @@ export class User extends BaseEntity {
   @ApiProperty({ nullable: true, description: 'Firebase FCM device token for push notifications' })
   @Column({ name: 'fcm_token', type: 'varchar', length: 1000, nullable: true })
   fcmToken: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Set when the account is deleted (soft-delete + PII anonymised)' })
+  @Column({ name: 'deleted_at', type: 'timestamp with time zone', nullable: true })
+  deletedAt: Date | null;
 
   // ─── Relations (populated in later phases) ──────────────────────────────────
   @OneToMany(() => Address, (address) => address.user, { cascade: true })

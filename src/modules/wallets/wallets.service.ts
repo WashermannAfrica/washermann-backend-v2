@@ -11,6 +11,24 @@ import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { PaystackTransaction } from '../../database/entities/paystack-transaction.entity';
 import { LedgerSource } from '../../common/enums/ledger-source.enum';
 import { AdminCreditDto, AdminDebitDto } from './dto';
+import { AuditService } from '../audit/audit.service';
+
+/** Readable label for each ledger source, used in audit descriptions. */
+const SOURCE_LABEL: Record<string, string> = {
+  topup: 'top-up',
+  order_payment: 'order payment',
+  order_debit: 'order payment',
+  refund: 'refund',
+  cancellation_refund: 'cancellation refund',
+  escrow_hold: 'escrow hold',
+  escrow_release: 'escrow release',
+  benefit_credit: 'company benefit',
+  benefit_expiry: 'benefit expiry',
+  admin_credit: 'admin credit',
+  admin_debit: 'admin debit',
+  coupon: 'coupon',
+  gift_card: 'gift card',
+};
 
 // ── Internal credit/debit options ────────────────────────────────────────────
 
@@ -49,7 +67,41 @@ export class WalletsService {
     private txRepo: Repository<PaystackTransaction>,
     @InjectDataSource()
     private dataSource: DataSource,
+    private readonly audit: AuditService,
   ) {}
+
+  /** Emit a rich money-movement audit event (fire-and-forget, post-commit). */
+  private emitWalletAudit(
+    type: 'credit' | 'debit',
+    opts: { userId: string; amount: number; source: string; reference?: string | null; fiatAmountKobo?: number | null; fiatCurrency?: string | null },
+    walletId: string,
+    balanceBefore: number,
+    balanceAfter: number,
+  ): void {
+    const label = SOURCE_LABEL[opts.source] ?? opts.source.replace(/_/g, ' ');
+    const fiat = opts.fiatAmountKobo ? ` (${opts.fiatCurrency ?? '₦'}${(opts.fiatAmountKobo / 100).toLocaleString()})` : '';
+    const verb = type === 'credit' ? 'credited to' : 'debited from';
+    const description =
+      `${opts.amount.toLocaleString()} WP ${verb} wallet via ${label}${fiat} — balance ${balanceBefore.toLocaleString()} → ${balanceAfter.toLocaleString()}`;
+    void this.audit.recordWithActor(opts.userId, {
+      app: 'system',
+      category: 'wallet',
+      action: `wallet.${opts.source}`,
+      description,
+      targetType: 'wallet',
+      targetId: walletId,
+      metadata: {
+        movement: type,
+        amountWP: opts.amount,
+        source: opts.source,
+        reference: opts.reference ?? null,
+        balanceBefore,
+        balanceAfter,
+        fiatAmountKobo: opts.fiatAmountKobo ?? null,
+        fiatCurrency: opts.fiatCurrency ?? null,
+      },
+    });
+  }
 
   // ─── Public: get or create ────────────────────────────────────────────────────
 
@@ -171,6 +223,7 @@ export class WalletsService {
       this.logger.log(
         `CREDIT ${opts.amount} WP → user ${opts.userId} | src=${opts.source} | ref=${opts.reference}`,
       );
+      this.emitWalletAudit('credit', opts, wallet.id, balanceBefore, balanceAfter);
       return entry;
     } catch (err) {
       await qr.rollbackTransaction();
@@ -236,6 +289,7 @@ export class WalletsService {
       this.logger.log(
         `DEBIT ${opts.amount} WP ← user ${opts.userId} | src=${opts.source} | ref=${opts.reference}`,
       );
+      this.emitWalletAudit('debit', opts, wallet.id, balanceBefore, balanceAfter);
       return entry;
     } catch (err) {
       await qr.rollbackTransaction();

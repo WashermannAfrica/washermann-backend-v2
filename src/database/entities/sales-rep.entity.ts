@@ -53,4 +53,9 @@ export class SalesRep extends BaseEntity {
   @ApiProperty({ nullable: true })
   @Column({ name: 'account_name', type: 'varchar', length: 255, nullable: true })
   accountName: string | null;
+
+  // ─── Soft-delete (admin archive) ──────────────────────────────────────────────
+  @ApiProperty({ nullable: true, description: 'Set when an admin removes (archives) the sales rep. Excluded from the default list; history preserved.' })
+  @Column({ name: 'deactivated_at', type: 'timestamp with time zone', nullable: true })
+  deactivatedAt: Date | null;
 }

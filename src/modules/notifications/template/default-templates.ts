@@ -726,6 +726,32 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: '{{itemsText}}. You earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
   },
 
+  // ── Garments logged with items the vendor hasn't priced (admin alert) ──────────
+
+  {
+    key: 'order.garments_unpriced.admin', channel: 'email',
+    name: 'Garments Logged — Unpriced Items (Admin Email)',
+    subject: 'Order {{orderRef}} — {{unpricedCount}} item(s) not priced by {{vendorName}}',
+    variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
+    body: 'On order {{orderRef}}, {{vendorName}} has no price for: {{unpricedText}}. The system average (mean) was used for the vendor share. Review the catalogue / vendor pricing.',
+    htmlBody: buildEmailHtml(`
+      <p>Heads up,</p>
+      <p>On order <strong>{{orderRef}}</strong>, the assigned vendor <strong>{{vendorName}}</strong> has <strong>no price set</strong> for:</p>
+      <div class="highlight-box">
+        <div class="highlight-value" style="font-size:18px;">{{unpricedText}}</div>
+        <div class="highlight-label">{{unpricedCount}} unpriced item(s)</div>
+      </div>
+      <p>The vendor share for these items used the <strong>system average (mean)</strong> across other vendors. Consider confirming the item is in the catalogue and nudging the vendor to set their own price.</p>
+    `),
+  },
+  {
+    key: 'order.garments_unpriced.admin', channel: 'in_app',
+    name: 'Garments Logged — Unpriced Items (Admin In-App)',
+    variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
+    subject: 'Order {{orderRef}}: {{unpricedCount}} unpriced item(s)',
+    body: '{{vendorName}} has no price for {{unpricedText}} on {{orderRef}} — system average (mean) used.',
+  },
+
   // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────
 
   {
@@ -1017,5 +1043,235 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     variables: ['postTitle', 'reviewNote'],
     subject: 'Changes requested',
     body: '"{{postTitle}}": {{reviewNote}}',
+  },
+
+  // ── Support chat ────────────────────────────────────────────────────────────
+
+  {
+    key: 'support.new_message.agent', channel: 'in_app',
+    name: 'Support — New User Message (Agent In-App)',
+    variables: ['fromName', 'preview'],
+    subject: 'New support message from {{fromName}}',
+    body: '{{fromName}}: {{preview}}',
+  },
+  {
+    key: 'support.reply.user', channel: 'in_app',
+    name: 'Support — Agent Reply (User In-App)',
+    variables: ['preview'],
+    subject: 'Washermann Support replied',
+    body: '{{preview}}',
+  },
+  {
+    key: 'support.reply.user', channel: 'push',
+    name: 'Support — Agent Reply (User Push)',
+    variables: ['preview'],
+    subject: 'Washermann Support',
+    body: '{{preview}}',
+  },
+
+  // ── Account ─────────────────────────────────────────────────────────────────
+
+  {
+    key: 'account.deleted.customer', channel: 'email',
+    name: 'Account Deleted — Customer (Email)',
+    subject: 'Your Washermann account has been deleted',
+    variables: ['name'],
+    body: 'Hi {{name}}, your Washermann account has been deleted and your personal data anonymised. Financial and order records are retained only as required by law. Sorry to see you go.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{name}}</strong>,</p>
+      <p>Your Washermann account has been <strong>deleted</strong> and your personal data anonymised. As required by law, financial and order records are retained (attributed to an anonymised id) and are no longer linked to your identity.</p>
+      <p>Sorry to see you go. You're welcome back any time.</p>
+    `),
+  },
+
+  // ── Disputes ────────────────────────────────────────────────────────────────
+
+  {
+    key: 'dispute.created.customer', channel: 'email',
+    name: 'Dispute Raised — Customer (Email)',
+    subject: 'We\'ve received your dispute {{disputeRef}}',
+    variables: ['customerName', 'disputeRef', 'orderRef', 'issueType'],
+    body: 'Hi {{customerName}}, we\'ve received your dispute {{disputeRef}} for order {{orderRef}} ({{issueType}}). Our team will review it within 3–5 business days.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{customerName}}</strong>,</p>
+      <p>We\'ve received your dispute <strong>{{disputeRef}}</strong> for order <strong>{{orderRef}}</strong> — <em>{{issueType}}</em>.</p>
+      <p>Our team investigates and resolves within <strong>3–5 business days</strong>. Possible outcomes include refund, redo, or partial credit. We\'ll keep you posted.</p>
+    `),
+  },
+  {
+    key: 'dispute.created.customer', channel: 'in_app',
+    name: 'Dispute Raised — Customer (In-App)',
+    variables: ['disputeRef', 'orderRef'],
+    subject: 'Dispute {{disputeRef}} received',
+    body: 'Your dispute {{disputeRef}} for order {{orderRef}} was received. We\'ll review it shortly.',
+  },
+  {
+    key: 'dispute.created.customer', channel: 'push',
+    name: 'Dispute Raised — Customer (Push)',
+    variables: ['disputeRef'],
+    subject: 'Dispute {{disputeRef}} received',
+    body: 'We\'ve received your dispute and will review it within 3–5 business days.',
+  },
+  {
+    key: 'dispute.created.admin', channel: 'email',
+    name: 'Dispute Raised — Staff (Email)',
+    subject: 'New dispute {{disputeRef}} — {{issueType}}',
+    variables: ['disputeRef', 'orderRef', 'issueType'],
+    body: 'New dispute {{disputeRef}} on order {{orderRef}} ({{issueType}}). Review it in the admin dashboard.',
+    htmlBody: buildEmailHtml(`
+      <p>A new dispute needs attention.</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">{{disputeRef}}</div><div class="highlight-label">{{issueType}} · order {{orderRef}}</div></div>
+      <p>Open the Disputes section in the admin dashboard to review and resolve it.</p>
+    `),
+  },
+  {
+    key: 'dispute.created.admin', channel: 'in_app',
+    name: 'Dispute Raised — Staff (In-App)',
+    variables: ['disputeRef', 'orderRef', 'issueType'],
+    subject: 'New dispute {{disputeRef}}',
+    body: '{{issueType}} on order {{orderRef}} — review {{disputeRef}}.',
+  },
+  {
+    key: 'dispute.updated.customer', channel: 'email',
+    name: 'Dispute Updated — Customer (Email)',
+    subject: 'Update on your dispute {{disputeRef}}',
+    variables: ['disputeRef', 'status', 'note'],
+    body: 'Your dispute {{disputeRef}} is now {{status}}. {{note}}',
+    htmlBody: buildEmailHtml(`
+      <p>Your dispute <strong>{{disputeRef}}</strong> is now <strong>{{status}}</strong>.</p>
+      <p>{{note}}</p>
+    `),
+  },
+  {
+    key: 'dispute.updated.customer', channel: 'in_app',
+    name: 'Dispute Updated — Customer (In-App)',
+    variables: ['disputeRef', 'status'],
+    subject: 'Dispute {{disputeRef}}: {{status}}',
+    body: 'Your dispute {{disputeRef}} is now {{status}}.',
+  },
+  {
+    key: 'dispute.updated.customer', channel: 'push',
+    name: 'Dispute Updated — Customer (Push)',
+    variables: ['disputeRef', 'status'],
+    subject: 'Dispute {{disputeRef}}',
+    body: 'Your dispute is now {{status}}.',
+  },
+  {
+    key: 'dispute.resolved.customer', channel: 'email',
+    name: 'Dispute Resolved — Customer (Email)',
+    subject: 'Your dispute {{disputeRef}} has been resolved',
+    variables: ['disputeRef', 'outcome', 'note', 'refundedWP'],
+    body: 'Good news — your dispute {{disputeRef}} has been resolved: {{outcome}}. {{note}}',
+    htmlBody: buildEmailHtml(`
+      <p>Good news — your dispute <strong>{{disputeRef}}</strong> has been resolved.</p>
+      <div class="highlight-box"><div class="highlight-value" style="font-size:18px;">{{outcome}}</div><div class="highlight-label">resolution</div></div>
+      <p>{{note}}</p>
+    `),
+  },
+  {
+    key: 'dispute.resolved.customer', channel: 'in_app',
+    name: 'Dispute Resolved — Customer (In-App)',
+    variables: ['disputeRef', 'outcome'],
+    subject: 'Dispute {{disputeRef}} resolved',
+    body: 'Your dispute {{disputeRef}} was resolved: {{outcome}}.',
+  },
+  {
+    key: 'dispute.resolved.customer', channel: 'push',
+    name: 'Dispute Resolved — Customer (Push)',
+    variables: ['disputeRef', 'outcome'],
+    subject: 'Dispute {{disputeRef}} resolved',
+    body: 'Resolved: {{outcome}}. Tap for details.',
+  },
+  {
+    key: 'dispute.rejected.customer', channel: 'in_app',
+    name: 'Dispute Closed — Customer (In-App)',
+    variables: ['disputeRef', 'note'],
+    subject: 'Dispute {{disputeRef}} closed',
+    body: 'Your dispute {{disputeRef}} has been reviewed and closed. {{note}}',
+  },
+  {
+    key: 'dispute.rejected.customer', channel: 'email',
+    name: 'Dispute Closed — Customer (Email)',
+    subject: 'Your dispute {{disputeRef}} has been closed',
+    variables: ['disputeRef', 'note'],
+    body: 'Your dispute {{disputeRef}} has been reviewed and closed. {{note}}',
+    htmlBody: buildEmailHtml(`
+      <p>Your dispute <strong>{{disputeRef}}</strong> has been reviewed and closed.</p>
+      <p>{{note}}</p>
+    `),
+  },
+
+  // ── Teams ───────────────────────────────────────────────────────────────────
+
+  {
+    key: 'team.member_added', channel: 'email',
+    name: 'Team — Added as Member (Email)',
+    subject: 'You\'ve been added to {{teamName}}',
+    variables: ['memberName', 'teamName', 'addedByName'],
+    body: 'Hi {{memberName}}, {{addedByName}} added you to the team "{{teamName}}" on Washermann.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p><strong>{{addedByName}}</strong> added you to the team <strong>{{teamName}}</strong> on Washermann.</p>
+      <p>You can now see the team and its members from your dashboard.</p>
+    `),
+  },
+  {
+    key: 'team.member_added', channel: 'in_app',
+    name: 'Team — Added as Member (In-App)',
+    variables: ['teamName', 'addedByName'],
+    subject: 'Added to {{teamName}}',
+    body: '{{addedByName}} added you to the team {{teamName}}.',
+  },
+  {
+    key: 'team.member_added', channel: 'push',
+    name: 'Team — Added as Member (Push)',
+    variables: ['teamName'],
+    subject: 'Added to {{teamName}}',
+    body: 'You\'ve been added to the team {{teamName}}.',
+  },
+
+  {
+    key: 'team.role_changed', channel: 'email',
+    name: 'Team — Role Changed (Email)',
+    subject: 'Your role in {{teamName}} is now {{roleLabel}}',
+    variables: ['memberName', 'teamName', 'role', 'roleLabel'],
+    body: 'Hi {{memberName}}, your role in the team "{{teamName}}" is now {{roleLabel}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p>Your role in the team <strong>{{teamName}}</strong> is now <strong>{{roleLabel}}</strong>.</p>
+    `),
+  },
+  {
+    key: 'team.role_changed', channel: 'in_app',
+    name: 'Team — Role Changed (In-App)',
+    variables: ['teamName', 'roleLabel'],
+    subject: 'Role updated in {{teamName}}',
+    body: 'You are now {{roleLabel}} of {{teamName}}.',
+  },
+  {
+    key: 'team.role_changed', channel: 'push',
+    name: 'Team — Role Changed (Push)',
+    variables: ['teamName', 'roleLabel'],
+    subject: 'Role updated',
+    body: 'You are now {{roleLabel}} of {{teamName}}.',
+  },
+
+  {
+    key: 'team.member_removed', channel: 'email',
+    name: 'Team — Removed from Team (Email)',
+    subject: 'You\'ve been removed from {{teamName}}',
+    variables: ['memberName', 'teamName'],
+    body: 'Hi {{memberName}}, you have been removed from the team "{{teamName}}".',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{memberName}}</strong>,</p>
+      <p>You have been removed from the team <strong>{{teamName}}</strong>.</p>
+    `),
+  },
+  {
+    key: 'team.member_removed', channel: 'in_app',
+    name: 'Team — Removed from Team (In-App)',
+    variables: ['teamName'],
+    subject: 'Removed from {{teamName}}',
+    body: 'You have been removed from the team {{teamName}}.',
   },
 ];

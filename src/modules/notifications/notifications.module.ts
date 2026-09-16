@@ -14,6 +14,7 @@ import { NotificationTemplate } from '../../database/entities/notification-templ
 import { User } from '../../database/entities/user.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { Rep } from '../../database/entities/rep.entity';
+import { DeviceToken } from '../../database/entities/device-token.entity';
 
 @Global()
 @Module({
@@ -24,6 +25,7 @@ import { Rep } from '../../database/entities/rep.entity';
       User,
       Vendor,
       Rep,
+      DeviceToken,
     ]),
   ],
   controllers: [

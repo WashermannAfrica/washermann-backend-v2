@@ -137,6 +137,24 @@ export class UploadService implements OnModuleInit {
     return { url: result.secure_url, width: result.width, height: result.height };
   }
 
+  // ─── Dispute evidence ─────────────────────────────────────────────────────────
+
+  /** Upload one dispute-evidence image; the returned url goes into the dispute. */
+  async uploadDisputeEvidence(userId: string, file: Express.Multer.File) {
+    this.validateImage(file);
+    const result = await this.uploadBuffer(
+      file.buffer,
+      'dispute_evidence',
+      `dispute_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      {
+        transformation: [{ width: 1600, crop: 'limit' }],
+        allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+      },
+    );
+    this.logger.log(`Dispute evidence uploaded for user ${userId}: ${result.secure_url}`);
+    return { url: result.secure_url, width: result.width, height: result.height };
+  }
+
   // ─── Vendor logo ──────────────────────────────────────────────────────────────
 
   /**
