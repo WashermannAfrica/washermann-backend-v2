@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { SalesRepApplication } from '../../database/entities/sales-rep-application.entity';
 import { SalesRep } from '../../database/entities/sales-rep.entity';
 import { TutorialStep } from '../../database/entities/tutorial-step.entity';
@@ -24,6 +24,7 @@ import { AuthService } from '../auth/auth.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RepsService } from '../reps/reps.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateSalesRepApplicationDto } from './dto/create-sales-rep-application.dto';
 import { SubmitAssessmentDto } from './dto/submit-assessment.dto';
 import { RequestSalesRepPayoutDto } from './dto/request-payout.dto';
@@ -52,6 +53,7 @@ export class SalesRepService implements OnModuleInit {
     private readonly referralsService: ReferralsService,
     private readonly notificationsService: NotificationsService,
     private readonly repsService: RepsService,
+    private readonly audit: AuditService,
   ) {}
 
   async onModuleInit() {
@@ -345,6 +347,38 @@ export class SalesRepService implements OnModuleInit {
     };
   }
 
+  // ─── Admin: lifecycle (suspend / reactivate / archive) ────────────────────────
+
+  /** Freeze a sales rep — reversible. They can't request payouts while suspended. */
+  async suspendSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'suspended';
+    await this.reps.save(profile);
+    return { data: { status: profile.status }, message: 'Sales rep suspended' };
+  }
+
+  /** Lift a suspension / un-archive — sets the rep back to active. */
+  async reactivateSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'active';
+    profile.deactivatedAt = null;
+    await this.reps.save(profile);
+    return { data: { status: profile.status }, message: 'Sales rep reactivated' };
+  }
+
+  /**
+   * Archive (soft-delete) a sales rep. Never hard-deleted — referral and payout
+   * history must survive. Sets deactivatedAt (hidden from the default list) and
+   * suspends them so no new payouts can be requested.
+   */
+  async deleteSalesRep(userId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    profile.status = 'suspended';
+    profile.deactivatedAt = new Date();
+    await this.reps.save(profile);
+    return { data: null, message: 'Sales rep removed' };
+  }
+
   // ─── Payouts ──────────────────────────────────────────────────────────────────
   private async availableCashReferrals(userId: string): Promise<Referral[]> {
     return this.referrals.find({
@@ -439,6 +473,21 @@ export class SalesRepService implements OnModuleInit {
       await manager.save(payout);
     });
     this.logger.log(`Sales-rep payout ${payout.id} approved/completed by ${adminId}`);
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: 'payout.sales_rep.approved',
+      description: `Approved sales-rep payout of ₦${Number(payout.amountNaira).toLocaleString()} — ${payout.referralIds.length} referral(s) marked paid (payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      targetLabel: `₦${Number(payout.amountNaira).toLocaleString()} sales-rep payout`,
+      metadata: {
+        salesRepUserId: payout.salesRepUserId,
+        amountNaira: Number(payout.amountNaira),
+        referralCount: payout.referralIds.length,
+        reference: payout.reference ?? null,
+      },
+    });
     return payout;
   }
 
@@ -452,15 +501,32 @@ export class SalesRepService implements OnModuleInit {
     payout.failureReason = reason ?? null;
     await this.payouts.save(payout);
     // referrals were never marked paid → they remain 'available' and re-requestable
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: 'payout.sales_rep.failed',
+      description: `Marked sales-rep payout of ₦${Number(payout.amountNaira).toLocaleString()} as FAILED${reason ? ` — ${reason}` : ''} (payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      success: false,
+      metadata: {
+        salesRepUserId: payout.salesRepUserId,
+        amountNaira: Number(payout.amountNaira),
+        failureReason: reason ?? null,
+      },
+    });
     return payout;
   }
 
   // ─── Admin: sales reps ────────────────────────────────────────────────────────
-  async listSalesReps(query: { status?: string; page?: number; limit?: number }) {
+  async listSalesReps(query: { status?: string; page?: number; limit?: number; includeArchived?: boolean }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(200, Math.max(1, query.limit ?? 50));
+    // Archived (soft-deleted) reps are hidden unless explicitly requested.
+    const base: Record<string, unknown> = query.includeArchived ? {} : { deactivatedAt: IsNull() };
+    if (query.status) base.status = query.status;
     const [data, total] = await this.reps.findAndCount({
-      where: query.status ? { status: query.status as any } : {},
+      where: base,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,

@@ -268,4 +268,28 @@ export class SalesRepController {
   upgrade(@Param('userId', ParseUUIDPipe) userId: string, @CurrentUser('id') adminId: string) {
     return this.service.upgradeToWashRep(userId, adminId);
   }
+
+  @Post(':userId/suspend')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: suspend a sales rep (reversible)' })
+  suspend(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.service.suspendSalesRep(userId);
+  }
+
+  @Post(':userId/reactivate')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: reactivate a suspended/archived sales rep' })
+  reactivate(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.service.reactivateSalesRep(userId);
+  }
+
+  @Delete(':userId')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: remove (archive) a sales rep — soft-delete, history preserved' })
+  remove(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.service.deleteSalesRep(userId);
+  }
 }

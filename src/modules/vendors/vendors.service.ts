@@ -521,6 +521,40 @@ export class VendorsService {
     return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
   }
 
+  /**
+   * System reference (arithmetic MEAN) for a CATALOGUE ITEM the assigned vendor
+   * did NOT price: the average of the live approved prices across every other
+   * vendor's latest active sheet (matched by catalogue item id). Returns null
+   * when no vendor prices the item. Used as the garment-log fallback price —
+   * vendors who set their own price are paid 100% of it; vendors who didn't are
+   * paid this mean.
+   */
+  async averageLivePriceForItem(itemId: string, excludeVendorId?: string): Promise<number | null> {
+    const sheets = await this.pricingRepository
+      .createQueryBuilder('p')
+      .where('p.approvedAt IS NOT NULL')
+      .andWhere('p.effectiveFrom <= NOW()')
+      .orderBy('p.effectiveFrom', 'DESC')
+      .getMany();
+
+    const seenVendors = new Set<string>();
+    const prices: number[] = [];
+    for (const sheet of sheets) {
+      if (seenVendors.has(sheet.vendorId)) continue; // only each vendor's latest active sheet
+      seenVendors.add(sheet.vendorId);
+      if (excludeVendorId && sheet.vendorId === excludeVendorId) continue;
+      for (const item of sheet.items) {
+        if (!isPriceItemLive(item)) continue;
+        if (item.itemId === itemId && item.priceNaira > 0) {
+          prices.push(item.priceNaira);
+          break;
+        }
+      }
+    }
+    if (!prices.length) return null;
+    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
+  }
+
   /** Load a proposal that is still open for review (not fully finalized as rejected). */
   private async loadReviewableProposal(pricingId: string): Promise<VendorPricing> {
     const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });

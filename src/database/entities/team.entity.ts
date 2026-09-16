@@ -52,7 +52,9 @@ export class Team extends BaseEntity {
 
   // ─── Relations ───────────────────────────────────────────────────────────────
 
-  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true, eager: false })
+  // owner_id is NOT NULL (a team must always have an owner), so the FK cannot
+  // SET NULL on user deletion — RESTRICT it instead (transfer ownership first).
+  @ManyToOne(() => User, { onDelete: 'RESTRICT', nullable: false, eager: false })
   @JoinColumn({ name: 'owner_id' })
   owner: User;
 

@@ -1,21 +1,39 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { User } from '../../database/entities/user.entity';
 import { Address } from '../../database/entities/address.entity';
 import { Order } from '../../database/entities/order.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
+import { DeviceToken } from '../../database/entities/device-token.entity';
+import { Dispute } from '../../database/entities/dispute.entity';
+import { OPEN_DISPUTE_STATUSES } from '../../common/enums/dispute.enum';
+import { UserStatus } from '../../common/enums/user-status.enum';
+import { Role } from '../../common/enums/roles.enum';
+import { RedisService } from '../redis/redis.service';
+import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
 
 const DONE_ORDER_STATUSES = ['delivered', 'completed'];
+const TERMINAL_ORDER_STATUSES = ['completed', 'cancelled'];
+// Business accounts carry obligations (payouts, verification, company ties) and
+// can't be self-deleted — they go through support.
+const OPERATIONAL_ROLES = [
+  Role.VENDOR, Role.REP, Role.SALES_REP, Role.WASHERMAN,
+  Role.COMPANY_OWNER, Role.COMPANY_ADMIN, Role.ADMIN, Role.FINANCE, Role.DISPUTE_RESOLVER,
+];
 
 @Injectable()
 export class UsersService {
@@ -30,6 +48,13 @@ export class UsersService {
     private walletRepository: Repository<Wallet>,
     @InjectRepository(CompanyEmployee)
     private companyEmployeeRepository: Repository<CompanyEmployee>,
+    @InjectRepository(DeviceToken)
+    private deviceTokenRepository: Repository<DeviceToken>,
+    @InjectRepository(Dispute)
+    private disputeRepository: Repository<Dispute>,
+    private readonly redisService: RedisService,
+    private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -73,9 +98,36 @@ export class UsersService {
     return { data: this.sanitizeUser(user), message: 'Profile updated' };
   }
 
-  async updateFcmToken(userId: string, token: string) {
-    await this.userRepository.update({ id: userId }, { fcmToken: token || null });
-    return { message: 'FCM token updated' };
+  /**
+   * Register (or refresh) a device's FCM token for push. Multi-device: a user may
+   * have many tokens. Upsert on the token so re-registering the same device just
+   * refreshes it, and a device handed to another user re-points to them.
+   */
+  async updateFcmToken(userId: string, token: string, platform?: string) {
+    const t = (token ?? '').trim();
+    if (!t) throw new BadRequestException('token is required');
+    await this.deviceTokenRepository.upsert(
+      { userId, token: t, platform: platform ?? null, lastSeenAt: new Date() },
+      ['token'],
+    );
+    // Keep the legacy single column pointing at the most recent device (compat).
+    await this.userRepository.update({ id: userId }, { fcmToken: t });
+    return { message: 'Device registered for push' };
+  }
+
+  /** Unregister one device (call on logout). No-op if the token isn't ours. */
+  async removeFcmToken(userId: string, token: string) {
+    const t = (token ?? '').trim();
+    if (!t) throw new BadRequestException('token is required');
+    await this.deviceTokenRepository.delete({ userId, token: t });
+    // Clear the legacy column if it was this device.
+    await this.userRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({ fcmToken: null })
+      .where('id = :userId AND fcm_token = :t', { userId, t })
+      .execute();
+    return { message: 'Device unregistered' };
   }
 
   // ─── Addresses ───────────────────────────────────────────────────────────────
@@ -290,6 +342,23 @@ export class UsersService {
     };
   }
 
+  /**
+   * Roles that have their own dedicated admin module (Washermen, Reps, Companies,
+   * Staff). When `customersOnly` is set, users carrying any of these are excluded
+   * so the admin Users list is customers only.
+   */
+  private static readonly OWN_MODULE_ROLES = [
+    'vendor',
+    'rep',
+    'sales_rep',
+    'company_owner',
+    'company_admin',
+    'admin',
+    'finance',
+    'dispute_resolver',
+    'washerman',
+  ];
+
   async listUsers(
     page = 1,
     limit = 20,
@@ -297,6 +366,7 @@ export class UsersService {
     status?: string,
     sortBy?: string,
     sortDir?: 'ASC' | 'DESC',
+    customersOnly = false,
   ) {
     const SORTABLE: Record<string, string> = {
       createdAt: 'u.createdAt',
@@ -313,6 +383,16 @@ export class UsersService {
       .skip((page - 1) * limit)
       .take(limit);
 
+    // Customers only: must hold the `user` role and none of the own-module roles
+    // (vendors/reps/company/staff each live in their own admin module).
+    if (customersOnly) {
+      qb.andWhere(`string_to_array(u.roles, ',') && ARRAY['user']::text[]`);
+      qb.andWhere(
+        `NOT (string_to_array(u.roles, ',') && ARRAY[:...ownModuleRoles]::text[])`,
+        { ownModuleRoles: UsersService.OWN_MODULE_ROLES },
+      );
+    }
+
     if (search) {
       qb.andWhere('(u.fullName ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)', {
         q: `%${search}%`,
@@ -325,6 +405,149 @@ export class UsersService {
       data: users.map((u) => this.sanitizeUser(u)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
+  }
+
+  // ─── Account lifecycle: delete / suspend / reactivate ──────────────────────────
+
+  /**
+   * Self-service account deletion (app-store + NDPA "right to erasure"). Password
+   * re-confirmed. Not a hard delete: financial/order/audit rows must survive, so
+   * we soft-delete + anonymise PII and revoke all sessions/devices. Blocked while
+   * the account has money or unfinished business.
+   */
+  async deleteMyAccount(userId: string, password: string, reason?: string) {
+    const user = await this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.id = :id', { id: userId })
+      .getOne();
+    if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) throw new BadRequestException('This account is already deleted');
+
+    // Confirm identity.
+    if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw new UnauthorizedException('Incorrect password');
+    }
+
+    // Business accounts can't self-delete — they have payouts/verification/company
+    // obligations to unwind. Direct them to support.
+    if ((user.roles ?? []).some((r) => OPERATIONAL_ROLES.includes(r))) {
+      throw new ForbiddenException(
+        'Vendor, rep, company and staff accounts cannot be self-deleted. Please contact support to close this account.',
+      );
+    }
+
+    await this.assertDeletable(userId);
+    const emailForNotice = user.email;
+    const nameForNotice = user.fullName;
+
+    await this.anonymiseAndSoftDelete(user);
+
+    // Revoke everything: devices + the refresh-token session in Redis.
+    await this.deviceTokenRepository.delete({ userId });
+    await this.redisService.del(`refresh:${userId}`).catch(() => undefined);
+
+    void this.audit.recordWithActor(userId, {
+      app: 'mobile',
+      category: 'account',
+      action: 'account.deleted',
+      description: 'Customer deleted their own account (soft-delete + anonymised).',
+      targetType: 'user',
+      targetId: userId,
+      metadata: { reason: reason ?? null, self: true },
+    });
+    if (emailForNotice) this.notifications.notifyAccountDeleted({ email: emailForNotice, name: nameForNotice });
+
+    return { data: null, message: 'Your account has been deleted.' };
+  }
+
+  /** Admin-initiated account deletion (same soft-delete + anonymise + guards). */
+  async adminDeleteUser(userId: string, adminId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) throw new BadRequestException('This account is already deleted');
+
+    await this.assertDeletable(userId);
+    const emailForNotice = user.email;
+    const nameForNotice = user.fullName;
+
+    await this.anonymiseAndSoftDelete(user);
+    await this.deviceTokenRepository.delete({ userId });
+    await this.redisService.del(`refresh:${userId}`).catch(() => undefined);
+
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'account',
+      action: 'account.deleted',
+      description: 'Admin deleted a user account (soft-delete + anonymised).',
+      targetType: 'user',
+      targetId: userId,
+      metadata: { self: false },
+    });
+    if (emailForNotice) this.notifications.notifyAccountDeleted({ email: emailForNotice, name: nameForNotice });
+
+    return { data: null, message: 'Account deleted.' };
+  }
+
+  /** Admin: suspend (block sign-in) or reactivate an account. */
+  async setUserStatus(userId: string, status: 'active' | 'suspended', adminId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) throw new BadRequestException('This account is deleted');
+
+    user.status = status === 'suspended' ? UserStatus.SUSPENDED : UserStatus.ACTIVE;
+    await this.userRepository.save(user);
+    if (status === 'suspended') {
+      // Kill the active session so the block takes effect immediately.
+      await this.redisService.del(`refresh:${userId}`).catch(() => undefined);
+    }
+
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'account',
+      action: status === 'suspended' ? 'account.suspended' : 'account.reactivated',
+      description: `Admin ${status === 'suspended' ? 'suspended' : 'reactivated'} a user account.`,
+      targetType: 'user',
+      targetId: userId,
+    });
+    return { data: this.sanitizeUser(user), message: `Account ${status === 'suspended' ? 'suspended' : 'reactivated'}` };
+  }
+
+  /** Guard: refuse deletion while the account has money or unfinished business. */
+  private async assertDeletable(userId: string): Promise<void> {
+    const wallet = await this.walletRepository.findOne({ where: { userId } });
+    if (wallet && Number(wallet.balance) > 0) {
+      throw new BadRequestException(
+        `You still have ${Number(wallet.balance).toLocaleString()} WP in your wallet. Spend or withdraw it before deleting your account.`,
+      );
+    }
+    const activeOrders = await this.orderRepository.count({
+      where: { customerId: userId, status: Not(In(TERMINAL_ORDER_STATUSES)) as never },
+    });
+    if (activeOrders > 0) {
+      throw new BadRequestException(`You have ${activeOrders} order(s) still in progress. Please wait until they complete.`);
+    }
+    const openDisputes = await this.disputeRepository.count({
+      where: { raisedByUserId: userId, status: In(OPEN_DISPUTE_STATUSES) as never },
+    });
+    if (openDisputes > 0) {
+      throw new BadRequestException(`You have ${openDisputes} open dispute(s). They must be resolved first.`);
+    }
+  }
+
+  /** Scrub PII and mark the row deleted. Keeps the row for history/attribution. */
+  private async anonymiseAndSoftDelete(user: User): Promise<void> {
+    user.fullName = 'Deleted user';
+    user.email = null as unknown as string;
+    user.phone = null as unknown as string;
+    user.passwordHash = null as unknown as string;
+    user.avatarUrl = null;
+    user.fcmToken = null;
+    user.emailVerified = false;
+    user.phoneVerified = false;
+    user.status = UserStatus.DEACTIVATED;
+    user.deletedAt = new Date();
+    await this.userRepository.save(user);
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
