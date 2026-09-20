@@ -25,6 +25,10 @@
     "migration:show": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
     "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
     "migration:revert:prod": "node ./node_modules/typeorm/cli.js migration:revert -d dist/database/data-source.js",
+    "migration:show:prod": "node ./node_modules/typeorm/cli.js migration:show -d dist/database/data-source.js",
+    "seed:policies": "ts-node -r tsconfig-paths/register src/database/seeds/seed-policies.ts"
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
+    "migration:revert:prod": "node ./node_modules/typeorm/cli.js migration:revert -d dist/database/data-source.js",
     "migration:show:prod": "node ./node_modules/typeorm/cli.js migration:show -d dist/database/data-source.js"
   },
   "dependencies": {
@@ -52,6 +56,8 @@
     "firebase-admin": "^13.8.0",
     "handlebars": "^4.7.9",
     "ioredis": "^5.10.1",
+    "mammoth": "^1.12.3",
+    "marked": "^12.0.2",
     "multer": "^2.1.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
