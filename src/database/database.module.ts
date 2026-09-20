@@ -75,6 +75,9 @@ import { Dispute } from './entities/dispute.entity';
 import { DisputeEvent } from './entities/dispute-event.entity';
 import { SupportConversation } from './entities/support-conversation.entity';
 import { SupportMessage } from './entities/support-message.entity';
+import { Policy } from './entities/policy.entity';
+import { PolicyVersion } from './entities/policy-version.entity';
+import { PolicyAcceptance } from './entities/policy-acceptance.entity';
 
 @Module({
   imports: [
@@ -128,6 +131,8 @@ import { SupportMessage } from './entities/support-message.entity';
             Dispute, DisputeEvent,
             // Support chat
             SupportConversation, SupportMessage,
+            // Policy CMS + consent
+            Policy, PolicyVersion, PolicyAcceptance,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),
