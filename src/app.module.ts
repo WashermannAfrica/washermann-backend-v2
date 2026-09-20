@@ -62,6 +62,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { DisputesModule } from './modules/disputes/disputes.module';
 import { SupportModule } from './modules/support/support.module';
+import { PoliciesModule } from './modules/policies/policies.module';
 
 @Module({
   imports: [
@@ -121,6 +122,7 @@ import { SupportModule } from './modules/support/support.module';
     AuditModule,
     DisputesModule,
     SupportModule,
+    PoliciesModule,
   ],
 
   providers: [
