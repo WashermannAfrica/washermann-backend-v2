@@ -1,0 +1,13 @@
+name: Guard main merges
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  only-staging-into-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only staging may merge into main
+        if: github.head_ref != 'staging'
+        run: |
+          echo "::error::Only 'staging' may be merged into main. This PR is from '${{ github.head_ref }}'."
+          exit 1
