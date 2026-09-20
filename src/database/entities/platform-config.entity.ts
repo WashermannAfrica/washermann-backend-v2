@@ -114,7 +114,9 @@ export class PlatformConfig {
     type: 'decimal',
     precision: 10,
     scale: 4,
-    default: 9,
+    // Launch anchor V=₦6.86/WP (locked). This is the cold-start default for a
+    // fresh deployment's singleton config; the rate engine governs it thereafter.
+    default: 6.86,
     transformer: DecimalTransformer,
   })
   payoutRateNairaPerWP: number;
