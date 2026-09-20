@@ -36,6 +36,20 @@ export class AdminPoliciesController {
     return this.service.adminCreatePolicy(dto);
   }
 
+  @Get('seed/status')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Whether the initial-seed action is still available (any bundled policy not yet created)' })
+  seedStatus() {
+    return this.service.seedStatus();
+  }
+
+  @Post('seed')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Create + publish the bundled initial policies (idempotent)' })
+  seed(@CurrentUser('id') userId: string) {
+    return this.service.seedInitial(userId);
+  }
+
   @Get(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'One policy with its versions (newest first)' })
