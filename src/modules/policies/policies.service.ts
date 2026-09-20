@@ -4,9 +4,43 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash } from 'crypto';
+import { existsSync, readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
 import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import * as mammoth from 'mammoth';
+
+// Nicer titles + which portals must accept each seeded policy. Fallbacks apply otherwise.
+const SEED_TITLES: Record<string, string> = {
+  'privacy-policy': 'Privacy Policy',
+  'terms-of-service': 'Terms of Service',
+  'vendor-agreement': 'Vendor (Washerman) Agreement',
+  'rep-agreement': 'Rep Agreement',
+  'washpoints-wallet-terms': 'WashPoints & Wallet Terms',
+  'refund-cancellation-dispute-policy': 'Refund, Cancellation & Dispute Policy',
+  'garment-liability-care-terms': 'Garment Liability & Care Terms',
+  'cookie-policy': 'Cookie Policy',
+  'referral-program-terms': 'Referral Program Terms',
+  'b2b-company-agreement': 'Company (B2B) Benefits Agreement',
+  'payment-billing-terms': 'Payment & Billing Terms',
+  'marketing-consent-notice': 'Marketing Consent Notice',
+  'data-processing-agreement': 'Data Processing Agreement',
+  'kyc-aml-policy': 'KYC & AML Policy',
+  'acceptable-use-policy': 'Acceptable Use Policy',
+};
+const SEED_AUDIENCES: Record<string, string[]> = {
+  'privacy-policy': ['customer', 'vendor', 'rep', 'company'],
+  'terms-of-service': ['customer', 'vendor', 'rep', 'company'],
+  'cookie-policy': ['customer', 'vendor', 'rep', 'company'],
+  'acceptable-use-policy': ['customer', 'vendor', 'rep', 'company'],
+  'marketing-consent-notice': ['customer'],
+  'vendor-agreement': ['vendor'],
+  'rep-agreement': ['rep'],
+  'b2b-company-agreement': ['company'],
+  'data-processing-agreement': ['vendor', 'company'],
+  'kyc-aml-policy': ['vendor', 'rep'],
+};
+const SEED_EFFECTIVE_DATE = '2026-09-01';
 import { Policy } from '../../database/entities/policy.entity';
 import { PolicyVersion } from '../../database/entities/policy-version.entity';
 import { PolicyAcceptance } from '../../database/entities/policy-acceptance.entity';
@@ -264,6 +298,61 @@ export class PoliciesService {
     policy.currentVersionId = saved.id;
     await this.policies.save(policy);
     return saved;
+  }
+
+  // ─── Seeding from bundled .docx ────────────────────────────────────────────────
+  /** Resolve the bundled seed folder in both dev and compiled (dist) layouts. */
+  private policyDocxDir(): string | null {
+    const candidates = [
+      join(__dirname, '..', '..', 'database', 'seeds', 'policy-docx'), // dist/modules/policies -> dist/database/...
+      join(process.cwd(), 'src', 'database', 'seeds', 'policy-docx'),   // dev fallback
+      join(process.cwd(), 'dist', 'database', 'seeds', 'policy-docx'),
+    ];
+    return candidates.find((p) => existsSync(p)) ?? null;
+  }
+
+  private bundledFiles(): { file: string; key: string }[] {
+    const dir = this.policyDocxDir();
+    if (!dir) return [];
+    return readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith('.docx'))
+      .sort()
+      .map((file) => ({ file, key: file.replace(/\.docx$/i, '').replace(/^\d+[-_]/, '') }));
+  }
+
+  /** Whether the initial-seed button should show: true while any bundled policy is not yet created. */
+  async seedStatus(): Promise<{ available: boolean; total: number; remaining: string[] }> {
+    const bundled = this.bundledFiles();
+    if (bundled.length === 0) return { available: false, total: 0, remaining: [] };
+    const existing = new Set((await this.policies.find()).map((p) => p.key));
+    const remaining = bundled.map((b) => b.key).filter((k) => !existing.has(k));
+    return { available: remaining.length > 0, total: bundled.length, remaining };
+  }
+
+  /** Create + publish a policy for each bundled .docx not already present. Idempotent. */
+  async seedInitial(userId: string): Promise<{ seeded: string[]; skipped: string[] }> {
+    const dir = this.policyDocxDir();
+    const bundled = this.bundledFiles();
+    if (!dir || bundled.length === 0) return { seeded: [], skipped: [] };
+
+    const existing = new Set((await this.policies.find()).map((p) => p.key));
+    const seeded: string[] = [];
+    const skipped: string[] = [];
+
+    for (const { file, key } of bundled) {
+      if (existing.has(key)) { skipped.push(key); continue; }
+      const title = SEED_TITLES[key] ?? key.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      const audiences = SEED_AUDIENCES[key] ?? ['customer'];
+      const policy = await this.adminCreatePolicy({ key, title, audiences });
+      const buffer = readFileSync(join(dir, file));
+      const version = await this.adminCreateVersionFromDocx(policy.id, buffer, {
+        effectiveDate: SEED_EFFECTIVE_DATE,
+        changeSummary: 'Seeded from docx',
+      });
+      await this.adminPublishVersion(policy.id, version.versionNumber, userId);
+      seeded.push(key);
+    }
+    return { seeded, skipped };
   }
 
   // ─── helpers ──────────────────────────────────────────────────────────────────
