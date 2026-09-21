@@ -613,9 +613,60 @@ export class OrdersService {
   }
 
   /**
+   * Abandonment settlement (Option A — full split). The service was fully rendered,
+   * so the vendor and rep are paid their normal shares and escrow is released; the
+   * customer's WashPoints are consumed (no refund). The order is marked ABANDONED
+   * (not COMPLETED) so the garments are tracked for disposal. Idempotent: only acts
+   * on a DELIVERY_FAILED order.
+   */
+  async settleAbandonment(orderId: string, triggeredBy: string | null) {
+    const order = await this.findOne(orderId);
+    if (order.status !== OrderStatus.DELIVERY_FAILED) {
+      throw new BadRequestException('Only a failed-delivery order can be abandoned');
+    }
+
+    // Release escrow (service rendered).
+    const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+    if (escrow && escrow.status !== 'released') {
+      escrow.status = 'released';
+      escrow.releasedAt = new Date();
+      await this.escrowRepository.save(escrow);
+    }
+
+    // Pay the vendor + rep their shares (full split), if calculated.
+    if (order.vendorId && (order.vendorShareWP ?? 0) > 0) {
+      await this.vendorsService.creditWallet(
+        order.vendorId,
+        order.vendorShareWP!,
+        LedgerSource.VENDOR_EARNING,
+        `Order abandoned — service rendered: ${order.reference}`,
+        { orderId, nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined, reference: order.reference },
+      );
+    }
+    if (order.repId && (order.repShareWP ?? 0) > 0) {
+      await this.repsService.creditWallet(
+        order.repId,
+        order.repShareWP!,
+        LedgerSource.REP_EARNING,
+        `Order abandoned — service rendered: ${order.reference}`,
+        { orderId, reference: order.reference },
+      );
+    }
+
+    // Mark ABANDONED (records history) and flag disposal pending.
+    await this.transition(orderId, OrderStatus.ABANDONED, triggeredBy, 'system',
+      'Garments uncollected after notices — abandoned; escrow settled to vendor/rep (service rendered)');
+    const fresh = await this.findOne(orderId);
+    fresh.disposalMethod = 'pending';
+    await this.orderRepository.save(fresh);
+    return fresh;
+  }
+
+  /**
    * Cron helper (WS4 1.6). For orders stuck in DELIVERY_FAILED: send a 2nd notice
    * after a gap, then — once ≥2 notices have gone out and `abandonmentDays` have
-   * elapsed since the first — treat the garments as abandoned (bailee duty met).
+   * elapsed since the first — treat the garments as abandoned (bailee duty met) and
+   * settle the escrow to the vendor/rep (Option A, full split).
    */
   async sweepUncollected(): Promise<{ notices: number; abandoned: number }> {
     const config = await this.platformConfigService.getConfig();
@@ -642,10 +693,7 @@ export class OrdersService {
         notices++;
       } else if (o.uncollectedNoticeCount >= 2 && daysSinceFirst >= abandonmentDays) {
         try {
-          await this.transition(o.id, OrderStatus.ABANDONED, null, 'system', 'Garments uncollected after notices — treated as abandoned');
-          const fresh = await this.findOne(o.id);
-          fresh.disposalMethod = 'pending';
-          await this.orderRepository.save(fresh);
+          const fresh = await this.settleAbandonment(o.id, null);
           this.notificationsService.notifyCustomerOrderAbandoned(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
           abandoned++;
         } catch {
