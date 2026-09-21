@@ -7,6 +7,7 @@ import { AssignmentBroadcast } from '../../database/entities/assignment-broadcas
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { AssignmentService } from '../assignment/assignment.service';
+import { PayoutsService } from '../payouts/payouts.service';
 
 @Injectable()
 export class TasksService {
@@ -21,7 +22,23 @@ export class TasksService {
 
     private ordersService: OrdersService,
     private assignmentService: AssignmentService,
+    private payoutsService: PayoutsService,
   ) {}
+
+  // ─── Payout withholding auto-release (WS4 1.10) ────────────────────────────────
+  /**
+   * Runs daily. Releases any payout whose investigation hold has lapsed
+   * (autoReleaseAt in the past) back to PENDING for normal processing.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async releaseExpiredPayoutHolds() {
+    try {
+      const n = await this.payoutsService.autoReleaseExpiredHolds();
+      if (n > 0) this.logger.log(`Payout holds: auto-released ${n} expired hold(s)`);
+    } catch (err) {
+      this.logger.error(`Payout hold auto-release failed — ${(err as Error).message}`);
+    }
+  }
 
   // ─── Escrow auto-release ──────────────────────────────────────────────────────
   /**

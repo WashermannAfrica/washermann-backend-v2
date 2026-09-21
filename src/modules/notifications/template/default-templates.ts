@@ -874,6 +874,85 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your balance has been restored — you can request again.',
   },
 
+  // ── Vendor: Payout Withheld / Released (investigation window) ──────────────────
+
+  {
+    key: 'payout.held.vendor', channel: 'email',
+    name: 'Payout Withheld — Vendor Email',
+    subject: 'Payout on hold pending review — ₦{{nairaAmount}}',
+    variables: ['vendorName', 'nairaAmount', 'amountWP', 'reason', 'autoReleaseAt', 'payoutId'],
+    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} ({{amountWP}} WP) is temporarily on hold while we review a matter: {{reason}}. If it is not substantiated, the payout is automatically released for processing by {{autoReleaseAt}}. Reference: {{payoutId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Your payout is temporarily on hold while we review a matter.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{nairaAmount}}</div>
+        <div class="highlight-label">{{amountWP}} WP · On hold</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Auto-releases by</span><span>{{autoReleaseAt}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{payoutId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If the matter is not substantiated, the payout is released automatically for processing. Contact support if you have questions.</p>
+    `),
+  },
+  {
+    key: 'payout.held.vendor', channel: 'sms',
+    name: 'Payout Withheld — Vendor SMS',
+    variables: ['nairaAmount', 'autoReleaseAt'],
+    body: 'Washermann: your ₦{{nairaAmount}} payout is on hold pending review. It auto-releases by {{autoReleaseAt}} if not substantiated.',
+  },
+  {
+    key: 'payout.held.vendor', channel: 'push',
+    name: 'Payout Withheld — Vendor Push',
+    subject: 'Payout on hold',
+    variables: ['nairaAmount'],
+    body: 'Your ₦{{nairaAmount}} payout is on hold pending review. Tap for details.',
+  },
+  {
+    key: 'payout.held.vendor', channel: 'in_app',
+    name: 'Payout Withheld — Vendor In-App',
+    subject: 'Payout on hold',
+    variables: ['nairaAmount', 'reason', 'autoReleaseAt'],
+    body: 'Your ₦{{nairaAmount}} payout is on hold pending review: {{reason}}. It auto-releases by {{autoReleaseAt}} if not substantiated.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'email',
+    name: 'Payout Released — Vendor Email',
+    subject: 'Payout hold lifted — ₦{{nairaAmount}}',
+    variables: ['vendorName', 'nairaAmount', 'amountWP', 'payoutId'],
+    body: 'Hi {{vendorName}}, the hold on your payout of ₦{{nairaAmount}} ({{amountWP}} WP) has been lifted and it is back in the queue for processing. Reference: {{payoutId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The hold on your payout has been lifted and it is back in the queue for processing.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{nairaAmount}}</div>
+        <div class="highlight-label">{{amountWP}} WP · Released</div>
+      </div>
+      <div class="info-row"><span>Reference</span><span>{{payoutId}}</span></div>
+    `),
+  },
+  {
+    key: 'payout.released.vendor', channel: 'sms',
+    name: 'Payout Released — Vendor SMS',
+    variables: ['nairaAmount'],
+    body: 'Washermann: the hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'push',
+    name: 'Payout Released — Vendor Push',
+    subject: 'Payout hold lifted',
+    variables: ['nairaAmount'],
+    body: 'The hold on your ₦{{nairaAmount}} payout has been lifted. Tap for details.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'in_app',
+    name: 'Payout Released — Vendor In-App',
+    subject: 'Payout hold lifted',
+    variables: ['nairaAmount'],
+    body: 'The hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
+  },
+
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {

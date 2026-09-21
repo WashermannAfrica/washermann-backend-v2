@@ -48,6 +48,34 @@ export class UpdatePlatformConfigDto {
   @Max(168)
   orderAutoCompleteHours?: number;
 
+  @ApiPropertyOptional({ description: 'Business days a payout may be withheld before auto-release', example: 10, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  payoutWithholdingDays?: number;
+
+  @ApiPropertyOptional({ description: 'Business days a vendor has to respond before a claim deduction', example: 5, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  deductionResponseDays?: number;
+
+  @ApiPropertyOptional({ description: 'Days a referral reward may be corrected/clawed back pre-payout', example: 60, minimum: 0, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  rewardClawbackDays?: number;
+
+  @ApiPropertyOptional({ description: 'Days after first notice before an order is treated as abandoned', example: 30, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  abandonmentDays?: number;
+
   @ApiPropertyOptional({ description: 'VAT percentage (0 = disabled)', example: 7.5, minimum: 0, maximum: 30 })
   @IsOptional()
   @IsNumber()

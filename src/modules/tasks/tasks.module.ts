@@ -5,12 +5,14 @@ import { AssignmentBroadcast } from '../../database/entities/assignment-broadcas
 import { TasksService } from './tasks.service';
 import { OrdersModule } from '../orders/orders.module';
 import { AssignmentModule } from '../assignment/assignment.module';
+import { PayoutsModule } from '../payouts/payouts.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, AssignmentBroadcast]),
     OrdersModule,
     AssignmentModule,
+    PayoutsModule,
   ],
   providers: [TasksService],
 })

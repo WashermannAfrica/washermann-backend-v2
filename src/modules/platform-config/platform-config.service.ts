@@ -39,6 +39,10 @@ export class PlatformConfigService {
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
       orderTurnaroundHours: 48,
+      payoutWithholdingDays: 10,
+      deductionResponseDays: 5,
+      rewardClawbackDays: 60,
+      abandonmentDays: 30,
       assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
@@ -64,6 +68,10 @@ export class PlatformConfigService {
     if (dto.lowRatingThreshold         != null) config.lowRatingThreshold         = dto.lowRatingThreshold;
     if (dto.bonusCyclePeriod           != null) config.bonusCyclePeriod           = dto.bonusCyclePeriod;
     if (dto.orderAutoCompleteHours     != null) config.orderAutoCompleteHours     = dto.orderAutoCompleteHours;
+    if (dto.payoutWithholdingDays      != null) config.payoutWithholdingDays      = dto.payoutWithholdingDays;
+    if (dto.deductionResponseDays      != null) config.deductionResponseDays      = dto.deductionResponseDays;
+    if (dto.rewardClawbackDays         != null) config.rewardClawbackDays         = dto.rewardClawbackDays;
+    if (dto.abandonmentDays            != null) config.abandonmentDays            = dto.abandonmentDays;
     if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
     if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
     config.updatedBy = adminId;

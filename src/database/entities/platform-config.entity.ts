@@ -168,6 +168,24 @@ export class PlatformConfig {
   })
   orderTurnaroundHours: number;
 
+  // ─── Compliance / due-process windows (WS4) ────────────────────────────────────
+
+  @ApiProperty({ description: 'Business days a vendor/rep payout may be withheld for investigation before auto-release', example: 10 })
+  @Column({ name: 'payout_withholding_days', type: 'int', default: 10 })
+  payoutWithholdingDays: number;
+
+  @ApiProperty({ description: 'Business days a vendor has to respond before a substantiated claim is deducted from earnings', example: 5 })
+  @Column({ name: 'deduction_response_days', type: 'int', default: 5 })
+  deductionResponseDays: number;
+
+  @ApiProperty({ description: 'Days within which a referral reward may be corrected/clawed back pre-payout', example: 60 })
+  @Column({ name: 'reward_clawback_days', type: 'int', default: 60 })
+  rewardClawbackDays: number;
+
+  @ApiProperty({ description: 'Days after the first uncollected-garment notice before an order may be treated as abandoned', example: 30 })
+  @Column({ name: 'abandonment_days', type: 'int', default: 30 })
+  abandonmentDays: number;
+
   @ApiProperty({
     description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
   })

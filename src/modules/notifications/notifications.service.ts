@@ -1296,4 +1296,65 @@ export class NotificationsService {
       ]);
     }, this.logger, 'payout.failed.vendor');
   }
+
+  /** Fire when a payout is withheld for investigation. */
+  async notifyVendorPayoutHeld(params: {
+    vendorId:      string;
+    nairaAmount:   number;
+    amountWP:      number;
+    reason:        string;
+    autoReleaseAt: Date;
+    payoutId:      string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:    vendor.businessName,
+      nairaAmount:   Math.round(params.nairaAmount),
+      amountWP:      params.amountWP,
+      reason:        params.reason,
+      autoReleaseAt: params.autoReleaseAt.toISOString().slice(0, 10),
+      payoutId:      params.payoutId,
+    };
+    const meta = { payoutId: params.payoutId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('payout.held.vendor', user.email, vars),
+        user.phone && this.sendSms('payout.held.vendor', user.phone, vars),
+        this.sendPushToUser('payout.held.vendor', user.id, vars, { payoutId: params.payoutId }),
+        this.sendInApp('payout.held.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'payout.held.vendor');
+  }
+
+  /** Fire when a withheld payout is released back to pending. */
+  async notifyVendorPayoutReleased(params: {
+    vendorId:    string;
+    nairaAmount: number;
+    amountWP:    number;
+    payoutId:    string;
+    auto:        boolean;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      nairaAmount: Math.round(params.nairaAmount),
+      amountWP:    params.amountWP,
+      payoutId:    params.payoutId,
+    };
+    const meta = { payoutId: params.payoutId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('payout.released.vendor', user.email, vars),
+        user.phone && this.sendSms('payout.released.vendor', user.phone, vars),
+        this.sendPushToUser('payout.released.vendor', user.id, vars, { payoutId: params.payoutId }),
+        this.sendInApp('payout.released.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'payout.released.vendor');
+  }
 }
