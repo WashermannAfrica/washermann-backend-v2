@@ -1415,4 +1415,56 @@ export class NotificationsService {
       ]);
     }, this.logger, 'deduction.applied.vendor');
   }
+
+  // ─── Suspension due-process (WS4 1.14) — addressed by userId ────────────────────
+
+  async notifySuspensionNotice(userId: string, params: { reason: string; respondBy: Date; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      reason: params.reason,
+      respondBy: params.respondBy.toISOString().slice(0, 10),
+      noticeId: params.noticeId,
+    };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('suspension.notice', user.email, vars),
+        user.phone && this.sendSms('suspension.notice', user.phone, vars),
+        this.sendPushToUser('suspension.notice', user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp('suspension.notice', user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, 'suspension.notice');
+  }
+
+  async notifySuspensionEnforced(userId: string, params: { reason: string; immediate: boolean; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { reason: params.reason, noticeId: params.noticeId };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('suspension.enforced', user.email, vars),
+        user.phone && this.sendSms('suspension.enforced', user.phone, vars),
+        this.sendPushToUser('suspension.enforced', user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp('suspension.enforced', user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, 'suspension.enforced');
+  }
+
+  async notifySuspensionReviewDecided(userId: string, params: { decision: 'upheld' | 'overturned'; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const key = params.decision === 'overturned' ? 'suspension.reinstated' : 'suspension.upheld';
+    const vars: Record<string, string | number> = { noticeId: params.noticeId };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail(key, user.email, vars),
+        user.phone && this.sendSms(key, user.phone, vars),
+        this.sendPushToUser(key, user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp(key, user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, key);
+  }
 }

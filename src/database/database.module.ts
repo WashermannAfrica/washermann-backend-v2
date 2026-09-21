@@ -30,6 +30,7 @@ import { VendorPricing } from './entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from './entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from './entities/vendor-ledger-entry.entity';
 import { EarningsDeduction } from './entities/earnings-deduction.entity';
+import { SuspensionNotice } from './entities/suspension-notice.entity';
 import { Rep } from './entities/rep.entity';
 import { RepPseudoWallet } from './entities/rep-pseudo-wallet.entity';
 import { RepPseudoLedgerEntry } from './entities/rep-pseudo-ledger-entry.entity';
@@ -134,6 +135,7 @@ import { PolicyAcceptance } from './entities/policy-acceptance.entity';
             SupportConversation, SupportMessage,
             // Policy CMS + consent
             Policy, PolicyVersion, PolicyAcceptance,
+            SuspensionNotice,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

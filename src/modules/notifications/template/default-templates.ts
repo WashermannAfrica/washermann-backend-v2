@@ -1033,6 +1033,140 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'A deduction of {{amountWP}} WP has been applied to your earnings for: {{reason}}.',
   },
 
+  // ── Suspension due-process (vendor / rep) ─────────────────────────────────────
+
+  {
+    key: 'suspension.notice', channel: 'email',
+    name: 'Suspension Notice — Email',
+    subject: 'Important: notice regarding your Washermann account',
+    variables: ['reason', 'respondBy', 'noticeId'],
+    body: 'We are writing to notify you of an issue that may lead to your account being suspended: {{reason}}. You have until {{respondBy}} to respond or remedy this before any action is taken. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>We are writing to notify you of an issue that may lead to your account being suspended.</p>
+      <div class="info-row"><span>Issue</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Respond by</span><span>{{respondBy}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">Please respond or remedy the issue before the date above. Contact support to respond.</p>
+    `),
+  },
+  {
+    key: 'suspension.notice', channel: 'sms',
+    name: 'Suspension Notice — SMS',
+    variables: ['respondBy'],
+    body: 'Washermann: an issue may lead to your account being suspended. Please respond or remedy by {{respondBy}}. Check the app for details.',
+  },
+  {
+    key: 'suspension.notice', channel: 'push',
+    name: 'Suspension Notice — Push',
+    subject: 'Account notice',
+    variables: [],
+    body: 'There is an issue with your account that needs your attention. Tap to respond.',
+  },
+  {
+    key: 'suspension.notice', channel: 'in_app',
+    name: 'Suspension Notice — In-App',
+    subject: 'Account notice',
+    variables: ['reason', 'respondBy'],
+    body: 'An issue may lead to suspension: {{reason}}. Respond or remedy by {{respondBy}}.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'email',
+    name: 'Suspension Enforced — Email',
+    subject: 'Your Washermann account has been suspended',
+    variables: ['reason', 'noticeId'],
+    body: 'Your account has been suspended: {{reason}}. If you believe this is a mistake, you may request an internal review. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Your account has been suspended.</p>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If you believe this is a mistake, you may request an internal review from the app.</p>
+    `),
+  },
+  {
+    key: 'suspension.enforced', channel: 'sms',
+    name: 'Suspension Enforced — SMS',
+    variables: [],
+    body: 'Washermann: your account has been suspended. You may request an internal review in the app.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'push',
+    name: 'Suspension Enforced — Push',
+    subject: 'Account suspended',
+    variables: [],
+    body: 'Your account has been suspended. Tap for details and to request a review.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'in_app',
+    name: 'Suspension Enforced — In-App',
+    subject: 'Account suspended',
+    variables: ['reason'],
+    body: 'Your account has been suspended: {{reason}}. You may request an internal review.',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'email',
+    name: 'Suspension Overturned — Email',
+    subject: 'Your Washermann account has been reinstated',
+    variables: ['noticeId'],
+    body: 'Good news — following review, the suspension on your account has been overturned and your account is reinstated. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Good news — following review, the suspension on your account has been overturned and your account is reinstated.</p>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+    `),
+  },
+  {
+    key: 'suspension.reinstated', channel: 'sms',
+    name: 'Suspension Overturned — SMS',
+    variables: [],
+    body: 'Washermann: your suspension has been overturned and your account is reinstated.',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'push',
+    name: 'Suspension Overturned — Push',
+    subject: 'Account reinstated',
+    variables: [],
+    body: 'Your account has been reinstated. Welcome back!',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'in_app',
+    name: 'Suspension Overturned — In-App',
+    subject: 'Account reinstated',
+    variables: [],
+    body: 'Following review, your suspension has been overturned and your account is reinstated.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'email',
+    name: 'Suspension Upheld — Email',
+    subject: 'Outcome of your account review',
+    variables: ['noticeId'],
+    body: 'Following your review request, the suspension on your account has been upheld. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Following your review request, the suspension on your account has been upheld.</p>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+    `),
+  },
+  {
+    key: 'suspension.upheld', channel: 'sms',
+    name: 'Suspension Upheld — SMS',
+    variables: [],
+    body: 'Washermann: following review, the suspension on your account has been upheld.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'push',
+    name: 'Suspension Upheld — Push',
+    subject: 'Review outcome',
+    variables: [],
+    body: 'Your account review is complete. Tap for the outcome.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'in_app',
+    name: 'Suspension Upheld — In-App',
+    subject: 'Review outcome',
+    variables: [],
+    body: 'Following your review request, the suspension on your account has been upheld.',
+  },
+
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {

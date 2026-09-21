@@ -43,6 +43,7 @@ export class PlatformConfigService {
       deductionResponseDays: 5,
       rewardClawbackDays: 60,
       abandonmentDays: 30,
+      suspensionNoticeDays: 7,
       assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
@@ -72,6 +73,7 @@ export class PlatformConfigService {
     if (dto.deductionResponseDays      != null) config.deductionResponseDays      = dto.deductionResponseDays;
     if (dto.rewardClawbackDays         != null) config.rewardClawbackDays         = dto.rewardClawbackDays;
     if (dto.abandonmentDays            != null) config.abandonmentDays            = dto.abandonmentDays;
+    if (dto.suspensionNoticeDays       != null) config.suspensionNoticeDays       = dto.suspensionNoticeDays;
     if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
     if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
     config.updatedBy = adminId;

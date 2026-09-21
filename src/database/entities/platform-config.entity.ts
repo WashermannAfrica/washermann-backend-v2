@@ -186,6 +186,10 @@ export class PlatformConfig {
   @Column({ name: 'abandonment_days', type: 'int', default: 30 })
   abandonmentDays: number;
 
+  @ApiProperty({ description: 'Business days a vendor/rep has to respond/remedy after a suspension notice before it is enforced; also the internal-review window', example: 7 })
+  @Column({ name: 'suspension_notice_days', type: 'int', default: 7 })
+  suspensionNoticeDays: number;
+
   @ApiProperty({
     description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
   })

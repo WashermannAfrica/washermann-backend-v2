@@ -76,6 +76,13 @@ export class UpdatePlatformConfigDto {
   @Max(365)
   abandonmentDays?: number;
 
+  @ApiPropertyOptional({ description: 'Business days to respond after a suspension notice / internal-review window', example: 7, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  suspensionNoticeDays?: number;
+
   @ApiPropertyOptional({ description: 'VAT percentage (0 = disabled)', example: 7.5, minimum: 0, maximum: 30 })
   @IsOptional()
   @IsNumber()
