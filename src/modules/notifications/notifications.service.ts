@@ -1357,4 +1357,62 @@ export class NotificationsService {
       ]);
     }, this.logger, 'payout.released.vendor');
   }
+
+  /** Fire when a claim deduction is raised against a vendor (with response window). */
+  async notifyVendorDeductionNotice(params: {
+    vendorId:    string;
+    amountWp:    number;
+    reason:      string;
+    respondBy:   Date;
+    deductionId: string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      amountWP:    params.amountWp,
+      reason:      params.reason,
+      respondBy:   params.respondBy.toISOString().slice(0, 10),
+      deductionId: params.deductionId,
+    };
+    const meta = { deductionId: params.deductionId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('deduction.notice.vendor', user.email, vars),
+        user.phone && this.sendSms('deduction.notice.vendor', user.phone, vars),
+        this.sendPushToUser('deduction.notice.vendor', user.id, vars, { deductionId: params.deductionId }),
+        this.sendInApp('deduction.notice.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'deduction.notice.vendor');
+  }
+
+  /** Fire when a deduction is applied (vendor debited). */
+  async notifyVendorDeductionApplied(params: {
+    vendorId:    string;
+    amountWp:    number;
+    reason:      string;
+    deductionId: string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      amountWP:    params.amountWp,
+      reason:      params.reason,
+      deductionId: params.deductionId,
+    };
+    const meta = { deductionId: params.deductionId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('deduction.applied.vendor', user.email, vars),
+        user.phone && this.sendSms('deduction.applied.vendor', user.phone, vars),
+        this.sendPushToUser('deduction.applied.vendor', user.id, vars, { deductionId: params.deductionId }),
+        this.sendInApp('deduction.applied.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'deduction.applied.vendor');
+  }
 }

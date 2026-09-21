@@ -5,9 +5,11 @@ import { VendorDocument } from '../../database/entities/vendor-document.entity';
 import { VendorPricing } from '../../database/entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
+import { EarningsDeduction } from '../../database/entities/earnings-deduction.entity';
 import { User } from '../../database/entities/user.entity';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { VendorsController } from './vendors.controller';
+import { DeductionsController } from './deductions.controller';
 import { VendorsService } from './vendors.service';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
@@ -21,6 +23,7 @@ import { AreasModule } from '../areas/areas.module';
       VendorPricing,
       VendorEarningsWallet,
       VendorLedgerEntry,
+      EarningsDeduction,
       User,
       ConversionRate,
     ]),
@@ -28,7 +31,7 @@ import { AreasModule } from '../areas/areas.module';
     PlatformConfigModule,
     AreasModule,
   ],
-  controllers: [VendorsController],
+  controllers: [VendorsController, DeductionsController],
   providers: [VendorsService],
   exports: [VendorsService],
 })

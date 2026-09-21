@@ -63,4 +63,7 @@ export enum LedgerSource {
 
   /** Manual admin debit from vendor wallet */
   ADMIN_VENDOR_DEBIT   = 'admin_vendor_debit',
+
+  /** Substantiated garment/claim charge deducted from vendor earnings (WS4 1.11) */
+  CLAIM_DEDUCTION      = 'claim_deduction',
 }

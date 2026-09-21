@@ -6,6 +6,7 @@ import { TasksService } from './tasks.service';
 import { OrdersModule } from '../orders/orders.module';
 import { AssignmentModule } from '../assignment/assignment.module';
 import { PayoutsModule } from '../payouts/payouts.module';
+import { VendorsModule } from '../vendors/vendors.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PayoutsModule } from '../payouts/payouts.module';
     OrdersModule,
     AssignmentModule,
     PayoutsModule,
+    VendorsModule,
   ],
   providers: [TasksService],
 })

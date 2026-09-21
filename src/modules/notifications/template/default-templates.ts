@@ -953,6 +953,86 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'The hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
   },
 
+  // ── Vendor: Earnings deduction (notice + applied) ─────────────────────────────
+
+  {
+    key: 'deduction.notice.vendor', channel: 'email',
+    name: 'Deduction Notice — Vendor Email',
+    subject: 'Notice of a proposed deduction from your earnings',
+    variables: ['vendorName', 'amountWP', 'reason', 'respondBy', 'deductionId'],
+    body: 'Hi {{vendorName}}, we are proposing to deduct {{amountWP}} WP from your earnings for a substantiated claim: {{reason}}. You have until {{respondBy}} to respond before it is applied. Reference: {{deductionId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>We are proposing to deduct the following from your earnings for a substantiated claim. You may respond before it is applied.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">{{amountWP}} WP</div>
+        <div class="highlight-label">Proposed deduction</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Respond by</span><span>{{respondBy}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{deductionId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If we do not hear from you by the date above, the deduction will be applied. Contact support to respond.</p>
+    `),
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'sms',
+    name: 'Deduction Notice — Vendor SMS',
+    variables: ['amountWP', 'respondBy'],
+    body: 'Washermann: a deduction of {{amountWP}} WP from your earnings is proposed for a claim. Respond by {{respondBy}} before it applies.',
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'push',
+    name: 'Deduction Notice — Vendor Push',
+    subject: 'Proposed earnings deduction',
+    variables: ['amountWP'],
+    body: 'A {{amountWP}} WP deduction is proposed on your earnings. Tap to review and respond.',
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'in_app',
+    name: 'Deduction Notice — Vendor In-App',
+    subject: 'Proposed earnings deduction',
+    variables: ['amountWP', 'reason', 'respondBy'],
+    body: 'A deduction of {{amountWP}} WP is proposed for: {{reason}}. Respond by {{respondBy}} before it applies.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'email',
+    name: 'Deduction Applied — Vendor Email',
+    subject: 'A deduction was applied to your earnings',
+    variables: ['vendorName', 'amountWP', 'reason', 'deductionId'],
+    body: 'Hi {{vendorName}}, a deduction of {{amountWP}} WP has been applied to your earnings for: {{reason}}. Reference: {{deductionId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The following deduction has been applied to your earnings.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">{{amountWP}} WP</div>
+        <div class="highlight-label">Deducted</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{deductionId}}</span></div>
+    `),
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'sms',
+    name: 'Deduction Applied — Vendor SMS',
+    variables: ['amountWP'],
+    body: 'Washermann: a deduction of {{amountWP}} WP has been applied to your earnings for a claim.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'push',
+    name: 'Deduction Applied — Vendor Push',
+    subject: 'Earnings deduction applied',
+    variables: ['amountWP'],
+    body: 'A {{amountWP}} WP deduction has been applied to your earnings. Tap for details.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'in_app',
+    name: 'Deduction Applied — Vendor In-App',
+    subject: 'Earnings deduction applied',
+    variables: ['amountWP', 'reason'],
+    body: 'A deduction of {{amountWP}} WP has been applied to your earnings for: {{reason}}.',
+  },
+
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {

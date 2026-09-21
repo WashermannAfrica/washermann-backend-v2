@@ -8,6 +8,7 @@ import { OrderStatus } from '../../common/enums/order-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { AssignmentService } from '../assignment/assignment.service';
 import { PayoutsService } from '../payouts/payouts.service';
+import { VendorsService } from '../vendors/vendors.service';
 
 @Injectable()
 export class TasksService {
@@ -23,6 +24,7 @@ export class TasksService {
     private ordersService: OrdersService,
     private assignmentService: AssignmentService,
     private payoutsService: PayoutsService,
+    private vendorsService: VendorsService,
   ) {}
 
   // ─── Payout withholding auto-release (WS4 1.10) ────────────────────────────────
@@ -37,6 +39,18 @@ export class TasksService {
       if (n > 0) this.logger.log(`Payout holds: auto-released ${n} expired hold(s)`);
     } catch (err) {
       this.logger.error(`Payout hold auto-release failed — ${(err as Error).message}`);
+    }
+  }
+
+  // ─── Earnings-deduction auto-apply (WS4 1.11) ──────────────────────────────────
+  /** Runs daily. Applies deductions whose vendor response window has lapsed. */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async applyDueDeductions() {
+    try {
+      const n = await this.vendorsService.applyDueDeductions();
+      if (n > 0) this.logger.log(`Deductions: applied ${n} due deduction(s)`);
+    } catch (err) {
+      this.logger.error(`Deduction auto-apply failed — ${(err as Error).message}`);
     }
   }
 

@@ -29,6 +29,7 @@ import { VendorDocument } from './entities/vendor-document.entity';
 import { VendorPricing } from './entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from './entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from './entities/vendor-ledger-entry.entity';
+import { EarningsDeduction } from './entities/earnings-deduction.entity';
 import { Rep } from './entities/rep.entity';
 import { RepPseudoWallet } from './entities/rep-pseudo-wallet.entity';
 import { RepPseudoLedgerEntry } from './entities/rep-pseudo-ledger-entry.entity';
@@ -100,7 +101,7 @@ import { PolicyAcceptance } from './entities/policy-acceptance.entity';
             // Phase 6
             Area, AreaLocation, CoverageGap,
             BlogPost,
-            Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry,
+            Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry, EarningsDeduction,
             Rep, RepPseudoWallet, RepPseudoLedgerEntry,
             PlatformPriceList, PlatformConfig, RepBonusTier,
             PayoutRequest, RatingEvent,
