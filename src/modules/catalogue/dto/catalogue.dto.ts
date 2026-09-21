@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
-  IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min, MaxLength,
+  IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min, MaxLength,
 } from 'class-validator';
 
 // ─── Category ─────────────────────────────────────────────────────────────────
@@ -82,6 +82,10 @@ export class CreateItemDto {
   @ApiPropertyOptional()
   @IsOptional() @IsInt() @Min(0)
   sortOrder?: number;
+
+  @ApiPropertyOptional({ description: 'Base/floor price (₦) — paid when a vendor has not priced this item' })
+  @IsOptional() @IsNumber() @Min(0)
+  floorPriceNgn?: number;
 }
 
 export class UpdateItemDto extends PartialType(CreateItemDto) {

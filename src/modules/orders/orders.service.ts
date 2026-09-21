@@ -600,7 +600,8 @@ export class OrdersService {
 
     // Resolve the log into structured, priced lines. Each line is priced against
     // the ORDER'S vendor: their own approved price if they have one for the item,
-    // otherwise the system median (P50) with the gap recorded.
+    // otherwise the system average, floored at the item's admin base price, with
+    // the gap recorded.
     const { lines, totalNaira, totalWP, unpriced } = await this.resolveAndPriceGarmentLog(
       order.vendorId!,
       dto,
@@ -633,7 +634,7 @@ export class OrdersService {
     const itemCount = lines.reduce((s, l) => s + l.count, 0);
     const unpricedNames = unpriced.map((u) => u.name);
     const historyNote = unpriced.length
-      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (mean) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
+      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (floored at the item's base price) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
       : `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}).`;
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -962,8 +963,11 @@ export class OrdersService {
         let unit = vendorPriceByItem.get(entry.itemId);
         const pricedByVendor = unit != null && unit > 0;
         if (!pricedByVendor) {
-          // Vendor hasn't priced it → pay the system arithmetic mean; flag the gap.
-          unit = (await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId)) ?? 0;
+          // Vendor hasn't priced it → pay the system arithmetic mean, floored at the
+          // item's admin base price so a completed order never earns ₦0. Flag the gap.
+          const mean = await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId);
+          const floor = cat.floorPriceNgn ?? 0;
+          unit = Math.max(mean ?? 0, floor);
           unpriced.push({ itemId: entry.itemId, name: cat.name });
         }
         totalNaira += (unit ?? 0) * entry.count;

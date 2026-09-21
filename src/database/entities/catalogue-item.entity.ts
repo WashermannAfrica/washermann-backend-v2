@@ -53,6 +53,10 @@ export class CatalogueItem extends BaseEntity {
   @Column({ name: 'price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
   priceNgn: number | null;
 
+  @ApiProperty({ nullable: true, description: 'Admin-set base/floor price in Naira — paid when a vendor has not priced this item (so a completed order never earns ₦0)' })
+  @Column({ name: 'floor_price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  floorPriceNgn: number | null;
+
   @ApiProperty({ nullable: true, description: 'Cached platform price in WashPoints' })
   @Column({ name: 'price_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
   priceWp: number | null;
