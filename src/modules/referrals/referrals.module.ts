@@ -6,9 +6,13 @@ import { RewardRule } from '../../database/entities/reward-rule.entity';
 import { User } from '../../database/entities/user.entity';
 import { ReferralsController } from './referrals.controller';
 import { ReferralsService } from './referrals.service';
+import { PlatformConfigModule } from '../platform-config/platform-config.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ReferralCode, Referral, RewardRule, User])],
+  imports: [
+    TypeOrmModule.forFeature([ReferralCode, Referral, RewardRule, User]),
+    PlatformConfigModule,
+  ],
   controllers: [ReferralsController],
   providers: [ReferralsService],
   exports: [ReferralsService],
