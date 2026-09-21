@@ -15,6 +15,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
+import { UpdateVendorLocationDto } from './dto/update-location.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
 import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
@@ -93,6 +94,16 @@ export class VendorsController {
   ) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
     return this.vendorsService.update(vendor.id, dto);
+  }
+
+  @Patch('me/location')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Update own shop coordinates (from Google Places on the client)' })
+  updateMyLocation(
+    @Body() dto: UpdateVendorLocationDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.vendorsService.updateMyLocation(req.user.sub, dto.latitude, dto.longitude);
   }
 
   @Get('me/pricing')

@@ -85,6 +85,19 @@ export class Vendor extends BaseEntity {
   @Column({ name: 'logo_url', type: 'varchar', length: 2000, nullable: true })
   logoUrl: string | null;
 
+  // ─── Shop location (for distance-based transport) ──────────────────────────────
+  @ApiProperty({ nullable: true, description: 'Vendor shop latitude' })
+  @Column({ name: 'latitude', type: 'float', nullable: true })
+  latitude: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Vendor shop longitude' })
+  @Column({ name: 'longitude', type: 'float', nullable: true })
+  longitude: number | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'location_updated_at', type: 'timestamp with time zone', nullable: true })
+  locationUpdatedAt: Date | null;
+
   @ApiProperty({ nullable: true })
   @Column({ name: 'verified_at', type: 'timestamp with time zone', nullable: true })
   verifiedAt: Date | null;

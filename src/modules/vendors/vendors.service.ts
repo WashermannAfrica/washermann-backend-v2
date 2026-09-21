@@ -244,7 +244,22 @@ export class VendorsService {
       }
       vendor.isAvailable = dto.isAvailable;
     }
+    if (dto.latitude != null && dto.longitude != null) {
+      vendor.latitude = dto.latitude;
+      vendor.longitude = dto.longitude;
+      vendor.locationUpdatedAt = new Date();
+    }
 
+    return this.vendorRepository.save(vendor);
+  }
+
+  /** Vendor sets their own shop coordinates (from Google Places on the client). */
+  async updateMyLocation(userId: string, latitude: number, longitude: number) {
+    const vendor = await this.vendorRepository.findOne({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    vendor.latitude = latitude;
+    vendor.longitude = longitude;
+    vendor.locationUpdatedAt = new Date();
     return this.vendorRepository.save(vendor);
   }
 

@@ -4,6 +4,8 @@ import {
   IsArray,
   IsUUID,
   IsBoolean,
+  IsLatitude,
+  IsLongitude,
   MaxLength,
   ArrayMaxSize,
 } from 'class-validator';
@@ -33,4 +35,14 @@ export class UpdateVendorDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @ApiPropertyOptional({ description: 'Shop latitude (admin backfill)' })
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: 'Shop longitude (admin backfill)' })
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
 }
