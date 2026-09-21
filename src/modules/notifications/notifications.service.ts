@@ -1467,4 +1467,36 @@ export class NotificationsService {
       ]);
     }, this.logger, key);
   }
+
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+
+  async notifyCustomerUncollected(customerId: string, params: { orderRef: string; orderId: string }) {
+    const user = await this.getUser(customerId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { orderRef: params.orderRef };
+    const meta = { orderId: params.orderId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('order.uncollected.customer', user.email, vars),
+        user.phone && this.sendSms('order.uncollected.customer', user.phone, vars),
+        this.sendPushToUser('order.uncollected.customer', user.id, vars, { orderId: params.orderId }),
+        this.sendInApp('order.uncollected.customer', user.id, vars, 'order', meta),
+      ]);
+    }, this.logger, 'order.uncollected.customer');
+  }
+
+  async notifyCustomerOrderAbandoned(customerId: string, params: { orderRef: string; orderId: string }) {
+    const user = await this.getUser(customerId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { orderRef: params.orderRef };
+    const meta = { orderId: params.orderId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('order.abandoned.customer', user.email, vars),
+        user.phone && this.sendSms('order.abandoned.customer', user.phone, vars),
+        this.sendPushToUser('order.abandoned.customer', user.id, vars, { orderId: params.orderId }),
+        this.sendInApp('order.abandoned.customer', user.id, vars, 'order', meta),
+      ]);
+    }, this.logger, 'order.abandoned.customer');
+  }
 }

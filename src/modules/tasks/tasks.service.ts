@@ -54,6 +54,18 @@ export class TasksService {
     }
   }
 
+  // ─── Uncollected-garment sweep (WS4 1.6) ───────────────────────────────────────
+  /** Runs daily. Sends follow-up uncollected notices and abandons long-uncollected orders. */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async sweepUncollectedOrders() {
+    try {
+      const { notices, abandoned } = await this.ordersService.sweepUncollected();
+      if (notices || abandoned) this.logger.log(`Uncollected sweep: ${notices} notice(s), ${abandoned} abandoned`);
+    } catch (err) {
+      this.logger.error(`Uncollected sweep failed — ${(err as Error).message}`);
+    }
+  }
+
   // ─── Escrow auto-release ──────────────────────────────────────────────────────
   /**
    * Runs every 15 minutes.

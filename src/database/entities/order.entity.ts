@@ -302,6 +302,35 @@ export class Order extends BaseEntity {
   @Column({ name: 'auto_complete_at', type: 'timestamp with time zone', nullable: true })
   autoCompleteAt: Date | null;
 
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+  @ApiProperty({ description: 'Number of failed delivery attempts' })
+  @Column({ name: 'delivery_attempts', type: 'int', default: 0 })
+  deliveryAttempts: number;
+
+  @ApiProperty({ description: 'How many uncollected notices have been sent' })
+  @Column({ name: 'uncollected_notice_count', type: 'int', default: 0 })
+  uncollectedNoticeCount: number;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'first_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  firstUncollectedNoticeAt: Date | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'last_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  lastUncollectedNoticeAt: Date | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'abandoned_at', type: 'timestamp with time zone', nullable: true })
+  abandonedAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Disposal outcome for abandoned garments (store_at_cost | donated | sold | disposed)' })
+  @Column({ name: 'disposal_method', type: 'varchar', length: 20, nullable: true })
+  disposalMethod: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Disposal notes incl. proceeds handling' })
+  @Column({ name: 'disposal_note', type: 'varchar', length: 1000, nullable: true })
+  disposalNote: string | null;
+
   @ApiProperty({ nullable: true, description: 'Whether customer has submitted a rating' })
   @Column({ name: 'rated_at', type: 'timestamp with time zone', nullable: true })
   ratedAt: Date | null;

@@ -61,8 +61,10 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.IN_PROGRESS]:         [OrderStatus.READY_FOR_DELIVERY],
   [OrderStatus.READY_FOR_DELIVERY]:  [OrderStatus.REP_COLLECTED],
   [OrderStatus.REP_COLLECTED]:       [OrderStatus.OUT_FOR_DELIVERY],
-  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED],
+  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED, OrderStatus.DELIVERY_FAILED],
+  [OrderStatus.DELIVERY_FAILED]:     [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.ABANDONED],
   [OrderStatus.DELIVERED]:           [OrderStatus.COMPLETED],
+  [OrderStatus.ABANDONED]:           [],
   [OrderStatus.COMPLETED]:           [],
   [OrderStatus.DISPUTED]:            [],
   [OrderStatus.CANCELLED]:           [],
@@ -497,6 +499,10 @@ export class OrdersService {
       order.cancelledAt = new Date();
     }
 
+    if (toStatus === OrderStatus.ABANDONED) {
+      order.abandonedAt = new Date();
+    }
+
     await this.orderRepository.save(order);
 
     await this.statusHistoryRepository.save(
@@ -579,6 +585,87 @@ export class OrdersService {
     const order = await this.findOne(orderId);
     await this.assertVendorAssigned(order, vendorUserId);
     return this.transition(orderId, toStatus, vendorUserId, 'vendor');
+  }
+
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+
+  /** Rep records a failed delivery attempt → DELIVERY_FAILED + first uncollected notice. */
+  async recordFailedDelivery(orderId: string, repUserId: string, note?: string) {
+    const order = await this.findOne(orderId);
+    await this.assertRepAssigned(order, repUserId);
+    if (order.status !== OrderStatus.OUT_FOR_DELIVERY && order.status !== OrderStatus.DELIVERY_FAILED) {
+      throw new BadRequestException('Delivery can only be marked failed while out for delivery');
+    }
+    await this.transition(orderId, OrderStatus.DELIVERY_FAILED, repUserId, 'rep', note ?? 'Delivery attempt failed — customer unavailable');
+
+    const fresh = await this.findOne(orderId);
+    fresh.deliveryAttempts += 1;
+    const now = new Date();
+    if (!fresh.firstUncollectedNoticeAt) {
+      fresh.firstUncollectedNoticeAt = now;
+      fresh.uncollectedNoticeCount = 1;
+    }
+    fresh.lastUncollectedNoticeAt = now;
+    await this.orderRepository.save(fresh);
+
+    this.notificationsService.notifyCustomerUncollected(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+    return fresh;
+  }
+
+  /**
+   * Cron helper (WS4 1.6). For orders stuck in DELIVERY_FAILED: send a 2nd notice
+   * after a gap, then — once ≥2 notices have gone out and `abandonmentDays` have
+   * elapsed since the first — treat the garments as abandoned (bailee duty met).
+   */
+  async sweepUncollected(): Promise<{ notices: number; abandoned: number }> {
+    const config = await this.platformConfigService.getConfig();
+    const abandonmentDays = config.abandonmentDays ?? 30;
+    const gapDays = Math.max(1, Math.ceil(abandonmentDays / 2));
+    const now = Date.now();
+    const DAY = 86_400_000;
+
+    const failed = await this.orderRepository.find({ where: { status: OrderStatus.DELIVERY_FAILED } });
+    let notices = 0;
+    let abandoned = 0;
+
+    for (const o of failed) {
+      const first = o.firstUncollectedNoticeAt?.getTime() ?? now;
+      const last = o.lastUncollectedNoticeAt?.getTime() ?? first;
+      const daysSinceFirst = (now - first) / DAY;
+      const daysSinceLast = (now - last) / DAY;
+
+      if (o.uncollectedNoticeCount < 2 && daysSinceLast >= gapDays) {
+        o.uncollectedNoticeCount += 1;
+        o.lastUncollectedNoticeAt = new Date();
+        await this.orderRepository.save(o);
+        this.notificationsService.notifyCustomerUncollected(o.customerId, { orderRef: o.reference, orderId: o.id });
+        notices++;
+      } else if (o.uncollectedNoticeCount >= 2 && daysSinceFirst >= abandonmentDays) {
+        try {
+          await this.transition(o.id, OrderStatus.ABANDONED, null, 'system', 'Garments uncollected after notices — treated as abandoned');
+          const fresh = await this.findOne(o.id);
+          fresh.disposalMethod = 'pending';
+          await this.orderRepository.save(fresh);
+          this.notificationsService.notifyCustomerOrderAbandoned(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+          abandoned++;
+        } catch {
+          // leave for the next sweep / manual handling
+        }
+      }
+    }
+    return { notices, abandoned };
+  }
+
+  /** Admin records the disposal outcome of an abandoned order's garments. */
+  async recordDisposal(orderId: string, adminId: string, method: string, note?: string) {
+    const order = await this.findOne(orderId);
+    if (order.status !== OrderStatus.ABANDONED) {
+      throw new BadRequestException('Only abandoned orders can record a disposal outcome');
+    }
+    order.disposalMethod = method;
+    order.disposalNote = (note ?? '').slice(0, 1000) || null;
+    await this.orderRepository.save(order);
+    return order;
   }
 
   // ─── Rep logs garment count at pickup ────────────────────────────────────────

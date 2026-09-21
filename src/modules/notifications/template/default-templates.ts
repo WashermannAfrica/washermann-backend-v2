@@ -1167,6 +1167,71 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'Following your review request, the suspension on your account has been upheld.',
   },
 
+  // ── Customer: uncollected / abandoned garments ────────────────────────────────
+
+  {
+    key: 'order.uncollected.customer', channel: 'email',
+    name: 'Uncollected Garments — Customer Email',
+    subject: 'Action needed: your laundry is ready but not yet collected — {{orderRef}}',
+    variables: ['orderRef'],
+    body: 'We tried to deliver your order {{orderRef}} but could not complete it. Please arrange to collect or re-schedule delivery. If garments remain uncollected after repeated notices, they may be treated as abandoned.',
+    htmlBody: buildEmailHtml(`
+      <p>We tried to deliver your order <strong>{{orderRef}}</strong> but could not complete it.</p>
+      <p>Please arrange to collect your garments or re-schedule delivery. If they remain uncollected after repeated notices, they may be treated as abandoned in line with our Garment Liability & Care Terms.</p>
+    `),
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'sms',
+    name: 'Uncollected Garments — Customer SMS',
+    variables: ['orderRef'],
+    body: 'Washermann: we could not deliver order {{orderRef}}. Please arrange collection/redelivery soon to avoid your garments being treated as abandoned.',
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'push',
+    name: 'Uncollected Garments — Customer Push',
+    subject: 'Delivery unsuccessful',
+    variables: ['orderRef'],
+    body: 'We couldn’t deliver {{orderRef}}. Tap to arrange collection or redelivery.',
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'in_app',
+    name: 'Uncollected Garments — Customer In-App',
+    subject: 'Delivery unsuccessful',
+    variables: ['orderRef'],
+    body: 'We couldn’t deliver {{orderRef}}. Please arrange collection or redelivery to avoid abandonment.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'email',
+    name: 'Abandoned Garments — Customer Email',
+    subject: 'Your order {{orderRef}} has been treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Despite repeated notices, order {{orderRef}} remained uncollected and has now been treated as abandoned under our Garment Liability & Care Terms. Contact support if you believe this is in error.',
+    htmlBody: buildEmailHtml(`
+      <p>Despite repeated notices, order <strong>{{orderRef}}</strong> remained uncollected and has now been treated as abandoned under our Garment Liability &amp; Care Terms.</p>
+      <p>If you believe this is in error, please contact support as soon as possible.</p>
+    `),
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'sms',
+    name: 'Abandoned Garments — Customer SMS',
+    variables: ['orderRef'],
+    body: 'Washermann: order {{orderRef}} remained uncollected after notices and has been treated as abandoned. Contact support if this is in error.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'push',
+    name: 'Abandoned Garments — Customer Push',
+    subject: 'Order treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Order {{orderRef}} was uncollected and has been treated as abandoned. Tap for details.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'in_app',
+    name: 'Abandoned Garments — Customer In-App',
+    subject: 'Order treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Order {{orderRef}} remained uncollected after notices and has been treated as abandoned.',
+  },
+
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {
