@@ -9,8 +9,10 @@ import { PricingService } from './pricing.service';
 import { ItemPricingService } from './item-pricing.service';
 
 export interface ItemSelection {
-  itemId: string;
-  qty:    number;
+  itemId:    string;
+  qty:       number;
+  /** Handling flag — the item is to be dry-cleaned (only valid on eligible items). */
+  dryClean?: boolean;
 }
 
 export interface QuoteLine {
@@ -87,6 +89,11 @@ export class OrderQuoteService {
         throw new BadRequestException(`Item not available for ordering: ${item.name}`);
       }
       if (!(sel.qty > 0)) throw new BadRequestException(`Invalid quantity for ${item.name}`);
+      // Dry-cleaning is only offered on eligible items (its cost is already in their
+      // price — no surcharge). Reject the flag on ineligible items.
+      if (sel.dryClean && !item.dryCleanEligible) {
+        throw new BadRequestException(`"${item.name}" is not eligible for dry cleaning`);
+      }
 
       // Charged price (before ironing): platform P70 in automatic mode; the chosen
       // vendor's own price (or the item floor) + charge stack in choose mode.
