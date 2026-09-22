@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdatePlatformConfigDto {
@@ -82,6 +82,30 @@ export class UpdatePlatformConfigDto {
   @Min(0)
   @Max(60)
   suspensionNoticeDays?: number;
+
+  @ApiPropertyOptional({ description: 'Transport base fare (WP)', example: 100, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportBaseFareWp?: number;
+
+  @ApiPropertyOptional({ description: 'Transport cost per km (WP), applied to round-trip distance', example: 20, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  transportPerKmWp?: number;
+
+  @ApiPropertyOptional({ description: 'Minimum transport fee (WP)', example: 0, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportMinWp?: number;
+
+  @ApiPropertyOptional({ description: 'Maximum transport fee (WP); 0 = no cap', example: 0, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportMaxWp?: number;
+
+  @ApiPropertyOptional({ enum: ['average', 'p75'] })
+  @IsOptional() @IsIn(['average', 'p75'])
+  transportEstimateBasis?: 'average' | 'p75';
+
+  @ApiPropertyOptional({ enum: ['haversine', 'google'] })
+  @IsOptional() @IsIn(['haversine', 'google'])
+  transportDistanceProvider?: 'haversine' | 'google';
 
   @ApiPropertyOptional({ description: 'VAT percentage (0 = disabled)', example: 7.5, minimum: 0, maximum: 30 })
   @IsOptional()

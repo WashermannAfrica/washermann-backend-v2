@@ -44,6 +44,12 @@ export class PlatformConfigService {
       rewardClawbackDays: 60,
       abandonmentDays: 30,
       suspensionNoticeDays: 7,
+      transportBaseFareWp: 0,
+      transportPerKmWp: 0,
+      transportMinWp: 0,
+      transportMaxWp: 0,
+      transportEstimateBasis: 'average',
+      transportDistanceProvider: 'haversine',
       assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
@@ -74,6 +80,12 @@ export class PlatformConfigService {
     if (dto.rewardClawbackDays         != null) config.rewardClawbackDays         = dto.rewardClawbackDays;
     if (dto.abandonmentDays            != null) config.abandonmentDays            = dto.abandonmentDays;
     if (dto.suspensionNoticeDays       != null) config.suspensionNoticeDays       = dto.suspensionNoticeDays;
+    if (dto.transportBaseFareWp        != null) config.transportBaseFareWp        = dto.transportBaseFareWp;
+    if (dto.transportPerKmWp           != null) config.transportPerKmWp           = dto.transportPerKmWp;
+    if (dto.transportMinWp             != null) config.transportMinWp             = dto.transportMinWp;
+    if (dto.transportMaxWp             != null) config.transportMaxWp             = dto.transportMaxWp;
+    if (dto.transportEstimateBasis     != null) config.transportEstimateBasis     = dto.transportEstimateBasis;
+    if (dto.transportDistanceProvider  != null) config.transportDistanceProvider  = dto.transportDistanceProvider;
     if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
     if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
     config.updatedBy = adminId;

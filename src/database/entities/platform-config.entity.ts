@@ -190,6 +190,31 @@ export class PlatformConfig {
   @Column({ name: 'suspension_notice_days', type: 'int', default: 7 })
   suspensionNoticeDays: number;
 
+  // ─── Distance-based transport pricing ──────────────────────────────────────────
+  @ApiProperty({ description: 'Fixed transport base fare in WP (added to the per-km amount)', example: 100 })
+  @Column({ name: 'transport_base_fare_wp', type: 'int', default: 0 })
+  transportBaseFareWp: number;
+
+  @ApiProperty({ description: 'Transport cost per km in WP (applied to the round-trip distance)', example: 20 })
+  @Column({ name: 'transport_per_km_wp', type: 'decimal', precision: 12, scale: 4, default: 0, transformer: DecimalTransformer })
+  transportPerKmWp: number;
+
+  @ApiProperty({ description: 'Minimum transport fee in WP', example: 0 })
+  @Column({ name: 'transport_min_wp', type: 'int', default: 0 })
+  transportMinWp: number;
+
+  @ApiProperty({ description: 'Maximum transport fee in WP (0 = no cap)', example: 0 })
+  @Column({ name: 'transport_max_wp', type: 'int', default: 0 })
+  transportMaxWp: number;
+
+  @ApiProperty({ description: 'Which statistic to use for the checkout estimate over area vendors', enum: ['average', 'p75'], example: 'average' })
+  @Column({ name: 'transport_estimate_basis', type: 'varchar', length: 12, default: 'average' })
+  transportEstimateBasis: 'average' | 'p75';
+
+  @ApiProperty({ description: 'Distance provider', enum: ['haversine', 'google'], example: 'haversine' })
+  @Column({ name: 'transport_distance_provider', type: 'varchar', length: 12, default: 'haversine' })
+  transportDistanceProvider: 'haversine' | 'google';
+
   @ApiProperty({
     description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
   })
