@@ -43,6 +43,9 @@ export enum LedgerSource {
   /** WP credited to rep pseudo-wallet on order completion */
   REP_EARNING          = 'rep_earning',
 
+  /** WP credited to rep for logistics/transport (customer↔vendor round trip) */
+  REP_TRANSPORT        = 'rep_transport',
+
   /** Platform revenue credited on order completion */
   PLATFORM_REVENUE     = 'platform_revenue',
 

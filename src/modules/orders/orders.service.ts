@@ -33,6 +33,7 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { TransportService } from '../transport/transport.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
 import { AreasService } from '../areas/areas.service';
@@ -112,6 +113,7 @@ export class OrdersService {
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
+    private transportService: TransportService,
     private notificationsService: NotificationsService,
     private usersService: UsersService,
     private areasService: AreasService,
@@ -205,6 +207,19 @@ export class OrdersService {
     const quote = await this.quoteForFlow(dto);
     const cfg = await this.platformConfigService.getConfig();
 
+    // Distance-based transport estimate — coordinates are mandatory (no flat fallback).
+    if (dto.pickupLatitude == null || dto.pickupLongitude == null) {
+      throw new BadRequestException('Pickup coordinates are required to price transport');
+    }
+    const transportEst = await this.transportService.estimateForArea(
+      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
+      areaId,
+    );
+    const transportWp = transportEst.transportWp;
+    const transportNgn = quote.conversionRateSnapshot > 0
+      ? Math.round(transportWp / quote.conversionRateSnapshot)
+      : 0;
+
     // Shape the quote into the pricing snapshot the rest of the method consumes.
     const pricing = {
       lineItems: quote.lines.map((l) => ({
@@ -217,9 +232,9 @@ export class OrdersService {
       subtotalWP:             quote.totalWp,
       serviceChargeWP:        0,
       vatWP:                  0,
-      transportWP:            0,
-      totalWP:                quote.totalWp,
-      nairaEquivalent:        quote.totalNgn,
+      transportWP:            transportWp,
+      totalWP:                quote.totalWp + transportWp,
+      nairaEquivalent:        quote.totalNgn + transportNgn,
       conversionRateId:       quote.conversionRateId,
       conversionRateSnapshot: quote.conversionRateSnapshot,
       calculatedAt:           quote.calculatedAt,
@@ -306,6 +321,7 @@ export class OrdersService {
         vendorShareNairaSnapshot: null,
         repShareWP:              null,
         platformShareWP:         null,
+        transportEstimateWp:     transportWp,
         garmentLog:              null,
         status:                  OrderStatus.PAID,
         autoCompleteAt:          null,
@@ -657,6 +673,9 @@ export class OrdersService {
     await this.transition(orderId, OrderStatus.ABANDONED, triggeredBy, 'system',
       'Garments uncollected after notices — abandoned; escrow settled to vendor/rep (service rendered)');
     const fresh = await this.findOne(orderId);
+    // Credit rep transport (logistics) on top of their service share.
+    const repTransport = await this.computeAndCreditRepTransport(fresh);
+    fresh.platformShareWP = fresh.totalWP - (fresh.vendorShareWP ?? 0) - (fresh.repShareWP ?? 0) - repTransport;
     fresh.disposalMethod = 'pending';
     await this.orderRepository.save(fresh);
     return fresh;
@@ -831,6 +850,49 @@ export class OrdersService {
 
   // ─── Complete order & release escrow ─────────────────────────────────────────
 
+  /**
+   * Compute the actual transport (customer↔assigned-vendor round trip) and credit
+   * the rep `min(actual, estimate)` as logistics comp — on top of their service
+   * share. Mutates the order's transport fields (caller saves). If the vendor has
+   * no coordinates, the actual falls back to the estimate so the rep isn't
+   * shortchanged and the platform never pays more than the customer was charged.
+   */
+  private async computeAndCreditRepTransport(order: Order): Promise<number> {
+    const estimate = order.transportEstimateWp ?? 0;
+    if (!order.repId || estimate <= 0) {
+      order.actualTransportWp = order.actualTransportWp ?? estimate;
+      order.repTransportWp = 0;
+      return 0;
+    }
+
+    let actual = estimate; // fallback when vendor coords are missing
+    if (order.vendorId && order.pickupLatitude != null && order.pickupLongitude != null) {
+      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+      if (vendor?.latitude != null && vendor?.longitude != null) {
+        const res = await this.transportService.actualForVendor(
+          { lat: order.pickupLatitude, lng: order.pickupLongitude },
+          { lat: vendor.latitude, lng: vendor.longitude },
+        );
+        actual = res.transportWp;
+      }
+    }
+
+    const repTransport = this.transportService.repTransportWp(actual, estimate);
+    order.actualTransportWp = actual;
+    order.repTransportWp = repTransport;
+
+    if (repTransport > 0) {
+      await this.repsService.creditWallet(
+        order.repId,
+        repTransport,
+        LedgerSource.REP_TRANSPORT,
+        `Transport (logistics) — order ${order.reference}`,
+        { orderId: order.id, reference: order.reference },
+      );
+    }
+    return repTransport;
+  }
+
   async completeOrder(orderId: string, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
     const order = await this.findOne(orderId);
 
@@ -871,6 +933,10 @@ export class OrdersService {
           { orderId, reference: order.reference },
         );
       }
+
+      // Credit rep transport (logistics) on top of their service share, and record it.
+      const repTransport = await this.computeAndCreditRepTransport(order);
+      order.platformShareWP = order.totalWP - (order.vendorShareWP ?? 0) - (order.repShareWP ?? 0) - repTransport;
 
       // Mark completed
       order.status      = OrderStatus.COMPLETED;

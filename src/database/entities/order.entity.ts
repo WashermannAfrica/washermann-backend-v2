@@ -260,6 +260,19 @@ export class Order extends BaseEntity {
   })
   platformShareWP: number | null;
 
+  // ─── Transport (distance-based) ────────────────────────────────────────────────
+  @ApiProperty({ nullable: true, description: 'Transport charged to the customer (estimate over area vendors), in WP' })
+  @Column({ name: 'transport_estimate_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  transportEstimateWp: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Actual transport for the assigned vendor (customer↔vendor round trip), in WP' })
+  @Column({ name: 'actual_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  actualTransportWp: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Transport credited to the rep = min(actual, estimate), in WP' })
+  @Column({ name: 'rep_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  repTransportWp: number | null;
+
   @ApiProperty({ nullable: true, description: 'Garment count logged by rep at pickup' })
   @Column({ name: 'garment_log', type: 'jsonb', nullable: true })
   garmentLog: GarmentLog | null;

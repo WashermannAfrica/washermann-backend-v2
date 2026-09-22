@@ -19,6 +19,7 @@ import { UsersModule } from '../users/users.module';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { AreasModule } from '../areas/areas.module';
 import { AssignmentModule } from '../assignment/assignment.module';
+import { TransportModule } from '../transport/transport.module';
 import { CatalogueModule } from '../catalogue/catalogue.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { CatalogueModule } from '../catalogue/catalogue.module';
     ReferralsModule,
     AreasModule,
     CatalogueModule,
+    TransportModule,
     forwardRef(() => AssignmentModule),
   ],
   controllers: [OrdersController],
