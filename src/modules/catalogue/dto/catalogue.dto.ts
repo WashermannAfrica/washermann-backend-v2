@@ -79,6 +79,10 @@ export class CreateItemDto {
   @IsOptional() @IsBoolean()
   isEveryday?: boolean;
 
+  @ApiPropertyOptional({ description: 'Dry cleaning is applicable to this item' })
+  @IsOptional() @IsBoolean()
+  dryCleanEligible?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional() @IsInt() @Min(0)
   sortOrder?: number;

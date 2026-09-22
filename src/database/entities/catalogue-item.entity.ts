@@ -41,6 +41,10 @@ export class CatalogueItem extends BaseEntity {
   @Column({ name: 'is_everyday', type: 'boolean', default: false })
   isEveryday: boolean;
 
+  @ApiProperty({ description: 'Dry cleaning is applicable to this item (the app offers a dry-clean option; the customer may still override)' })
+  @Column({ name: 'dry_clean_eligible', type: 'boolean', default: false })
+  dryCleanEligible: boolean;
+
   @ApiProperty({ description: 'Admin enable/disable' })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

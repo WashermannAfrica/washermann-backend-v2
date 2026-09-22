@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -27,6 +28,22 @@ export class OrderItemSelectionDto {
   @IsInt()
   @Min(1)
   qty: number;
+
+  @ApiPropertyOptional({ description: 'Customer requests dry cleaning for this item' })
+  @IsOptional()
+  @IsBoolean()
+  dryClean?: boolean;
+
+  @ApiPropertyOptional({ description: 'Customer flags this item for stain removal' })
+  @IsOptional()
+  @IsBoolean()
+  stainRemoval?: boolean;
+
+  @ApiPropertyOptional({ description: 'Handling note for this specific item' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  instructions?: string;
 }
 
 /**

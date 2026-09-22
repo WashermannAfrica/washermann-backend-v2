@@ -21,6 +21,12 @@ export type OrderFlow = 'wash_fold' | 'wash_iron' | 'bundle';
 export interface OrderItemSelection {
   itemId: string;
   qty:    number;
+  /** Customer asked for this item to be dry-cleaned */
+  dryClean?: boolean;
+  /** Customer flagged this item for stain removal */
+  stainRemoval?: boolean;
+  /** Free-text handling note for this specific item */
+  instructions?: string;
 }
 
 /** A single special item in the order */
