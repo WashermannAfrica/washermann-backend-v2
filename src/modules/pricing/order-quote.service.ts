@@ -6,6 +6,7 @@ import { Bag } from '../../database/entities/bag.entity';
 import { Bundle } from '../../database/entities/bundle.entity';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { PricingService } from './pricing.service';
+import { ItemPricingService } from './item-pricing.service';
 
 export interface ItemSelection {
   itemId: string;
@@ -16,8 +17,14 @@ export interface QuoteLine {
   itemId:     string;
   name:       string;
   qty:        number;
-  unitNgn:    number;   // item price incl. ironing where applicable
+  unitNgn:    number;   // item price incl. charges + ironing where applicable
   subtotalNgn: number;
+  /**
+   * Choose-Washerman only: the chosen vendor's own raw price for this item (₦,
+   * before charges and ironing). Lets the checkout show "vendor price + our charges".
+   * Undefined for automatic allocation (platform P70 pricing).
+   */
+  vendorBaseNgn?: number;
 }
 
 export interface Quote {
@@ -46,9 +53,16 @@ export class OrderQuoteService {
     @InjectRepository(Bundle) private bundles: Repository<Bundle>,
     private platformConfigService: PlatformConfigService,
     private pricingService: PricingService,
+    private itemPricingService: ItemPricingService,
   ) {}
 
-  async quoteWashIron(selections: ItemSelection[]): Promise<Quote> {
+  /**
+   * @param vendorId  When set (Choose-Washerman), each item is priced from THAT
+   *   vendor's own approved rate + the charge stack, falling back to the item's
+   *   floor price when the vendor hasn't priced it. When omitted (automatic
+   *   allocation), the cached platform P70 price (`item.priceNgn`) is used.
+   */
+  async quoteWashIron(selections: ItemSelection[], vendorId?: string): Promise<Quote> {
     if (!selections?.length) throw new BadRequestException('No items selected');
 
     const [config, rate] = await Promise.all([
@@ -61,20 +75,43 @@ export class OrderQuoteService {
     const items = await this.items.find({ where: { id: In(ids) } });
     const byId = new Map(items.map((i) => [i.id, i]));
 
+    // Choose-Washerman: resolve the chosen vendor's own item prices once.
+    const vendorPrices = vendorId ? await this.itemPricingService.getVendorItemPrices(vendorId) : null;
+
     const lines: QuoteLine[] = [];
     let totalNgn = 0;
     for (const sel of selections) {
       const item = byId.get(sel.itemId);
       if (!item) throw new NotFoundException(`Item not found: ${sel.itemId}`);
-      if (!item.isActive || !item.isAvailable || item.priceNgn == null) {
+      if (!item.isActive) {
         throw new BadRequestException(`Item not available for ordering: ${item.name}`);
       }
       if (!(sel.qty > 0)) throw new BadRequestException(`Invalid quantity for ${item.name}`);
 
-      const unitNgn = Math.round(item.priceNgn * ironingMult * 100) / 100;
+      // Charged price (before ironing): platform P70 in automatic mode; the chosen
+      // vendor's own price (or the item floor) + charge stack in choose mode.
+      let chargedNgn: number;
+      let vendorBaseNgn: number | undefined;
+      if (vendorPrices) {
+        const vendorBase = vendorPrices.get(item.id);
+        const fallback = item.floorPriceNgn ?? null;
+        const chosen = vendorBase ?? fallback;
+        if (chosen == null || !(chosen > 0)) {
+          throw new BadRequestException(`This washerman hasn't priced "${item.name}" yet`);
+        }
+        vendorBaseNgn = chosen;
+        chargedNgn = this.itemPricingService.chargeBase(chosen, config.chargeStack);
+      } else {
+        if (!item.isAvailable || item.priceNgn == null) {
+          throw new BadRequestException(`Item not available for ordering: ${item.name}`);
+        }
+        chargedNgn = item.priceNgn;
+      }
+
+      const unitNgn = Math.round(chargedNgn * ironingMult * 100) / 100;
       const subtotalNgn = Math.round(unitNgn * sel.qty * 100) / 100;
       totalNgn += subtotalNgn;
-      lines.push({ itemId: item.id, name: item.name, qty: sel.qty, unitNgn, subtotalNgn });
+      lines.push({ itemId: item.id, name: item.name, qty: sel.qty, unitNgn, subtotalNgn, vendorBaseNgn });
     }
 
     totalNgn = Math.round(totalNgn * 100) / 100;

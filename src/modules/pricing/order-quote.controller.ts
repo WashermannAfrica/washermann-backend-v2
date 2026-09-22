@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, ParseUUIDPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { ArrayNotEmpty, IsArray, IsInt, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsInt, IsOptional, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { OrderQuoteService } from './order-quote.service';
 
@@ -33,6 +34,16 @@ class WashIronQuoteDto {
   @ValidateNested({ each: true })
   @Type(() => ItemSelectionDto)
   selections: ItemSelectionDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "Chosen vendor's profile UUID (Choose-Washerman). When set, each item is priced from that " +
+      "vendor's own rate + charges (falling back to the item floor); omit for our platform prices.",
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  vendorId?: string;
 }
 
 @ApiTags('Pricing')
@@ -56,7 +67,7 @@ export class OrderQuoteController {
       'Errors: 404 unknown item; 400 item inactive/unpriced ("Item not available for ordering"); 400 empty selection.',
   })
   washIron(@Body() dto: WashIronQuoteDto) {
-    return this.service.quoteWashIron(dto.selections);
+    return this.service.quoteWashIron(dto.selections, dto.vendorId);
   }
 
   @Get('bag/:bagId')

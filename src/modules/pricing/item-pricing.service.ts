@@ -242,6 +242,38 @@ export class ItemPricingService {
     };
   }
 
+  // ─── Vendor-specific pricing (Choose-Washerman) ─────────────────────────────
+
+  /**
+   * A specific vendor's latest approved item prices, keyed by catalogue itemId (₦ base,
+   * before charges). Used to price a "choose your washerman" order from that vendor's
+   * own rates instead of the P70 across the area.
+   */
+  async getVendorItemPrices(vendorId: string): Promise<Map<string, number>> {
+    const rows = await this.vendorPricing
+      .createQueryBuilder('vp')
+      .where('vp.vendorId = :vendorId', { vendorId })
+      .andWhere('vp.approvedAt IS NOT NULL')
+      .andWhere('vp.effectiveFrom <= NOW()')
+      .orderBy('vp.effectiveFrom', 'DESC')
+      .getMany();
+
+    const latest = rows[0];
+    const map = new Map<string, number>();
+    if (!latest) return map;
+    for (const item of latest.items) {
+      if (!isPriceItemLive(item)) continue;
+      if (!item.itemId || !(item.priceNaira > 0)) continue;
+      map.set(item.itemId, item.priceNaira);
+    }
+    return map;
+  }
+
+  /** Apply the configured charge stack to a base price (₦), rounded to kobo. Public wrapper. */
+  chargeBase(base: number, stack: ChargeStackItem[] | null): number {
+    return Math.round(this.applyCharges(base, stack) * 100) / 100;
+  }
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
   private applyCharges(base: number, stack: ChargeStackItem[] | null): number {
     let total = base;

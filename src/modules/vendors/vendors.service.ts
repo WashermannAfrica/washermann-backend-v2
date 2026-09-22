@@ -70,6 +70,61 @@ export class VendorsService {
     private areasService: AreasService,
   ) {}
 
+  // ─── Customer: browse washermen for a pickup point (Choose-Washerman) ─────────
+
+  /**
+   * Verified, available washermen serving the area a pickup point resolves to,
+   * with a straight-line distance (km) for display/sorting. The authoritative
+   * transport fee is recomputed for the chosen vendor at order placement.
+   */
+  async browseForCustomer(lat: number, lng: number) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new BadRequestException('Valid lat and lng are required');
+    }
+    const resolution = await this.areasService.resolveAreaForPoint(lat, lng, {
+      source: 'resolve_check',
+      logGap: false,
+    });
+    if (!resolution) {
+      return { data: { areaId: null, covered: false, vendors: [] } };
+    }
+    const areaId = resolution.area.id;
+
+    const vendors = await this.vendorRepository
+      .createQueryBuilder('v')
+      .where('v.area_ids @> :area', { area: JSON.stringify([areaId]) })
+      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
+      .andWhere('v.is_available = true')
+      .getMany();
+
+    const withDistance = vendors.map((v) => {
+      const distanceKm =
+        v.latitude != null && v.longitude != null
+          ? Math.round(haversineKm(lat, lng, v.latitude, v.longitude) * 10) / 10
+          : null;
+      return {
+        id:           v.id,
+        businessName: v.businessName,
+        logoUrl:      v.logoUrl,
+        rating:       Number(v.rating) || 0,
+        ratingCount:  v.ratingCount,
+        distanceKm,
+        located:      distanceKm != null,
+      };
+    });
+
+    // Located vendors first (nearest → farthest), then the rest by rating.
+    withDistance.sort((a, b) => {
+      if (a.located && b.located) return a.distanceKm! - b.distanceKm!;
+      if (a.located !== b.located) return a.located ? -1 : 1;
+      return b.rating - a.rating;
+    });
+
+    return {
+      data: { areaId, covered: resolution.covered, vendors: withDistance },
+    };
+  }
+
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
 
   async adminCreate(dto: RegisterVendorDto, adminId: string) {
@@ -969,4 +1024,16 @@ export class VendorsService {
     const { passwordHash, ...safe } = user as any;
     return safe;
   }
+}
+
+/** Great-circle distance in km between two lat/lng points. */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

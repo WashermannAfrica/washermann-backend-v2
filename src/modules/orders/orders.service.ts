@@ -18,6 +18,7 @@ import { OrderStatusHistory } from '../../database/entities/order-status-history
 import { RatingEvent } from '../../database/entities/rating-event.entity';
 import { Rep } from '../../database/entities/rep.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
+import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
@@ -130,12 +131,13 @@ export class OrdersService {
   // ─── Place order ─────────────────────────────────────────────────────────────
 
   /** Resolve the authoritative quote for the order's flow, validating its required fields. */
-  private async quoteForFlow(dto: PlaceOrderDto): Promise<Quote> {
+  private async quoteForFlow(dto: PlaceOrderDto, chosenVendorId?: string): Promise<Quote> {
     if (dto.flow === 'wash_iron') {
       if (!dto.selections?.length) {
         throw new BadRequestException('selections are required for a wash_iron order');
       }
-      return this.orderQuoteService.quoteWashIron(dto.selections);
+      // Choose-Washerman prices wash_iron items from the chosen vendor's own rates.
+      return this.orderQuoteService.quoteWashIron(dto.selections, chosenVendorId);
     }
     if (dto.flow === 'wash_fold') {
       if (!dto.bagId) throw new BadRequestException('bagId is required for a wash_fold order');
@@ -205,18 +207,40 @@ export class OrdersService {
       );
     }
 
-    // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
-    const quote = await this.quoteForFlow(dto);
+    // 0b. Choose-Washerman — validate the chosen vendor serves this area and is verified.
+    const allocationMode: 'automatic' | 'choose' = dto.allocationMode ?? 'automatic';
+    let chosenVendor: Vendor | null = null;
+    if (allocationMode === 'choose') {
+      if (!dto.vendorId) throw new BadRequestException('vendorId is required when choosing a washerman');
+      chosenVendor = await this.vendorRepository.findOne({ where: { id: dto.vendorId } });
+      if (!chosenVendor) throw new BadRequestException('Chosen washerman not found');
+      if (chosenVendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
+        throw new BadRequestException('Chosen washerman is not available');
+      }
+      if (!Array.isArray(chosenVendor.areaIds) || !chosenVendor.areaIds.includes(areaId)) {
+        throw new BadRequestException('Chosen washerman does not serve this area');
+      }
+    }
+
+    // 1. Authoritative quote for the chosen flow (server-side; client prices ignored).
+    //    In choose mode, wash_iron items are priced from the chosen vendor's own rates.
+    const quote = await this.quoteForFlow(dto, chosenVendor?.id);
     const cfg = await this.platformConfigService.getConfig();
 
     // Distance-based transport estimate — coordinates are mandatory (no flat fallback).
     if (dto.pickupLatitude == null || dto.pickupLongitude == null) {
       throw new BadRequestException('Pickup coordinates are required to price transport');
     }
-    const transportEst = await this.transportService.estimateForArea(
-      { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
-      areaId,
-    );
+    const pickupCoord = { lat: dto.pickupLatitude, lng: dto.pickupLongitude };
+    // Choose mode with a located vendor → charge the exact round-trip to that vendor;
+    // otherwise estimate across the area's located vendors.
+    const transportEst =
+      chosenVendor?.latitude != null && chosenVendor?.longitude != null
+        ? await this.transportService.actualForVendor(pickupCoord, {
+            lat: chosenVendor.latitude,
+            lng: chosenVendor.longitude,
+          })
+        : await this.transportService.estimateForArea(pickupCoord, areaId);
     const transportWp = transportEst.transportWp;
     const transportNgn = quote.conversionRateSnapshot > 0
       ? Math.round(transportWp / quote.conversionRateSnapshot)
@@ -256,6 +280,8 @@ export class OrdersService {
         companyId:               dto.companyId ?? null,
         repId:                   null,
         vendorId:                null,
+        allocationMode,
+        chosenVendorId:          chosenVendor?.id ?? null,
         areaId,
         areaLocationId,
         coverageMatched,

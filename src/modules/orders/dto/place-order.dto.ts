@@ -78,6 +78,22 @@ export class PlaceOrderDto {
   bundleId?: string;
 
   @ApiPropertyOptional({
+    enum: ['automatic', 'choose'],
+    default: 'automatic',
+    description:
+      "Vendor selection mode. 'automatic' (default) — we allocate a vendor at our prices. " +
+      "'choose' — the customer picked a specific vendor (set `vendorId`) and pays that vendor's prices.",
+  })
+  @IsOptional()
+  @IsEnum(['automatic', 'choose'])
+  allocationMode?: 'automatic' | 'choose';
+
+  @ApiPropertyOptional({ description: "Chosen vendor's profile UUID — required when allocationMode is 'choose'" })
+  @IsOptional()
+  @IsUUID()
+  vendorId?: string;
+
+  @ApiPropertyOptional({
     description:
       'UUID of the pickup area. Optional — the area is DERIVED server-side from the ' +
       'pickup coordinates; this is only a fallback if geofencing cannot resolve a point.',

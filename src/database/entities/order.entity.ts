@@ -120,6 +120,20 @@ export class Order extends BaseEntity {
   @Column({ name: 'vendor_id', type: 'uuid', nullable: true })
   vendorId: string | null;
 
+  @ApiProperty({
+    enum: ['automatic', 'choose'],
+    default: 'automatic',
+    description:
+      "How the vendor is chosen: 'automatic' — platform allocates via broadcast at our prices; " +
+      "'choose' — customer picked a specific vendor (chosenVendorId) and paid that vendor's prices.",
+  })
+  @Column({ name: 'allocation_mode', type: 'varchar', length: 12, default: 'automatic' })
+  allocationMode: 'automatic' | 'choose';
+
+  @ApiProperty({ nullable: true, description: "The vendor the customer chose (choose mode). Pinned at VENDOR_ASSIGNED into vendorId." })
+  @Column({ name: 'chosen_vendor_id', type: 'uuid', nullable: true })
+  chosenVendorId: string | null;
+
   @ApiProperty()
   @Column({ name: 'area_id', type: 'uuid' })
   areaId: string;
