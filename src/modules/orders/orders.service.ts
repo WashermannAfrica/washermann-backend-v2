@@ -41,6 +41,7 @@ import { AreasService } from '../areas/areas.service';
 import { AssignmentService } from '../assignment/assignment.service';
 import { CatalogueService } from '../catalogue/catalogue.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 import type { GarmentLogLine } from '../../database/entities/order.entity';
 
 /**
@@ -126,6 +127,7 @@ export class OrdersService {
     private configService: ConfigService,
     private catalogueService: CatalogueService,
     private giftCardsService: GiftCardsService,
+    private receiptsService: ReceiptsService,
   ) {}
 
   // ─── Place order ─────────────────────────────────────────────────────────────
@@ -957,7 +959,7 @@ export class OrdersService {
       throw new BadRequestException('Earnings split not yet calculated — garment count must be logged first');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const completed = await this.dataSource.transaction(async (manager) => {
       // Release escrow
       const escrow = await this.escrowRepository.findOne({ where: { orderId } });
       if (escrow) {
@@ -1026,6 +1028,12 @@ export class OrdersService {
 
       return order;
     });
+
+    // Generate the four settlement receipts now that all splits are final
+    // (fire-and-forget — never fail completion over an image render).
+    this.receiptsService.generateForOrderSafe(completed.id);
+
+    return completed;
   }
 
   // ─── Draft expiry ─────────────────────────────────────────────────────────────

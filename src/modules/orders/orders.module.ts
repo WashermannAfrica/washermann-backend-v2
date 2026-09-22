@@ -27,6 +27,7 @@ import { AssignmentModule } from '../assignment/assignment.module';
 import { TransportModule } from '../transport/transport.module';
 import { CatalogueModule } from '../catalogue/catalogue.module';
 import { GiftCardsModule } from '../gift-cards/gift-cards.module';
+import { ReceiptsModule } from '../receipts/receipts.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { GiftCardsModule } from '../gift-cards/gift-cards.module';
     TransportModule,
     GiftCardsModule,
     VaultsModule,
+    ReceiptsModule,
     forwardRef(() => PaymentsModule),
     forwardRef(() => AssignmentModule),
   ],

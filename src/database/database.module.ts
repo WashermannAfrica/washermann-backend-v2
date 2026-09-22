@@ -42,6 +42,7 @@ import { RatingEvent } from './entities/rating-event.entity';
 import { Order } from './entities/order.entity';
 import { OrderEscrow } from './entities/order-escrow.entity';
 import { OrderFundingLink } from './entities/order-funding-link.entity';
+import { OrderReceipt } from './entities/order-receipt.entity';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
 import { InAppNotification } from './entities/in-app-notification.entity';
@@ -107,7 +108,7 @@ import { PolicyAcceptance } from './entities/policy-acceptance.entity';
             Rep, RepPseudoWallet, RepPseudoLedgerEntry,
             PlatformPriceList, PlatformConfig, RepBonusTier,
             PayoutRequest, RatingEvent,
-            Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast, OrderFundingLink,
+            Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast, OrderFundingLink, OrderReceipt,
             // Notifications
             InAppNotification, NotificationTemplate,
             // Packages

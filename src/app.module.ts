@@ -49,6 +49,7 @@ import { AssignmentModule } from './modules/assignment/assignment.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { BagsModule } from './modules/bags/bags.module';
@@ -111,6 +112,7 @@ import { SuspensionsModule } from './modules/suspensions/suspensions.module';
     PayoutsModule,
     TasksModule,
     UploadModule,
+    ReceiptsModule,
     MarketingModule,
     CatalogueModule,
     BagsModule,
