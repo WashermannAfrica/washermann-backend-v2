@@ -54,6 +54,18 @@ export class TasksService {
     }
   }
 
+  // ─── Draft-order expiry ────────────────────────────────────────────────────────
+  /** Runs hourly. Auto-cancels unpaid draft orders past the configured window. */
+  @Cron(CronExpression.EVERY_HOUR)
+  async expireStaleDrafts() {
+    try {
+      const n = await this.ordersService.expireStaleDrafts();
+      if (n > 0) this.logger.log(`Draft expiry: cancelled ${n} unpaid draft order(s)`);
+    } catch (err) {
+      this.logger.error(`Draft expiry failed — ${(err as Error).message}`);
+    }
+  }
+
   // ─── Uncollected-garment sweep (WS4 1.6) ───────────────────────────────────────
   /** Runs daily. Sends follow-up uncollected notices and abandons long-uncollected orders. */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)

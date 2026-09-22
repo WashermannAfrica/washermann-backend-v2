@@ -21,6 +21,7 @@ import { CompanyLedgerSource } from '../../database/entities/company-ledger-entr
 import { ConversionRateService } from './conversion-rate.service';
 import { VaultsService } from '../vaults/vaults.service';
 import { InitiateTopupDto } from './dto';
+import { OrderFundingService } from '../orders/order-funding.service';
 
 @Injectable()
 export class PaystackService {
@@ -37,9 +38,93 @@ export class PaystackService {
     private vaultsService: VaultsService,
     @Inject(forwardRef(() => CompanyWalletService))
     private companyWalletService: CompanyWalletService,
+    @Inject(forwardRef(() => OrderFundingService))
+    private orderFundingService: OrderFundingService,
     private conversionRateService: ConversionRateService,
     private configService: ConfigService,
   ) {}
+
+  // ─── Initiate order funding (per-order pay / sponsor link) ─────────────────────
+
+  /**
+   * Create a pending Paystack transaction that funds a specific order. The WP land
+   * in the ORDER OWNER's wallet on success (see settleFundedTransaction), so `userId`
+   * is always the customer — a sponsor's email is only for their Paystack receipt.
+   * Rate + amount are taken from the funding link's snapshot (frozen at link creation).
+   */
+  async initiateOrderFunding(params: {
+    orderId: string;
+    customerId: string;
+    fundingLinkId: string;
+    amountKobo: number;
+    conversionRateId: string | null;
+    conversionRateSnapshot: number | null;
+    vaultId: string | null;
+    payerEmail: string;
+    sponsorName?: string | null;
+  }): Promise<{ reference: string; authorizationUrl: string; accessCode: string }> {
+    const minKobo = this.configService.get<number>('paystack.minTopupKobo') ?? 10_000;
+    if (params.amountKobo < minKobo) {
+      throw new BadRequestException(`Minimum payment is ₦${minKobo / 100}.`);
+    }
+
+    const reference = `wmf_${uuidv4().replace(/-/g, '')}`;
+    const tx = this.txRepo.create({
+      userId:                 params.customerId,
+      reference,
+      amountKobo:             params.amountKobo,
+      currency:               'NGN',
+      conversionRateId:       params.conversionRateId,
+      conversionRateSnapshot: params.conversionRateSnapshot,
+      vaultId:                params.vaultId,
+      washPointsCredited:     null,
+      status:                 TransactionStatus.PENDING,
+      metadata: {
+        purpose:       'order_funding',
+        orderId:       params.orderId,
+        fundingLinkId: params.fundingLinkId,
+        sponsorName:   params.sponsorName ?? null,
+        initiatedAt:   new Date().toISOString(),
+      },
+    });
+    await this.txRepo.save(tx);
+
+    const { authorizationUrl, accessCode } = await this.paystackInitialize({
+      email:     params.payerEmail,
+      amount:    params.amountKobo,
+      reference,
+      currency:  'NGN',
+      metadata:  { purpose: 'order_funding', orderId: params.orderId, fundingLinkId: params.fundingLinkId },
+    });
+
+    this.logger.log(`Order funding initiated: ref=${reference} | order=${params.orderId} | ₦${params.amountKobo / 100}`);
+    return { reference, authorizationUrl, accessCode };
+  }
+
+  /**
+   * If a transaction funded an order, confirm the order now that WP have landed.
+   * Runs after the wallet credit, outside its DB transaction — a failure here leaves
+   * the customer holding the topped-up WP (never lost) and is logged for follow-up.
+   */
+  private async settleOrderFundingIfAny(tx: PaystackTransaction): Promise<void> {
+    const meta = tx.metadata;
+    if (!meta || meta.purpose !== 'order_funding') return;
+    const orderId = meta.orderId as string | undefined;
+    const fundingLinkId = meta.fundingLinkId as string | undefined;
+    if (!orderId) return;
+    try {
+      await this.orderFundingService.settleFundedTransaction(
+        fundingLinkId ?? null,
+        orderId,
+        tx.userId,
+        tx.reference,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Order-funding settlement failed for ref ${tx.reference} (order ${orderId}): ${(err as Error).message}`,
+      );
+    }
+  }
 
   // ─── Initiate user top-up ─────────────────────────────────────────────────────
 
@@ -346,6 +431,9 @@ export class PaystackService {
 
       await this.txRepo.update(tx.id, { washPointsCredited: washPoints });
 
+      // If this payment funds an order, confirm that order now.
+      await this.settleOrderFundingIfAny(tx);
+
       this.logger.log(
         `charge.success processed: ref=${reference} | ${washPoints} WP | user=${tx.userId} | company=${tx.companyId ?? 'n/a'} | vault=${tx.vaultId ?? 'n/a'}`,
       );
@@ -420,6 +508,9 @@ export class PaystackService {
     }
 
     await this.txRepo.update(tx.id, { washPointsCredited: washPoints });
+
+    // If this payment funds an order, confirm that order now.
+    await this.settleOrderFundingIfAny(tx);
   }
 
   // ─── Private: Paystack API calls ──────────────────────────────────────────────

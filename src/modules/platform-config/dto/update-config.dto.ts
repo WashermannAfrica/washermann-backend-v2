@@ -48,6 +48,13 @@ export class UpdatePlatformConfigDto {
   @Max(168)
   orderAutoCompleteHours?: number;
 
+  @ApiPropertyOptional({ description: 'Hours an unpaid draft order is kept before auto-cancel', example: 24, minimum: 1, maximum: 168 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  draftOrderExpiryHours?: number;
+
   @ApiPropertyOptional({ description: 'Business days a payout may be withheld before auto-release', example: 10, minimum: 0, maximum: 60 })
   @IsOptional()
   @IsInt()

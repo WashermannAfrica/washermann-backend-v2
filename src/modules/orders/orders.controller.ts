@@ -30,6 +30,12 @@ class CancelOrderDto {
   reason: string;
 }
 
+class ConfirmPaymentDto {
+  @ApiPropertyOptional({ description: 'Optional gift-card code to top up the wallet before charging' })
+  @IsOptional() @IsString() @MaxLength(64)
+  giftCardCode?: string;
+}
+
 class FailedDeliveryDto {
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(1000)
@@ -64,6 +70,18 @@ export class OrdersController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.ordersService.placeOrder(req.user.sub, dto);
+  }
+
+  // ─── Customer: confirm payment for a draft order ──────────────────────────────
+
+  @Post(':id/confirm-payment')
+  @ApiOperation({ summary: 'Confirm payment for a draft order — debits wallet, escrows, and starts assignment (customer)' })
+  confirmPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmPaymentDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.confirmPayment(id, req.user.sub, { giftCardCode: dto.giftCardCode });
   }
 
   // ─── Admin: list all orders ───────────────────────────────────────────────────

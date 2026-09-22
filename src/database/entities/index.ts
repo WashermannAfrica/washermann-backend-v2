@@ -11,3 +11,4 @@ export * from './conversion-rate.entity';
 export * from './wallet.entity';
 export * from './ledger-entry.entity';
 export * from './paystack-transaction.entity';
+export * from './order-funding-link.entity';

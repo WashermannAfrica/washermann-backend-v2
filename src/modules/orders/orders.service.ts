@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { Order } from '../../database/entities/order.entity';
@@ -39,6 +39,7 @@ import { UsersService } from '../users/users.service';
 import { AreasService } from '../areas/areas.service';
 import { AssignmentService } from '../assignment/assignment.service';
 import { CatalogueService } from '../catalogue/catalogue.service';
+import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import type { GarmentLogLine } from '../../database/entities/order.entity';
 
 /**
@@ -123,6 +124,7 @@ export class OrdersService {
     private dataSource: DataSource,
     private configService: ConfigService,
     private catalogueService: CatalogueService,
+    private giftCardsService: GiftCardsService,
   ) {}
 
   // ─── Place order ─────────────────────────────────────────────────────────────
@@ -242,52 +244,12 @@ export class OrdersService {
       charges:                this.decomposeCharges(quote.totalWp, dto.flow, cfg),
     };
 
-    // 2. Check wallet has enough WP
-    const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
-    if (!wallet) throw new NotFoundException('User wallet not found');
-    if (wallet.balance < pricing.totalWP) {
-      throw new BadRequestException(
-        `Insufficient WashPoints. Required: ${pricing.totalWP} WP, Available: ${wallet.balance} WP`,
-      );
-    }
-
-    // 3. Generate order reference
+    // 2. Generate order reference
     const ref = await this.generateReference();
 
+    // The order is created as a DRAFT (PENDING_PAYMENT). No wallet debit or escrow
+    // happens until the customer confirms payment — see confirmPayment().
     const result = await this.dataSource.transaction(async (manager) => {
-      // 4. Debit user wallet — also proportionally reduce fiatBalanceKobo (WACB method)
-      const balanceBefore     = wallet.balance;
-      const fiatBefore        = wallet.fiatBalanceKobo ?? 0;
-      const debitWP           = pricing.totalWP;
-      // Proportional fiat deduction: (debitWP / balanceBefore) × fiatBefore
-      const fiatDeductKobo    = balanceBefore > 0
-        ? Math.round((debitWP / balanceBefore) * fiatBefore)
-        : 0;
-      wallet.balance         -= debitWP;
-      wallet.fiatBalanceKobo  = Math.max(0, fiatBefore - fiatDeductKobo);
-      await manager.save(wallet);
-
-      // 5. Write ledger entry
-      const ledgerEntry = manager.create(LedgerEntry, {
-        walletId:                wallet.id,
-        userId:                  customerId,
-        type:                    'debit',
-        amount:                  pricing.totalWP,
-        balanceBefore,
-        balanceAfter:            wallet.balance,
-        source:                  LedgerSource.ORDER_DEBIT,
-        conversionRateId:        pricing.conversionRateId,
-        conversionRateSnapshot:  pricing.conversionRateSnapshot,
-        reference:               ref,
-        description:             `Order payment: ${ref}`,
-        metadata:                null,
-        vaultId:                 null,
-        fiatAmountKobo:          null,
-        fiatCurrency:            null,
-      });
-      await manager.save(ledgerEntry);
-
-      // 6. Create order
       const order = manager.create(Order, {
         reference:               ref,
         customerId,
@@ -323,53 +285,119 @@ export class OrdersService {
         platformShareWP:         null,
         transportEstimateWp:     transportWp,
         garmentLog:              null,
-        status:                  OrderStatus.PAID,
+        status:                  OrderStatus.PENDING_PAYMENT,
         autoCompleteAt:          null,
       });
       await manager.save(order);
 
-      // 7. Create escrow
-      const escrow = manager.create(OrderEscrow, {
-        orderId:           order.id,
-        wpAmount:          pricing.totalWP,
-        nairaEquivalent:   pricing.nairaEquivalent,
-        conversionRateId:  pricing.conversionRateId,
-        status:            'held',
-      });
-      await manager.save(escrow);
-
-      // 8. Write status history
+      // Status history: draft created, awaiting payment.
       await manager.save(
         manager.create(OrderStatusHistory, {
           orderId:         order.id,
           fromStatus:      null,
-          toStatus:        OrderStatus.PAID,
+          toStatus:        OrderStatus.PENDING_PAYMENT,
           triggeredBy:     customerId,
           triggeredByRole: 'customer',
-          note:            'Order placed and paid',
+          note:            'Order created — awaiting payment',
         }),
       );
-
-      // 9. Fire order-placed notifications (fire-and-forget)
-      this.notificationsService.notifyOrderPlaced({
-        customerId:        customerId,
-        orderRef:          ref,
-        totalWP:           pricing.totalWP,
-        nairaEquivalent:   pricing.nairaEquivalent,
-        pickupAddress:     dto.pickupAddress,
-        scheduledPickupAt: new Date(dto.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }),
-      });
 
       return { order, pricing };
     });
 
-    // Auto-start the rep broadcast the moment payment lands (fire-and-forget —
-    // never fail the order over it; the every-minute cron sweep is the safety net).
-    this.assignmentService
-      .startRepAssignment(result.order.id)
-      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${result.order.reference}: ${(err as Error).message}`));
-
     return result;
+  }
+
+  /**
+   * Confirm and pay for a draft order (PENDING_PAYMENT). Optionally redeems a gift
+   * card to top up the wallet first, then debits the wallet, places escrow, marks the
+   * order PAID and starts the rep broadcast. Idempotent: a PAID order returns as-is.
+   */
+  async confirmPayment(orderId: string, customerId: string, opts: { giftCardCode?: string } = {}) {
+    const order = await this.findOne(orderId);
+    if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
+    if (order.status === OrderStatus.PAID) return { order, alreadyPaid: true };
+    if (order.status !== OrderStatus.PENDING_PAYMENT) {
+      throw new BadRequestException('This order is no longer awaiting payment');
+    }
+
+    // Optional gift-card augmentation — credits the wallet before we charge it.
+    if (opts.giftCardCode) {
+      await this.giftCardsService.redeemGiftCard(opts.giftCardCode.trim(), customerId);
+    }
+
+    const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+    if (!wallet) throw new NotFoundException('User wallet not found');
+    if (wallet.balance < order.totalWP) {
+      throw new BadRequestException(
+        `Insufficient WashPoints. Required: ${order.totalWP} WP, Available: ${wallet.balance} WP`,
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // Debit wallet — proportionally reduce fiatBalanceKobo (WACB method).
+      const balanceBefore  = wallet.balance;
+      const fiatBefore     = wallet.fiatBalanceKobo ?? 0;
+      const fiatDeductKobo = balanceBefore > 0 ? Math.round((order.totalWP / balanceBefore) * fiatBefore) : 0;
+      wallet.balance        -= order.totalWP;
+      wallet.fiatBalanceKobo = Math.max(0, fiatBefore - fiatDeductKobo);
+      await manager.save(wallet);
+
+      await manager.save(manager.create(LedgerEntry, {
+        walletId:               wallet.id,
+        userId:                 customerId,
+        type:                   'debit',
+        amount:                 order.totalWP,
+        balanceBefore,
+        balanceAfter:           wallet.balance,
+        source:                 LedgerSource.ORDER_DEBIT,
+        conversionRateId:       order.conversionRateId,
+        conversionRateSnapshot: order.conversionRateSnapshot,
+        reference:              order.reference,
+        description:            `Order payment: ${order.reference}`,
+        metadata:               null,
+        vaultId:                null,
+        fiatAmountKobo:         null,
+        fiatCurrency:           null,
+      }));
+
+      // Escrow the funds.
+      await manager.save(manager.create(OrderEscrow, {
+        orderId:          order.id,
+        wpAmount:         order.totalWP,
+        nairaEquivalent:  order.nairaEquivalentSnapshot,
+        conversionRateId: order.conversionRateId,
+        status:           'held',
+      }));
+
+      order.status = OrderStatus.PAID;
+      await manager.save(order);
+
+      await manager.save(manager.create(OrderStatusHistory, {
+        orderId:         order.id,
+        fromStatus:      OrderStatus.PENDING_PAYMENT,
+        toStatus:        OrderStatus.PAID,
+        triggeredBy:     customerId,
+        triggeredByRole: 'customer',
+        note:            'Payment confirmed',
+      }));
+    });
+
+    this.notificationsService.notifyOrderPlaced({
+      customerId,
+      orderRef:          order.reference,
+      totalWP:           order.totalWP,
+      nairaEquivalent:   order.nairaEquivalentSnapshot ?? 0,
+      pickupAddress:     order.pickupAddress,
+      scheduledPickupAt: order.scheduledPickupAt ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }) : '',
+    });
+
+    // Auto-start the rep broadcast the moment payment lands (fire-and-forget).
+    this.assignmentService
+      .startRepAssignment(order.id)
+      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`));
+
+    return { order, alreadyPaid: false };
   }
 
   // ─── List orders (admin / customer) ──────────────────────────────────────────
@@ -974,6 +1002,43 @@ export class OrdersService {
     });
   }
 
+  // ─── Draft expiry ─────────────────────────────────────────────────────────────
+
+  /**
+   * Cancel draft orders (PENDING_PAYMENT) that have sat unpaid past the configured
+   * window (default 24h from creation). No wallet/escrow to unwind — a draft was
+   * never charged — so this just flips status and records history. Returns the count.
+   */
+  async expireStaleDrafts(): Promise<number> {
+    const cfg = await this.platformConfigService.getConfig();
+    const hours = cfg.draftOrderExpiryHours ?? 24;
+    const cutoff = new Date(Date.now() - hours * 3600_000);
+
+    const stale = await this.orderRepository.find({
+      where: { status: OrderStatus.PENDING_PAYMENT, createdAt: LessThan(cutoff) },
+    });
+    if (stale.length === 0) return 0;
+
+    for (const order of stale) {
+      await this.dataSource.transaction(async (manager) => {
+        order.status             = OrderStatus.CANCELLED;
+        order.cancelledAt        = new Date();
+        order.cancellationReason = 'Draft expired — payment not confirmed in time';
+        await manager.save(order);
+
+        await manager.save(manager.create(OrderStatusHistory, {
+          orderId:         order.id,
+          fromStatus:      OrderStatus.PENDING_PAYMENT,
+          toStatus:        OrderStatus.CANCELLED,
+          triggeredBy:     null,
+          triggeredByRole: 'system',
+          note:            'Draft expired — payment not confirmed in time',
+        }));
+      });
+    }
+    return stale.length;
+  }
+
   // ─── Cancel order ─────────────────────────────────────────────────────────────
 
   async cancelOrder(
@@ -991,41 +1056,47 @@ export class OrdersService {
       throw new BadRequestException('Order cannot be cancelled at this stage');
     }
 
+    // A draft (PENDING_PAYMENT) order was never debited — cancelling it must not
+    // refund anything. Only a paid order (funds held in escrow) gets refunded.
+    const wasPaid = order.status !== OrderStatus.PENDING_PAYMENT;
+
     return this.dataSource.transaction(async (manager) => {
-      // Refund user wallet
-      const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
-      if (wallet) {
-        const balanceBefore  = wallet.balance;
-        wallet.balance      += order.totalWP;
-        await manager.save(wallet);
+      if (wasPaid) {
+        // Refund user wallet
+        const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+        if (wallet) {
+          const balanceBefore  = wallet.balance;
+          wallet.balance      += order.totalWP;
+          await manager.save(wallet);
 
-        await manager.save(
-          manager.create(LedgerEntry, {
-            walletId:               wallet.id,
-            userId:                 customerId,
-            type:                   'credit',
-            amount:                 order.totalWP,
-            balanceBefore,
-            balanceAfter:           wallet.balance,
-            source:                 LedgerSource.CANCELLATION_REFUND,
-            conversionRateId:       null,
-            conversionRateSnapshot: null,
-            reference:              order.reference,
-            description:            `Refund for cancelled order: ${order.reference}`,
-            metadata:               null,
-            vaultId:                null,
-            fiatAmountKobo:         null,
-            fiatCurrency:           null,
-          }),
-        );
-      }
+          await manager.save(
+            manager.create(LedgerEntry, {
+              walletId:               wallet.id,
+              userId:                 customerId,
+              type:                   'credit',
+              amount:                 order.totalWP,
+              balanceBefore,
+              balanceAfter:           wallet.balance,
+              source:                 LedgerSource.CANCELLATION_REFUND,
+              conversionRateId:       null,
+              conversionRateSnapshot: null,
+              reference:              order.reference,
+              description:            `Refund for cancelled order: ${order.reference}`,
+              metadata:               null,
+              vaultId:                null,
+              fiatAmountKobo:         null,
+              fiatCurrency:           null,
+            }),
+          );
+        }
 
-      // Release escrow
-      const escrow = await this.escrowRepository.findOne({ where: { orderId } });
-      if (escrow) {
-        escrow.status = 'refunded';
-        escrow.releasedAt = new Date();
-        await manager.save(escrow);
+        // Release escrow
+        const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+        if (escrow) {
+          escrow.status = 'refunded';
+          escrow.releasedAt = new Date();
+          await manager.save(escrow);
+        }
       }
 
       // Mark cancelled

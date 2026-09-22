@@ -168,6 +168,17 @@ export class PlatformConfig {
   })
   orderTurnaroundHours: number;
 
+  @ApiProperty({
+    description: 'Hours an unpaid draft order (PENDING_PAYMENT) is kept before it is auto-cancelled',
+    example: 24,
+  })
+  @Column({
+    name: 'draft_order_expiry_hours',
+    type: 'int',
+    default: 24,
+  })
+  draftOrderExpiryHours: number;
+
   // ─── Compliance / due-process windows (WS4) ────────────────────────────────────
 
   @ApiProperty({ description: 'Business days a vendor/rep payout may be withheld for investigation before auto-release', example: 10 })

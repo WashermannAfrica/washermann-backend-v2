@@ -39,6 +39,7 @@ export class PlatformConfigService {
       bonusCyclePeriod: 'monthly',
       orderAutoCompleteHours: 24,
       orderTurnaroundHours: 48,
+      draftOrderExpiryHours: 24,
       payoutWithholdingDays: 10,
       deductionResponseDays: 5,
       rewardClawbackDays: 60,
@@ -75,6 +76,7 @@ export class PlatformConfigService {
     if (dto.lowRatingThreshold         != null) config.lowRatingThreshold         = dto.lowRatingThreshold;
     if (dto.bonusCyclePeriod           != null) config.bonusCyclePeriod           = dto.bonusCyclePeriod;
     if (dto.orderAutoCompleteHours     != null) config.orderAutoCompleteHours     = dto.orderAutoCompleteHours;
+    if (dto.draftOrderExpiryHours      != null) config.draftOrderExpiryHours      = dto.draftOrderExpiryHours;
     if (dto.payoutWithholdingDays      != null) config.payoutWithholdingDays      = dto.payoutWithholdingDays;
     if (dto.deductionResponseDays      != null) config.deductionResponseDays      = dto.deductionResponseDays;
     if (dto.rewardClawbackDays         != null) config.rewardClawbackDays         = dto.rewardClawbackDays;
