@@ -874,6 +874,364 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     body: 'Your ₦{{nairaAmount}} payout failed: {{failureReason}}. Your balance has been restored — you can request again.',
   },
 
+  // ── Vendor: Payout Withheld / Released (investigation window) ──────────────────
+
+  {
+    key: 'payout.held.vendor', channel: 'email',
+    name: 'Payout Withheld — Vendor Email',
+    subject: 'Payout on hold pending review — ₦{{nairaAmount}}',
+    variables: ['vendorName', 'nairaAmount', 'amountWP', 'reason', 'autoReleaseAt', 'payoutId'],
+    body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} ({{amountWP}} WP) is temporarily on hold while we review a matter: {{reason}}. If it is not substantiated, the payout is automatically released for processing by {{autoReleaseAt}}. Reference: {{payoutId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>Your payout is temporarily on hold while we review a matter.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{nairaAmount}}</div>
+        <div class="highlight-label">{{amountWP}} WP · On hold</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Auto-releases by</span><span>{{autoReleaseAt}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{payoutId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If the matter is not substantiated, the payout is released automatically for processing. Contact support if you have questions.</p>
+    `),
+  },
+  {
+    key: 'payout.held.vendor', channel: 'sms',
+    name: 'Payout Withheld — Vendor SMS',
+    variables: ['nairaAmount', 'autoReleaseAt'],
+    body: 'Washermann: your ₦{{nairaAmount}} payout is on hold pending review. It auto-releases by {{autoReleaseAt}} if not substantiated.',
+  },
+  {
+    key: 'payout.held.vendor', channel: 'push',
+    name: 'Payout Withheld — Vendor Push',
+    subject: 'Payout on hold',
+    variables: ['nairaAmount'],
+    body: 'Your ₦{{nairaAmount}} payout is on hold pending review. Tap for details.',
+  },
+  {
+    key: 'payout.held.vendor', channel: 'in_app',
+    name: 'Payout Withheld — Vendor In-App',
+    subject: 'Payout on hold',
+    variables: ['nairaAmount', 'reason', 'autoReleaseAt'],
+    body: 'Your ₦{{nairaAmount}} payout is on hold pending review: {{reason}}. It auto-releases by {{autoReleaseAt}} if not substantiated.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'email',
+    name: 'Payout Released — Vendor Email',
+    subject: 'Payout hold lifted — ₦{{nairaAmount}}',
+    variables: ['vendorName', 'nairaAmount', 'amountWP', 'payoutId'],
+    body: 'Hi {{vendorName}}, the hold on your payout of ₦{{nairaAmount}} ({{amountWP}} WP) has been lifted and it is back in the queue for processing. Reference: {{payoutId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The hold on your payout has been lifted and it is back in the queue for processing.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">₦{{nairaAmount}}</div>
+        <div class="highlight-label">{{amountWP}} WP · Released</div>
+      </div>
+      <div class="info-row"><span>Reference</span><span>{{payoutId}}</span></div>
+    `),
+  },
+  {
+    key: 'payout.released.vendor', channel: 'sms',
+    name: 'Payout Released — Vendor SMS',
+    variables: ['nairaAmount'],
+    body: 'Washermann: the hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'push',
+    name: 'Payout Released — Vendor Push',
+    subject: 'Payout hold lifted',
+    variables: ['nairaAmount'],
+    body: 'The hold on your ₦{{nairaAmount}} payout has been lifted. Tap for details.',
+  },
+  {
+    key: 'payout.released.vendor', channel: 'in_app',
+    name: 'Payout Released — Vendor In-App',
+    subject: 'Payout hold lifted',
+    variables: ['nairaAmount'],
+    body: 'The hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
+  },
+
+  // ── Vendor: Earnings deduction (notice + applied) ─────────────────────────────
+
+  {
+    key: 'deduction.notice.vendor', channel: 'email',
+    name: 'Deduction Notice — Vendor Email',
+    subject: 'Notice of a proposed deduction from your earnings',
+    variables: ['vendorName', 'amountWP', 'reason', 'respondBy', 'deductionId'],
+    body: 'Hi {{vendorName}}, we are proposing to deduct {{amountWP}} WP from your earnings for a substantiated claim: {{reason}}. You have until {{respondBy}} to respond before it is applied. Reference: {{deductionId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>We are proposing to deduct the following from your earnings for a substantiated claim. You may respond before it is applied.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">{{amountWP}} WP</div>
+        <div class="highlight-label">Proposed deduction</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Respond by</span><span>{{respondBy}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{deductionId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If we do not hear from you by the date above, the deduction will be applied. Contact support to respond.</p>
+    `),
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'sms',
+    name: 'Deduction Notice — Vendor SMS',
+    variables: ['amountWP', 'respondBy'],
+    body: 'Washermann: a deduction of {{amountWP}} WP from your earnings is proposed for a claim. Respond by {{respondBy}} before it applies.',
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'push',
+    name: 'Deduction Notice — Vendor Push',
+    subject: 'Proposed earnings deduction',
+    variables: ['amountWP'],
+    body: 'A {{amountWP}} WP deduction is proposed on your earnings. Tap to review and respond.',
+  },
+  {
+    key: 'deduction.notice.vendor', channel: 'in_app',
+    name: 'Deduction Notice — Vendor In-App',
+    subject: 'Proposed earnings deduction',
+    variables: ['amountWP', 'reason', 'respondBy'],
+    body: 'A deduction of {{amountWP}} WP is proposed for: {{reason}}. Respond by {{respondBy}} before it applies.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'email',
+    name: 'Deduction Applied — Vendor Email',
+    subject: 'A deduction was applied to your earnings',
+    variables: ['vendorName', 'amountWP', 'reason', 'deductionId'],
+    body: 'Hi {{vendorName}}, a deduction of {{amountWP}} WP has been applied to your earnings for: {{reason}}. Reference: {{deductionId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Hi <strong>{{vendorName}}</strong>,</p>
+      <p>The following deduction has been applied to your earnings.</p>
+      <div class="highlight-box">
+        <div class="highlight-value">{{amountWP}} WP</div>
+        <div class="highlight-label">Deducted</div>
+      </div>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{deductionId}}</span></div>
+    `),
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'sms',
+    name: 'Deduction Applied — Vendor SMS',
+    variables: ['amountWP'],
+    body: 'Washermann: a deduction of {{amountWP}} WP has been applied to your earnings for a claim.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'push',
+    name: 'Deduction Applied — Vendor Push',
+    subject: 'Earnings deduction applied',
+    variables: ['amountWP'],
+    body: 'A {{amountWP}} WP deduction has been applied to your earnings. Tap for details.',
+  },
+  {
+    key: 'deduction.applied.vendor', channel: 'in_app',
+    name: 'Deduction Applied — Vendor In-App',
+    subject: 'Earnings deduction applied',
+    variables: ['amountWP', 'reason'],
+    body: 'A deduction of {{amountWP}} WP has been applied to your earnings for: {{reason}}.',
+  },
+
+  // ── Suspension due-process (vendor / rep) ─────────────────────────────────────
+
+  {
+    key: 'suspension.notice', channel: 'email',
+    name: 'Suspension Notice — Email',
+    subject: 'Important: notice regarding your Washermann account',
+    variables: ['reason', 'respondBy', 'noticeId'],
+    body: 'We are writing to notify you of an issue that may lead to your account being suspended: {{reason}}. You have until {{respondBy}} to respond or remedy this before any action is taken. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>We are writing to notify you of an issue that may lead to your account being suspended.</p>
+      <div class="info-row"><span>Issue</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Respond by</span><span>{{respondBy}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">Please respond or remedy the issue before the date above. Contact support to respond.</p>
+    `),
+  },
+  {
+    key: 'suspension.notice', channel: 'sms',
+    name: 'Suspension Notice — SMS',
+    variables: ['respondBy'],
+    body: 'Washermann: an issue may lead to your account being suspended. Please respond or remedy by {{respondBy}}. Check the app for details.',
+  },
+  {
+    key: 'suspension.notice', channel: 'push',
+    name: 'Suspension Notice — Push',
+    subject: 'Account notice',
+    variables: [],
+    body: 'There is an issue with your account that needs your attention. Tap to respond.',
+  },
+  {
+    key: 'suspension.notice', channel: 'in_app',
+    name: 'Suspension Notice — In-App',
+    subject: 'Account notice',
+    variables: ['reason', 'respondBy'],
+    body: 'An issue may lead to suspension: {{reason}}. Respond or remedy by {{respondBy}}.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'email',
+    name: 'Suspension Enforced — Email',
+    subject: 'Your Washermann account has been suspended',
+    variables: ['reason', 'noticeId'],
+    body: 'Your account has been suspended: {{reason}}. If you believe this is a mistake, you may request an internal review. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Your account has been suspended.</p>
+      <div class="info-row"><span>Reason</span><span>{{reason}}</span></div>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+      <div class="divider"></div>
+      <p style="font-size:13px;color:#888;">If you believe this is a mistake, you may request an internal review from the app.</p>
+    `),
+  },
+  {
+    key: 'suspension.enforced', channel: 'sms',
+    name: 'Suspension Enforced — SMS',
+    variables: [],
+    body: 'Washermann: your account has been suspended. You may request an internal review in the app.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'push',
+    name: 'Suspension Enforced — Push',
+    subject: 'Account suspended',
+    variables: [],
+    body: 'Your account has been suspended. Tap for details and to request a review.',
+  },
+  {
+    key: 'suspension.enforced', channel: 'in_app',
+    name: 'Suspension Enforced — In-App',
+    subject: 'Account suspended',
+    variables: ['reason'],
+    body: 'Your account has been suspended: {{reason}}. You may request an internal review.',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'email',
+    name: 'Suspension Overturned — Email',
+    subject: 'Your Washermann account has been reinstated',
+    variables: ['noticeId'],
+    body: 'Good news — following review, the suspension on your account has been overturned and your account is reinstated. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Good news — following review, the suspension on your account has been overturned and your account is reinstated.</p>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+    `),
+  },
+  {
+    key: 'suspension.reinstated', channel: 'sms',
+    name: 'Suspension Overturned — SMS',
+    variables: [],
+    body: 'Washermann: your suspension has been overturned and your account is reinstated.',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'push',
+    name: 'Suspension Overturned — Push',
+    subject: 'Account reinstated',
+    variables: [],
+    body: 'Your account has been reinstated. Welcome back!',
+  },
+  {
+    key: 'suspension.reinstated', channel: 'in_app',
+    name: 'Suspension Overturned — In-App',
+    subject: 'Account reinstated',
+    variables: [],
+    body: 'Following review, your suspension has been overturned and your account is reinstated.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'email',
+    name: 'Suspension Upheld — Email',
+    subject: 'Outcome of your account review',
+    variables: ['noticeId'],
+    body: 'Following your review request, the suspension on your account has been upheld. Reference: {{noticeId}}.',
+    htmlBody: buildEmailHtml(`
+      <p>Following your review request, the suspension on your account has been upheld.</p>
+      <div class="info-row"><span>Reference</span><span>{{noticeId}}</span></div>
+    `),
+  },
+  {
+    key: 'suspension.upheld', channel: 'sms',
+    name: 'Suspension Upheld — SMS',
+    variables: [],
+    body: 'Washermann: following review, the suspension on your account has been upheld.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'push',
+    name: 'Suspension Upheld — Push',
+    subject: 'Review outcome',
+    variables: [],
+    body: 'Your account review is complete. Tap for the outcome.',
+  },
+  {
+    key: 'suspension.upheld', channel: 'in_app',
+    name: 'Suspension Upheld — In-App',
+    subject: 'Review outcome',
+    variables: [],
+    body: 'Following your review request, the suspension on your account has been upheld.',
+  },
+
+  // ── Customer: uncollected / abandoned garments ────────────────────────────────
+
+  {
+    key: 'order.uncollected.customer', channel: 'email',
+    name: 'Uncollected Garments — Customer Email',
+    subject: 'Action needed: your laundry is ready but not yet collected — {{orderRef}}',
+    variables: ['orderRef'],
+    body: 'We tried to deliver your order {{orderRef}} but could not complete it. Please arrange to collect or re-schedule delivery. If garments remain uncollected after repeated notices, they may be treated as abandoned.',
+    htmlBody: buildEmailHtml(`
+      <p>We tried to deliver your order <strong>{{orderRef}}</strong> but could not complete it.</p>
+      <p>Please arrange to collect your garments or re-schedule delivery. If they remain uncollected after repeated notices, they may be treated as abandoned in line with our Garment Liability & Care Terms.</p>
+    `),
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'sms',
+    name: 'Uncollected Garments — Customer SMS',
+    variables: ['orderRef'],
+    body: 'Washermann: we could not deliver order {{orderRef}}. Please arrange collection/redelivery soon to avoid your garments being treated as abandoned.',
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'push',
+    name: 'Uncollected Garments — Customer Push',
+    subject: 'Delivery unsuccessful',
+    variables: ['orderRef'],
+    body: 'We couldn’t deliver {{orderRef}}. Tap to arrange collection or redelivery.',
+  },
+  {
+    key: 'order.uncollected.customer', channel: 'in_app',
+    name: 'Uncollected Garments — Customer In-App',
+    subject: 'Delivery unsuccessful',
+    variables: ['orderRef'],
+    body: 'We couldn’t deliver {{orderRef}}. Please arrange collection or redelivery to avoid abandonment.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'email',
+    name: 'Abandoned Garments — Customer Email',
+    subject: 'Your order {{orderRef}} has been treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Despite repeated notices, order {{orderRef}} remained uncollected and has now been treated as abandoned under our Garment Liability & Care Terms. Contact support if you believe this is in error.',
+    htmlBody: buildEmailHtml(`
+      <p>Despite repeated notices, order <strong>{{orderRef}}</strong> remained uncollected and has now been treated as abandoned under our Garment Liability &amp; Care Terms.</p>
+      <p>If you believe this is in error, please contact support as soon as possible.</p>
+    `),
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'sms',
+    name: 'Abandoned Garments — Customer SMS',
+    variables: ['orderRef'],
+    body: 'Washermann: order {{orderRef}} remained uncollected after notices and has been treated as abandoned. Contact support if this is in error.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'push',
+    name: 'Abandoned Garments — Customer Push',
+    subject: 'Order treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Order {{orderRef}} was uncollected and has been treated as abandoned. Tap for details.',
+  },
+  {
+    key: 'order.abandoned.customer', channel: 'in_app',
+    name: 'Abandoned Garments — Customer In-App',
+    subject: 'Order treated as abandoned',
+    variables: ['orderRef'],
+    body: 'Order {{orderRef}} remained uncollected after notices and has been treated as abandoned.',
+  },
+
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {

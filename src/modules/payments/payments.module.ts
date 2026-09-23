@@ -11,6 +11,7 @@ import { PaymentsController } from './payments.controller';
 import { WalletsModule } from '../wallets/wallets.module';
 import { VaultsModule } from '../vaults/vaults.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CompaniesModule } from '../companies/companies.module';
     forwardRef(() => WalletsModule),
     forwardRef(() => VaultsModule),
     forwardRef(() => CompaniesModule),
+    forwardRef(() => OrdersModule),
   ],
   controllers: [
     ConversionRateController,

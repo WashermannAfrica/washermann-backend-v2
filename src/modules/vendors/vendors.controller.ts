@@ -15,6 +15,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
+import { UpdateVendorLocationDto } from './dto/update-location.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
 import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
@@ -64,6 +65,26 @@ export class VendorsController {
     });
   }
 
+  // ─── Customer: browse washermen for a pickup point (Choose-Washerman) ─────────
+
+  @Get('browse')
+  @ApiOperation({
+    summary: 'Browse verified washermen serving a pickup point (customer, Choose-Washerman)',
+    description:
+      'Returns verified, available washermen who serve the area the given coordinates resolve to, ' +
+      'each with a straight-line distance (km) and rating, nearest first. Use a returned vendor id as ' +
+      '`vendorId` on POST /quote/wash-iron (to preview that vendor\'s price) and on POST /orders with ' +
+      "allocationMode 'choose'.",
+  })
+  @ApiQuery({ name: 'lat', required: true, type: Number })
+  @ApiQuery({ name: 'lng', required: true, type: Number })
+  browse(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+  ) {
+    return this.vendorsService.browseForCustomer(Number(lat), Number(lng));
+  }
+
   // ─── Get one vendor ───────────────────────────────────────────────────────────
 
   @Get(':id')
@@ -93,6 +114,16 @@ export class VendorsController {
   ) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
     return this.vendorsService.update(vendor.id, dto);
+  }
+
+  @Patch('me/location')
+  @Roles(Role.VENDOR)
+  @ApiOperation({ summary: 'Update own shop coordinates (from Google Places on the client)' })
+  updateMyLocation(
+    @Body() dto: UpdateVendorLocationDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.vendorsService.updateMyLocation(req.user.sub, dto.latitude, dto.longitude);
   }
 
   @Get('me/pricing')

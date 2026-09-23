@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { Area } from '../../database/entities/area.entity';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { AreasService } from '../areas/areas.service';
+import { TransportService } from '../transport/transport.service';
 import { PricingEngine } from './pricing.engine';
 import { CalculatePriceDto } from './dto/calculate-price.dto';
 import { PricingConfig, PricingInputs, PricingResult } from './pricing.types';
@@ -17,7 +18,16 @@ export class PricingService {
 
     private platformConfigService: PlatformConfigService,
     private areasService: AreasService,
+    private transportService: TransportService,
   ) {}
+
+  /** Distance-based transport estimate for a cart preview (customer coords + area). */
+  async estimateTransport(areaId: string, lat: number, lng: number) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new BadRequestException('Valid pickup lat/lng are required');
+    }
+    return this.transportService.estimateForArea({ lat, lng }, areaId);
+  }
 
   // ─── Public: authoritative calculation (called at order placement) ────────────
 

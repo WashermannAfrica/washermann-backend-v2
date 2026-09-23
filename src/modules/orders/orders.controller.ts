@@ -20,14 +20,36 @@ import { RateOrderDto } from './dto/rate-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
-import { IsString, MaxLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class CancelOrderDto {
   @ApiProperty()
   @IsString()
   @MaxLength(1000)
   reason: string;
+}
+
+class ConfirmPaymentDto {
+  @ApiPropertyOptional({ description: 'Optional gift-card code to top up the wallet before charging' })
+  @IsOptional() @IsString() @MaxLength(64)
+  giftCardCode?: string;
+}
+
+class FailedDeliveryDto {
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(1000)
+  note?: string;
+}
+
+class RecordDisposalDto {
+  @ApiProperty({ enum: ['store_at_cost', 'donated', 'sold', 'disposed'] })
+  @IsIn(['store_at_cost', 'donated', 'sold', 'disposed'])
+  method: string;
+
+  @ApiPropertyOptional({ description: 'Disposal notes incl. proceeds handling' })
+  @IsOptional() @IsString() @MaxLength(1000)
+  note?: string;
 }
 
 @ApiTags('Orders')
@@ -48,6 +70,18 @@ export class OrdersController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.ordersService.placeOrder(req.user.sub, dto);
+  }
+
+  // ─── Customer: confirm payment for a draft order ──────────────────────────────
+
+  @Post(':id/confirm-payment')
+  @ApiOperation({ summary: 'Confirm payment for a draft order — debits wallet, escrows, and starts assignment (customer)' })
+  confirmPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmPaymentDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.confirmPayment(id, req.user.sub, { giftCardCode: dto.giftCardCode });
   }
 
   // ─── Admin: list all orders ───────────────────────────────────────────────────
@@ -236,6 +270,30 @@ export class OrdersController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.ordersService.repTransition(id, OrderStatus.DELIVERED, req.user.sub);
+  }
+
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+
+  @Post(':id/status/failed-delivery')
+  @Roles(Role.REP)
+  @ApiOperation({ summary: 'Rep records a failed delivery attempt (customer unavailable)' })
+  failedDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FailedDeliveryDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.recordFailedDelivery(id, req.user.sub, dto.note);
+  }
+
+  @Post(':id/disposal')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin records the disposal outcome of an abandoned order' })
+  recordDisposal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordDisposalDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.ordersService.recordDisposal(id, req.user.sub, dto.method, dto.note);
   }
 
   // ─── Customer: confirm delivery ───────────────────────────────────────────────

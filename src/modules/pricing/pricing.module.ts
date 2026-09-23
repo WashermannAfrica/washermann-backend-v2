@@ -24,6 +24,7 @@ import { ItemPricingService } from './item-pricing.service';
 import { OrderQuoteService } from './order-quote.service';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
 import { AreasModule } from '../areas/areas.module';
+import { TransportModule } from '../transport/transport.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AreasModule } from '../areas/areas.module';
     ]),
     PlatformConfigModule,
     AreasModule,
+    TransportModule,
   ],
   controllers: [PricingController, ItemPricingController, OrderQuoteController],
   providers: [PricingService, PricingIntelligenceService, PricingPackagesService, ItemPricingService, OrderQuoteService],

@@ -7,6 +7,8 @@ import { AssignmentBroadcast } from '../../database/entities/assignment-broadcas
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { AssignmentService } from '../assignment/assignment.service';
+import { PayoutsService } from '../payouts/payouts.service';
+import { VendorsService } from '../vendors/vendors.service';
 
 @Injectable()
 export class TasksService {
@@ -21,7 +23,60 @@ export class TasksService {
 
     private ordersService: OrdersService,
     private assignmentService: AssignmentService,
+    private payoutsService: PayoutsService,
+    private vendorsService: VendorsService,
   ) {}
+
+  // ─── Payout withholding auto-release (WS4 1.10) ────────────────────────────────
+  /**
+   * Runs daily. Releases any payout whose investigation hold has lapsed
+   * (autoReleaseAt in the past) back to PENDING for normal processing.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async releaseExpiredPayoutHolds() {
+    try {
+      const n = await this.payoutsService.autoReleaseExpiredHolds();
+      if (n > 0) this.logger.log(`Payout holds: auto-released ${n} expired hold(s)`);
+    } catch (err) {
+      this.logger.error(`Payout hold auto-release failed — ${(err as Error).message}`);
+    }
+  }
+
+  // ─── Earnings-deduction auto-apply (WS4 1.11) ──────────────────────────────────
+  /** Runs daily. Applies deductions whose vendor response window has lapsed. */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async applyDueDeductions() {
+    try {
+      const n = await this.vendorsService.applyDueDeductions();
+      if (n > 0) this.logger.log(`Deductions: applied ${n} due deduction(s)`);
+    } catch (err) {
+      this.logger.error(`Deduction auto-apply failed — ${(err as Error).message}`);
+    }
+  }
+
+  // ─── Draft-order expiry ────────────────────────────────────────────────────────
+  /** Runs hourly. Auto-cancels unpaid draft orders past the configured window. */
+  @Cron(CronExpression.EVERY_HOUR)
+  async expireStaleDrafts() {
+    try {
+      const n = await this.ordersService.expireStaleDrafts();
+      if (n > 0) this.logger.log(`Draft expiry: cancelled ${n} unpaid draft order(s)`);
+    } catch (err) {
+      this.logger.error(`Draft expiry failed — ${(err as Error).message}`);
+    }
+  }
+
+  // ─── Uncollected-garment sweep (WS4 1.6) ───────────────────────────────────────
+  /** Runs daily. Sends follow-up uncollected notices and abandons long-uncollected orders. */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async sweepUncollectedOrders() {
+    try {
+      const { notices, abandoned } = await this.ordersService.sweepUncollected();
+      if (notices || abandoned) this.logger.log(`Uncollected sweep: ${notices} notice(s), ${abandoned} abandoned`);
+    } catch (err) {
+      this.logger.error(`Uncollected sweep failed — ${(err as Error).message}`);
+    }
+  }
 
   // ─── Escrow auto-release ──────────────────────────────────────────────────────
   /**

@@ -21,6 +21,12 @@ export type OrderFlow = 'wash_fold' | 'wash_iron' | 'bundle';
 export interface OrderItemSelection {
   itemId: string;
   qty:    number;
+  /** Customer asked for this item to be dry-cleaned */
+  dryClean?: boolean;
+  /** Customer flagged this item for stain removal */
+  stainRemoval?: boolean;
+  /** Free-text handling note for this specific item */
+  instructions?: string;
 }
 
 /** A single special item in the order */
@@ -113,6 +119,20 @@ export class Order extends BaseEntity {
   @ApiProperty({ nullable: true })
   @Column({ name: 'vendor_id', type: 'uuid', nullable: true })
   vendorId: string | null;
+
+  @ApiProperty({
+    enum: ['automatic', 'choose'],
+    default: 'automatic',
+    description:
+      "How the vendor is chosen: 'automatic' — platform allocates via broadcast at our prices; " +
+      "'choose' — customer picked a specific vendor (chosenVendorId) and paid that vendor's prices.",
+  })
+  @Column({ name: 'allocation_mode', type: 'varchar', length: 12, default: 'automatic' })
+  allocationMode: 'automatic' | 'choose';
+
+  @ApiProperty({ nullable: true, description: "The vendor the customer chose (choose mode). Pinned at VENDOR_ASSIGNED into vendorId." })
+  @Column({ name: 'chosen_vendor_id', type: 'uuid', nullable: true })
+  chosenVendorId: string | null;
 
   @ApiProperty()
   @Column({ name: 'area_id', type: 'uuid' })
@@ -260,6 +280,19 @@ export class Order extends BaseEntity {
   })
   platformShareWP: number | null;
 
+  // ─── Transport (distance-based) ────────────────────────────────────────────────
+  @ApiProperty({ nullable: true, description: 'Transport charged to the customer (estimate over area vendors), in WP' })
+  @Column({ name: 'transport_estimate_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  transportEstimateWp: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Actual transport for the assigned vendor (customer↔vendor round trip), in WP' })
+  @Column({ name: 'actual_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  actualTransportWp: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Transport credited to the rep = min(actual, estimate), in WP' })
+  @Column({ name: 'rep_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  repTransportWp: number | null;
+
   @ApiProperty({ nullable: true, description: 'Garment count logged by rep at pickup' })
   @Column({ name: 'garment_log', type: 'jsonb', nullable: true })
   garmentLog: GarmentLog | null;
@@ -301,6 +334,35 @@ export class Order extends BaseEntity {
   @ApiProperty({ nullable: true, description: 'Timestamp after which auto-complete fires' })
   @Column({ name: 'auto_complete_at', type: 'timestamp with time zone', nullable: true })
   autoCompleteAt: Date | null;
+
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+  @ApiProperty({ description: 'Number of failed delivery attempts' })
+  @Column({ name: 'delivery_attempts', type: 'int', default: 0 })
+  deliveryAttempts: number;
+
+  @ApiProperty({ description: 'How many uncollected notices have been sent' })
+  @Column({ name: 'uncollected_notice_count', type: 'int', default: 0 })
+  uncollectedNoticeCount: number;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'first_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  firstUncollectedNoticeAt: Date | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'last_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  lastUncollectedNoticeAt: Date | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'abandoned_at', type: 'timestamp with time zone', nullable: true })
+  abandonedAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Disposal outcome for abandoned garments (store_at_cost | donated | sold | disposed)' })
+  @Column({ name: 'disposal_method', type: 'varchar', length: 20, nullable: true })
+  disposalMethod: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Disposal notes incl. proceeds handling' })
+  @Column({ name: 'disposal_note', type: 'varchar', length: 1000, nullable: true })
+  disposalNote: string | null;
 
   @ApiProperty({ nullable: true, description: 'Whether customer has submitted a rating' })
   @Column({ name: 'rated_at', type: 'timestamp with time zone', nullable: true })

@@ -99,6 +99,23 @@ export class PayoutRequest extends BaseEntity {
   @Column({ name: 'batch_id', type: 'uuid', nullable: true })
   batchId: string | null;
 
+  // ─── Withholding / investigation (WS4 1.10) ────────────────────────────────────
+  @ApiProperty({ nullable: true, description: 'Reason this payout is withheld for investigation' })
+  @Column({ name: 'held_reason', type: 'varchar', length: 1000, nullable: true })
+  heldReason: string | null;
+
+  @ApiProperty({ nullable: true })
+  @Column({ name: 'held_at', type: 'timestamp with time zone', nullable: true })
+  heldAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Admin who placed the hold' })
+  @Column({ name: 'held_by', type: 'uuid', nullable: true })
+  heldBy: string | null;
+
+  @ApiProperty({ nullable: true, description: 'When an unsubstantiated hold auto-releases to PENDING' })
+  @Column({ name: 'auto_release_at', type: 'timestamp with time zone', nullable: true })
+  autoReleaseAt: Date | null;
+
   // ─── Relations ───────────────────────────────────────────────────────────────
   @ManyToOne(() => Vendor, { eager: false })
   @JoinColumn({ name: 'vendor_id' })

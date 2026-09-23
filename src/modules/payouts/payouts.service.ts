@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThanOrEqual, Repository } from 'typeorm';
 import { PayoutRequest } from '../../database/entities/payout-request.entity';
 import { Rep } from '../../database/entities/rep.entity';
 import { RepPseudoWallet } from '../../database/entities/rep-pseudo-wallet.entity';
@@ -229,6 +229,126 @@ export class PayoutsService {
     });
 
     return payout;
+  }
+
+  // ─── Admin: withhold a payout for investigation (WS4 1.10) ─────────────────────
+
+  /** Add N business days (skips Sat/Sun) to a date. */
+  private addBusinessDays(from: Date, days: number): Date {
+    const d = new Date(from);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) added++;
+    }
+    return d;
+  }
+
+  /**
+   * Withhold a PENDING payout while a claim is investigated. Records the reason and
+   * an auto-release date `payoutWithholdingDays` business days out; the vendor is
+   * notified. If not substantiated (i.e. not rejected/reversed) by then, the daily
+   * cron releases it back to PENDING for normal processing.
+   */
+  async holdPayout(payoutId: string, adminId: string, reason: string) {
+    const payout = await this.payoutRepository.findOne({ where: { id: payoutId } });
+    if (!payout) throw new NotFoundException('Payout request not found');
+    if (payout.status !== PayoutStatus.PENDING) {
+      throw new BadRequestException('Only pending payouts can be withheld');
+    }
+    if (!reason?.trim()) throw new BadRequestException('A reason is required to withhold a payout');
+
+    const config = await this.platformConfigService.getConfig();
+    const now = new Date();
+    payout.status        = PayoutStatus.HELD;
+    payout.heldReason    = reason.trim().slice(0, 1000);
+    payout.heldAt        = now;
+    payout.heldBy        = adminId;
+    payout.autoReleaseAt = this.addBusinessDays(now, config.payoutWithholdingDays ?? 10);
+    await this.payoutRepository.save(payout);
+
+    this.notificationsService.notifyVendorPayoutHeld({
+      vendorId:      payout.vendorId,
+      nairaAmount:   payout.nairaAmount,
+      amountWP:      payout.amountWP,
+      reason:        payout.heldReason,
+      autoReleaseAt: payout.autoReleaseAt,
+      payoutId:      payout.id,
+    });
+
+    void this.audit.recordWithActor(adminId, {
+      app: 'admin',
+      category: 'payout',
+      action: 'payout.vendor.held',
+      description: `Withheld vendor payout of ₦${Number(payout.nairaAmount).toLocaleString()} (${Number(payout.amountWP).toLocaleString()} WP) for investigation — "${payout.heldReason}" (auto-releases ${payout.autoReleaseAt.toISOString().slice(0, 10)}; payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      targetLabel: `₦${Number(payout.nairaAmount).toLocaleString()} → ${payout.accountName}`,
+      success: true,
+      metadata: { vendorId: payout.vendorId, reason: payout.heldReason, autoReleaseAt: payout.autoReleaseAt },
+    });
+
+    return payout;
+  }
+
+  /**
+   * Release a held payout back to PENDING — either manually (admin found no issue)
+   * or automatically by the cron when the window lapses without substantiation.
+   */
+  async releasePayout(payoutId: string, actorId: string | null, mode: 'manual' | 'auto' = 'manual') {
+    const payout = await this.payoutRepository.findOne({ where: { id: payoutId } });
+    if (!payout) throw new NotFoundException('Payout request not found');
+    if (payout.status !== PayoutStatus.HELD) {
+      throw new BadRequestException('Only withheld payouts can be released');
+    }
+
+    payout.status        = PayoutStatus.PENDING;
+    payout.heldReason    = null;
+    payout.heldAt        = null;
+    payout.heldBy        = null;
+    payout.autoReleaseAt = null;
+    await this.payoutRepository.save(payout);
+
+    this.notificationsService.notifyVendorPayoutReleased({
+      vendorId:    payout.vendorId,
+      nairaAmount: payout.nairaAmount,
+      amountWP:    payout.amountWP,
+      payoutId:    payout.id,
+      auto:        mode === 'auto',
+    });
+
+    void this.audit.recordWithActor(actorId, {
+      app: mode === 'auto' ? 'system' : 'admin',
+      category: 'payout',
+      action: 'payout.vendor.released',
+      description: `${mode === 'auto' ? 'Auto-released' : 'Released'} withheld vendor payout of ₦${Number(payout.nairaAmount).toLocaleString()} (${Number(payout.amountWP).toLocaleString()} WP) back to pending (payout ${payout.id})`,
+      targetType: 'payout',
+      targetId: payout.id,
+      targetLabel: `₦${Number(payout.nairaAmount).toLocaleString()} → ${payout.accountName}`,
+      success: true,
+      metadata: { vendorId: payout.vendorId, mode },
+    });
+
+    return payout;
+  }
+
+  /** Cron helper: release all held payouts whose window has lapsed. */
+  async autoReleaseExpiredHolds(): Promise<number> {
+    const now = new Date();
+    const due = await this.payoutRepository.find({
+      where: { status: PayoutStatus.HELD, autoReleaseAt: LessThanOrEqual(now) },
+    });
+    let released = 0;
+    for (const p of due) {
+      try {
+        await this.releasePayout(p.id, null, 'auto');
+        released++;
+      } catch (err) {
+        this.logger.error(`Auto-release hold failed for payout ${p.id}: ${(err as Error).message}`);
+      }
+    }
+    return released;
   }
 
   // ─── Admin: list payouts ──────────────────────────────────────────────────────
