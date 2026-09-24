@@ -163,8 +163,10 @@ export class CatalogueService implements OnModuleInit {
     return this.items.save(this.items.create({
       categoryId: dto.categoryId, subCategoryId: dto.subCategoryId ?? null,
       name: dto.name.trim(), slug, svgIcon: dto.svgIcon ?? null,
-      isEveryday: dto.isEveryday ?? false, isActive: true, isAvailable: false,
-      priceNgn: null, priceWp: null, sortOrder: dto.sortOrder ?? 100,
+      isEveryday: dto.isEveryday ?? false, dryCleanEligible: dto.dryCleanEligible ?? false,
+      isActive: true, isAvailable: false,
+      priceNgn: null, priceWp: null, floorPriceNgn: dto.floorPriceNgn ?? null,
+      sortOrder: dto.sortOrder ?? 100,
       source: 'admin', createdBy: adminId, updatedBy: adminId,
     }));
   }
@@ -179,8 +181,10 @@ export class CatalogueService implements OnModuleInit {
     if (dto.name != null) item.name = dto.name.trim();
     if (dto.svgIcon !== undefined) item.svgIcon = dto.svgIcon ?? null;
     if (dto.isEveryday != null) item.isEveryday = dto.isEveryday;
+    if (dto.dryCleanEligible != null) item.dryCleanEligible = dto.dryCleanEligible;
     if (dto.isActive != null) item.isActive = dto.isActive;
     if (dto.sortOrder != null) item.sortOrder = dto.sortOrder;
+    if (dto.floorPriceNgn !== undefined) item.floorPriceNgn = dto.floorPriceNgn ?? null;
     item.updatedBy = adminId;
     return this.items.save(item);
   }

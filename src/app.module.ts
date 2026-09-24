@@ -49,6 +49,7 @@ import { AssignmentModule } from './modules/assignment/assignment.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { ReceiptsModule } from './modules/receipts/receipts.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { BagsModule } from './modules/bags/bags.module';
@@ -63,6 +64,7 @@ import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { DisputesModule } from './modules/disputes/disputes.module';
 import { SupportModule } from './modules/support/support.module';
 import { PoliciesModule } from './modules/policies/policies.module';
+import { SuspensionsModule } from './modules/suspensions/suspensions.module';
 
 @Module({
   imports: [
@@ -110,6 +112,7 @@ import { PoliciesModule } from './modules/policies/policies.module';
     PayoutsModule,
     TasksModule,
     UploadModule,
+    ReceiptsModule,
     MarketingModule,
     CatalogueModule,
     BagsModule,
@@ -123,6 +126,7 @@ import { PoliciesModule } from './modules/policies/policies.module';
     DisputesModule,
     SupportModule,
     PoliciesModule,
+    SuspensionsModule,
   ],
 
   providers: [

@@ -50,5 +50,7 @@ export default registerAs('app', () => ({
   adminPortalUrl: process.env.ADMIN_PORTAL_URL || 'http://localhost:3001',
   companyPortalUrl: process.env.COMPANY_PORTAL_URL || 'http://localhost:3002',
   landingUrl: process.env.LANDING_URL || 'http://localhost:3003',
+  // Public base for shareable order-sponsor links (defaults to <landingUrl>/sponsor)
+  sponsorLinkBase: process.env.SPONSOR_LINK_BASE || null,
   landingRevalidateSecret: process.env.LANDING_REVALIDATE_SECRET || '',
 }));

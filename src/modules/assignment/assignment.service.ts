@@ -345,8 +345,51 @@ export class AssignmentService {
     const order = await this.orderRepository.findOne({ where: { id: orderId } });
     if (!order) return;
 
+    // Choose-Washerman: the customer already picked the vendor — pin it directly
+    // instead of broadcasting. Fall back to a normal broadcast if that vendor is no
+    // longer usable (unverified / stopped serving the area) so the order isn't stuck.
+    if (order.allocationMode === 'choose' && order.chosenVendorId) {
+      const pinned = await this.assignChosenVendor(order, order.chosenVendorId);
+      if (pinned) return;
+      this.logger.warn(
+        `Order ${order.reference}: chosen vendor ${order.chosenVendorId} unavailable — falling back to broadcast`,
+      );
+    }
+
     await this.ordersService.transition(orderId, OrderStatus.BROADCASTING_VENDOR, null, 'system');
     await this.broadcastVendors(orderId, order.areaId, 1);
+  }
+
+  /**
+   * Directly assign the customer's chosen vendor (Choose-Washerman). Returns false
+   * (without throwing) when the vendor can no longer take the order, so the caller
+   * can fall back to a broadcast.
+   */
+  private async assignChosenVendor(order: Order, vendorId: string): Promise<boolean> {
+    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    if (!vendor || vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) return false;
+    if (!Array.isArray(vendor.areaIds) || !vendor.areaIds.includes(order.areaId)) return false;
+
+    const fromStatus = order.status;
+    order.vendorId = vendorId;
+    order.status   = OrderStatus.VENDOR_ASSIGNED;
+    await this.orderRepository.save(order);
+
+    await this.vendorRepository.update(vendorId, { lastAssignedAt: new Date() });
+
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        orderId:     order.id,
+        fromStatus,
+        toStatus:    OrderStatus.VENDOR_ASSIGNED,
+        triggeredBy: vendorId,
+        triggeredByRole: 'system',
+        note: 'Vendor assigned — chosen by the customer',
+      }),
+    );
+
+    await this.ordersService.transition(order.id, OrderStatus.SCHEDULED, null, 'system');
+    return true;
   }
 
   // ─── Broadcast vendors in a batch ────────────────────────────────────────────

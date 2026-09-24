@@ -41,6 +41,10 @@ export class CatalogueItem extends BaseEntity {
   @Column({ name: 'is_everyday', type: 'boolean', default: false })
   isEveryday: boolean;
 
+  @ApiProperty({ description: 'Dry cleaning is applicable to this item (the app offers a dry-clean option; the customer may still override)' })
+  @Column({ name: 'dry_clean_eligible', type: 'boolean', default: false })
+  dryCleanEligible: boolean;
+
   @ApiProperty({ description: 'Admin enable/disable' })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
@@ -52,6 +56,10 @@ export class CatalogueItem extends BaseEntity {
   @ApiProperty({ nullable: true, description: 'Cached platform price in Naira (P70 + charges)' })
   @Column({ name: 'price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
   priceNgn: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Admin-set base/floor price in Naira — paid when a vendor has not priced this item (so a completed order never earns ₦0)' })
+  @Column({ name: 'floor_price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  floorPriceNgn: number | null;
 
   @ApiProperty({ nullable: true, description: 'Cached platform price in WashPoints' })
   @Column({ name: 'price_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })

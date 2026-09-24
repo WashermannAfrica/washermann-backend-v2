@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -27,6 +28,22 @@ export class OrderItemSelectionDto {
   @IsInt()
   @Min(1)
   qty: number;
+
+  @ApiPropertyOptional({ description: 'Customer requests dry cleaning for this item' })
+  @IsOptional()
+  @IsBoolean()
+  dryClean?: boolean;
+
+  @ApiPropertyOptional({ description: 'Customer flags this item for stain removal' })
+  @IsOptional()
+  @IsBoolean()
+  stainRemoval?: boolean;
+
+  @ApiPropertyOptional({ description: 'Handling note for this specific item' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  instructions?: string;
 }
 
 /**
@@ -59,6 +76,22 @@ export class PlaceOrderDto {
   @IsOptional()
   @IsUUID()
   bundleId?: string;
+
+  @ApiPropertyOptional({
+    enum: ['automatic', 'choose'],
+    default: 'automatic',
+    description:
+      "Vendor selection mode. 'automatic' (default) — we allocate a vendor at our prices. " +
+      "'choose' — the customer picked a specific vendor (set `vendorId`) and pays that vendor's prices.",
+  })
+  @IsOptional()
+  @IsEnum(['automatic', 'choose'])
+  allocationMode?: 'automatic' | 'choose';
+
+  @ApiPropertyOptional({ description: "Chosen vendor's profile UUID — required when allocationMode is 'choose'" })
+  @IsOptional()
+  @IsUUID()
+  vendorId?: string;
 
   @ApiPropertyOptional({
     description:

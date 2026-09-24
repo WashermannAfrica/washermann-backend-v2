@@ -5,6 +5,7 @@ import { ReferralCode, ReferrerType, ReferredType } from '../../database/entitie
 import { Referral, RewardCurrency } from '../../database/entities/referral.entity';
 import { RewardRule } from '../../database/entities/reward-rule.entity';
 import { User } from '../../database/entities/user.entity';
+import { PlatformConfigService } from '../platform-config/platform-config.service';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
 
@@ -17,6 +18,7 @@ export class ReferralsService implements OnModuleInit {
     @InjectRepository(Referral) private referrals: Repository<Referral>,
     @InjectRepository(RewardRule) private rules: Repository<RewardRule>,
     @InjectRepository(User) private users: Repository<User>,
+    private platformConfigService: PlatformConfigService,
   ) {}
 
   /** Attach referrer + referred user names/emails to a list of referrals. */
@@ -35,6 +37,27 @@ export class ReferralsService implements OnModuleInit {
   async onModuleInit() {
     try { await this.seedDefaultRules(); }
     catch (err) { this.logger.warn(`Skipped reward-rule seeding (${(err as Error).message})`); }
+    try {
+      const n = await this.backfillVendorCodes();
+      if (n > 0) this.logger.log(`Referral backfill: issued ${n} vendor code(s)`);
+    } catch (err) { this.logger.warn(`Skipped vendor code backfill (${(err as Error).message})`); }
+  }
+
+  /**
+   * Ensure every existing vendor has a referral code. Idempotent and cheap after the
+   * first run (returns 0 once all vendors are covered). Self-signup and admin-create
+   * already issue codes for new vendors — this catches ones created before that.
+   */
+  async backfillVendorCodes(): Promise<number> {
+    const rows = await this.users
+      .createQueryBuilder('u')
+      .innerJoin('vendors', 'v', 'v.user_id = u.id')
+      .leftJoin('referral_codes', 'rc', 'rc.owner_user_id = u.id')
+      .where('rc.id IS NULL')
+      .select('u.id', 'id')
+      .getRawMany<{ id: string }>();
+    for (const r of rows) await this.issueCode(r.id, 'vendor');
+    return rows.length;
   }
 
   // ─── Reward rules (admin-configurable; placeholder defaults = CAC levers) ──────
@@ -171,29 +194,79 @@ export class ReferralsService implements OnModuleInit {
     return this.withNames(list);
   }
 
-  /** Admin: flag/reject a referral (e.g. suspected fraud). Cannot reject a paid one. */
-  async rejectReferral(id: string, adminId: string, note?: string) {
+  /** Days a granted (unlocked, unpaid) reward may still be corrected. */
+  private async correctionWindowDays(): Promise<number> {
+    const config = await this.platformConfigService.getConfig();
+    return config.rewardClawbackDays ?? 60;
+  }
+
+  /** True if a granted reward is past its correction window. */
+  private pastCorrectionWindow(ref: Referral, days: number): boolean {
+    if (!ref.unlockedAt) return false; // not yet granted → always correctable
+    const deadline = new Date(ref.unlockedAt);
+    deadline.setDate(deadline.getDate() + days);
+    return Date.now() > deadline.getTime();
+  }
+
+  /**
+   * Admin: flag/reject a referral. Cannot reject a paid one (use clawback). Ordinary
+   * corrections are only allowed within the correction window; genuine fraud
+   * (`fraud: true`) may be rejected at any time before payout.
+   */
+  async rejectReferral(id: string, adminId: string, note?: string, fraud = false) {
     const ref = await this.referrals.findOne({ where: { id } });
     if (!ref) throw new NotFoundException('Referral not found');
-    if (ref.status === 'paid') throw new BadRequestException('Cannot reject an already-paid referral');
+    if (ref.status === 'paid') throw new BadRequestException('Cannot reject an already-paid referral — use clawback (fraud/self-referral only)');
+    if (ref.status === 'clawed_back') throw new BadRequestException('Referral already clawed back');
+
+    if (!fraud) {
+      const days = await this.correctionWindowDays();
+      if (this.pastCorrectionWindow(ref, days)) {
+        throw new BadRequestException(`The ${days}-day correction window has elapsed; only fraud/self-referral may be actioned now`);
+      }
+    }
     ref.status = 'rejected';
     ref.reviewedBy = adminId;
     ref.adminNote = note ?? null;
     await this.referrals.save(ref);
-    this.logger.warn(`Referral ${id} rejected by ${adminId}${note ? ` — ${note}` : ''}`);
+    this.logger.warn(`Referral ${id} rejected by ${adminId}${fraud ? ' (fraud)' : ''}${note ? ` — ${note}` : ''}`);
     return ref;
   }
 
-  /** Admin: manually override the reward amount (audited). */
+  /** Admin: manually override the reward amount (audited). Pre-payout, within window. */
   async adjustReferral(id: string, adminId: string, rewardAmount: number, note?: string) {
     const ref = await this.referrals.findOne({ where: { id } });
     if (!ref) throw new NotFoundException('Referral not found');
     if (ref.status === 'paid') throw new BadRequestException('Cannot adjust an already-paid referral');
+    if (ref.status === 'clawed_back') throw new BadRequestException('Cannot adjust a clawed-back referral');
+    const days = await this.correctionWindowDays();
+    if (this.pastCorrectionWindow(ref, days)) {
+      throw new BadRequestException(`The ${days}-day correction window has elapsed; this reward can no longer be adjusted`);
+    }
     ref.rewardAmount = Math.round(rewardAmount * 100) / 100;
     ref.reviewedBy = adminId;
     ref.adminNote = note ?? ref.adminNote;
     await this.referrals.save(ref);
     this.logger.log(`Referral ${id} reward adjusted to ${ref.rewardAmount} by ${adminId}`);
+    return ref;
+  }
+
+  /**
+   * Admin: claw back a reward AFTER payout — permitted only for fraud/self-referral.
+   * The record is marked clawed_back with the reason; the disbursed amount is
+   * flagged for recovery (a paid-out reward cannot be auto-reversed).
+   */
+  async clawbackReferral(id: string, adminId: string, reason: string) {
+    const ref = await this.referrals.findOne({ where: { id } });
+    if (!ref) throw new NotFoundException('Referral not found');
+    if (!reason?.trim()) throw new BadRequestException('A reason is required (fraud or self-referral)');
+    if (ref.status !== 'paid') throw new BadRequestException('Clawback applies to paid referrals; use reject for unpaid ones');
+
+    ref.status = 'clawed_back';
+    ref.reviewedBy = adminId;
+    ref.adminNote = `Clawback: ${reason.trim()}`;
+    await this.referrals.save(ref);
+    this.logger.warn(`Referral ${id} CLAWED BACK by ${adminId} — ${reason.trim()} (₦/WP ${ref.rewardAmount ?? 0} flagged for recovery)`);
     return ref;
   }
 

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, Repository, IsNull } from 'typeorm';
+import { DataSource, Repository, IsNull, LessThanOrEqual } from 'typeorm';
 import { ReferralsService } from '../referrals/referrals.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Vendor } from '../../database/entities/vendor.entity';
@@ -16,6 +16,7 @@ import { VendorDocument } from '../../database/entities/vendor-document.entity';
 import { VendorPricing, GarmentPriceItem, priceItemKey, isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
+import { EarningsDeduction } from '../../database/entities/earnings-deduction.entity';
 import { User } from '../../database/entities/user.entity';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
@@ -51,6 +52,9 @@ export class VendorsService {
     @InjectRepository(VendorLedgerEntry)
     private ledgerRepository: Repository<VendorLedgerEntry>,
 
+    @InjectRepository(EarningsDeduction)
+    private deductionRepository: Repository<EarningsDeduction>,
+
     @InjectRepository(User)
     private userRepository: Repository<User>,
 
@@ -65,6 +69,61 @@ export class VendorsService {
     private platformConfigService: PlatformConfigService,
     private areasService: AreasService,
   ) {}
+
+  // ─── Customer: browse washermen for a pickup point (Choose-Washerman) ─────────
+
+  /**
+   * Verified, available washermen serving the area a pickup point resolves to,
+   * with a straight-line distance (km) for display/sorting. The authoritative
+   * transport fee is recomputed for the chosen vendor at order placement.
+   */
+  async browseForCustomer(lat: number, lng: number) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new BadRequestException('Valid lat and lng are required');
+    }
+    const resolution = await this.areasService.resolveAreaForPoint(lat, lng, {
+      source: 'resolve_check',
+      logGap: false,
+    });
+    if (!resolution) {
+      return { data: { areaId: null, covered: false, vendors: [] } };
+    }
+    const areaId = resolution.area.id;
+
+    const vendors = await this.vendorRepository
+      .createQueryBuilder('v')
+      .where('v.area_ids @> :area', { area: JSON.stringify([areaId]) })
+      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
+      .andWhere('v.is_available = true')
+      .getMany();
+
+    const withDistance = vendors.map((v) => {
+      const distanceKm =
+        v.latitude != null && v.longitude != null
+          ? Math.round(haversineKm(lat, lng, v.latitude, v.longitude) * 10) / 10
+          : null;
+      return {
+        id:           v.id,
+        businessName: v.businessName,
+        logoUrl:      v.logoUrl,
+        rating:       Number(v.rating) || 0,
+        ratingCount:  v.ratingCount,
+        distanceKm,
+        located:      distanceKm != null,
+      };
+    });
+
+    // Located vendors first (nearest → farthest), then the rest by rating.
+    withDistance.sort((a, b) => {
+      if (a.located && b.located) return a.distanceKm! - b.distanceKm!;
+      if (a.located !== b.located) return a.located ? -1 : 1;
+      return b.rating - a.rating;
+    });
+
+    return {
+      data: { areaId, covered: resolution.covered, vendors: withDistance },
+    };
+  }
 
   // ─── Admin: Create vendor (new user + vendor record + wallet) ─────────────────
 
@@ -111,6 +170,12 @@ export class VendorsService {
 
       return { vendor, user };
     });
+
+    // Issue this vendor's referral code so they can refer others (mirrors
+    // self-signup). Idempotent + fire-and-forget — never fail creation over it.
+    this.referralsService
+      .issueCode(result.user.id, 'vendor')
+      .catch((err: Error) => this.logger.warn(`Vendor referral code issue skipped: ${err.message}`));
 
     // Generate invite token and send email outside the transaction
     const inviteToken = uuidv4();
@@ -240,7 +305,22 @@ export class VendorsService {
       }
       vendor.isAvailable = dto.isAvailable;
     }
+    if (dto.latitude != null && dto.longitude != null) {
+      vendor.latitude = dto.latitude;
+      vendor.longitude = dto.longitude;
+      vendor.locationUpdatedAt = new Date();
+    }
 
+    return this.vendorRepository.save(vendor);
+  }
+
+  /** Vendor sets their own shop coordinates (from Google Places on the client). */
+  async updateMyLocation(userId: string, latitude: number, longitude: number) {
+    const vendor = await this.vendorRepository.findOne({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    vendor.latitude = latitude;
+    vendor.longitude = longitude;
+    vendor.locationUpdatedAt = new Date();
     return this.vendorRepository.save(vendor);
   }
 
@@ -802,10 +882,164 @@ export class VendorsService {
     return wallet;
   }
 
+  // ─── Earnings deductions with a response window (WS4 1.11) ─────────────────────
+
+  private addBusinessDays(from: Date, days: number): Date {
+    const d = new Date(from);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) added++;
+    }
+    return d;
+  }
+
+  /**
+   * Raise a claim deduction against a vendor's earnings. The vendor is NOT debited
+   * yet — they are notified and given `deductionResponseDays` business days to
+   * respond. After the window an admin (or the daily cron) applies it.
+   */
+  async createDeductionNotice(
+    vendorId: string,
+    dto: { amountWp: number; reason: string; orderId?: string; disputeId?: string; nairaSnapshot?: number },
+    adminId: string,
+  ) {
+    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!(dto.amountWp > 0)) throw new BadRequestException('Deduction amount must be greater than zero');
+    if (!dto.reason?.trim()) throw new BadRequestException('A reason is required');
+
+    const config = await this.platformConfigService.getConfig();
+    const deduction = await this.deductionRepository.save(this.deductionRepository.create({
+      vendorId,
+      orderId: dto.orderId ?? null,
+      disputeId: dto.disputeId ?? null,
+      amountWp: dto.amountWp,
+      nairaSnapshot: dto.nairaSnapshot ?? null,
+      reason: dto.reason.trim().slice(0, 1000),
+      status: 'pending_response',
+      respondBy: this.addBusinessDays(new Date(), config.deductionResponseDays ?? 5),
+      createdBy: adminId,
+    }));
+
+    this.notificationsService.notifyVendorDeductionNotice({
+      vendorId,
+      amountWp: deduction.amountWp,
+      reason: deduction.reason,
+      respondBy: deduction.respondBy,
+      deductionId: deduction.id,
+    });
+
+    return deduction;
+  }
+
+  /** Vendor responds to a pending deduction (does not stop it — admin reviews). */
+  async respondToDeduction(deductionId: string, vendorUserId: string, response: string) {
+    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+    if (!deduction) throw new NotFoundException('Deduction not found');
+    const vendor = await this.vendorRepository.findOne({ where: { id: deduction.vendorId } });
+    if (!vendor || vendor.userId !== vendorUserId) throw new ForbiddenException('Not your deduction');
+    if (deduction.status !== 'pending_response') throw new BadRequestException('This deduction can no longer be responded to');
+
+    deduction.vendorResponse = (response ?? '').slice(0, 1000);
+    deduction.respondedAt = new Date();
+    return this.deductionRepository.save(deduction);
+  }
+
+  /** Admin cancels a pending deduction — the vendor is never charged. */
+  async cancelDeduction(deductionId: string, adminId: string, reason?: string) {
+    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+    if (!deduction) throw new NotFoundException('Deduction not found');
+    if (deduction.status !== 'pending_response') throw new BadRequestException('Only pending deductions can be cancelled');
+
+    deduction.status = 'cancelled';
+    deduction.cancelledAt = new Date();
+    deduction.cancelReason = (reason ?? '').slice(0, 1000) || null;
+    return this.deductionRepository.save(deduction);
+  }
+
+  /**
+   * Apply a deduction — debits the vendor's earnings wallet. Only allowed after the
+   * response window has passed (unless `force`, e.g. an admin acting on the vendor's
+   * own agreement). Also used by the daily cron.
+   */
+  async applyDeduction(deductionId: string, actorId: string | null, opts: { force?: boolean } = {}) {
+    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+    if (!deduction) throw new NotFoundException('Deduction not found');
+    if (deduction.status !== 'pending_response') throw new BadRequestException('Deduction is not pending');
+    if (!opts.force && deduction.respondBy.getTime() > Date.now()) {
+      throw new BadRequestException('The vendor response window has not yet elapsed');
+    }
+
+    await this.debitWallet(
+      deduction.vendorId,
+      deduction.amountWp,
+      LedgerSource.CLAIM_DEDUCTION,
+      `Claim deduction: ${deduction.reason}`,
+      { reference: deduction.id },
+    );
+
+    deduction.status = 'applied';
+    deduction.appliedAt = new Date();
+    await this.deductionRepository.save(deduction);
+
+    this.notificationsService.notifyVendorDeductionApplied({
+      vendorId: deduction.vendorId,
+      amountWp: deduction.amountWp,
+      reason: deduction.reason,
+      deductionId: deduction.id,
+    });
+
+    return deduction;
+  }
+
+  /** Cron helper: apply all deductions whose response window has lapsed. */
+  async applyDueDeductions(): Promise<number> {
+    const due = await this.deductionRepository.find({
+      where: { status: 'pending_response', respondBy: LessThanOrEqual(new Date()) },
+    });
+    let applied = 0;
+    for (const d of due) {
+      try {
+        await this.applyDeduction(d.id, null, { force: true });
+        applied++;
+      } catch {
+        // e.g. insufficient balance — leave pending for admin follow-up
+      }
+    }
+    return applied;
+  }
+
+  listDeductions(filter: { vendorId?: string; status?: string } = {}) {
+    const where: Record<string, unknown> = {};
+    if (filter.vendorId) where.vendorId = filter.vendorId;
+    if (filter.status) where.status = filter.status;
+    return this.deductionRepository.find({ where, order: { createdAt: 'DESC' } });
+  }
+
+  async listMyDeductions(userId: string) {
+    const vendor = await this.vendorRepository.findOne({ where: { userId } });
+    if (!vendor) return [];
+    return this.deductionRepository.find({ where: { vendorId: vendor.id }, order: { createdAt: 'DESC' } });
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private sanitizeUser(user: User) {
     const { passwordHash, ...safe } = user as any;
     return safe;
   }
+}
+
+/** Great-circle distance in km between two lat/lng points. */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

@@ -1296,4 +1296,207 @@ export class NotificationsService {
       ]);
     }, this.logger, 'payout.failed.vendor');
   }
+
+  /** Fire when a payout is withheld for investigation. */
+  async notifyVendorPayoutHeld(params: {
+    vendorId:      string;
+    nairaAmount:   number;
+    amountWP:      number;
+    reason:        string;
+    autoReleaseAt: Date;
+    payoutId:      string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:    vendor.businessName,
+      nairaAmount:   Math.round(params.nairaAmount),
+      amountWP:      params.amountWP,
+      reason:        params.reason,
+      autoReleaseAt: params.autoReleaseAt.toISOString().slice(0, 10),
+      payoutId:      params.payoutId,
+    };
+    const meta = { payoutId: params.payoutId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('payout.held.vendor', user.email, vars),
+        user.phone && this.sendSms('payout.held.vendor', user.phone, vars),
+        this.sendPushToUser('payout.held.vendor', user.id, vars, { payoutId: params.payoutId }),
+        this.sendInApp('payout.held.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'payout.held.vendor');
+  }
+
+  /** Fire when a withheld payout is released back to pending. */
+  async notifyVendorPayoutReleased(params: {
+    vendorId:    string;
+    nairaAmount: number;
+    amountWP:    number;
+    payoutId:    string;
+    auto:        boolean;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      nairaAmount: Math.round(params.nairaAmount),
+      amountWP:    params.amountWP,
+      payoutId:    params.payoutId,
+    };
+    const meta = { payoutId: params.payoutId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('payout.released.vendor', user.email, vars),
+        user.phone && this.sendSms('payout.released.vendor', user.phone, vars),
+        this.sendPushToUser('payout.released.vendor', user.id, vars, { payoutId: params.payoutId }),
+        this.sendInApp('payout.released.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'payout.released.vendor');
+  }
+
+  /** Fire when a claim deduction is raised against a vendor (with response window). */
+  async notifyVendorDeductionNotice(params: {
+    vendorId:    string;
+    amountWp:    number;
+    reason:      string;
+    respondBy:   Date;
+    deductionId: string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      amountWP:    params.amountWp,
+      reason:      params.reason,
+      respondBy:   params.respondBy.toISOString().slice(0, 10),
+      deductionId: params.deductionId,
+    };
+    const meta = { deductionId: params.deductionId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('deduction.notice.vendor', user.email, vars),
+        user.phone && this.sendSms('deduction.notice.vendor', user.phone, vars),
+        this.sendPushToUser('deduction.notice.vendor', user.id, vars, { deductionId: params.deductionId }),
+        this.sendInApp('deduction.notice.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'deduction.notice.vendor');
+  }
+
+  /** Fire when a deduction is applied (vendor debited). */
+  async notifyVendorDeductionApplied(params: {
+    vendorId:    string;
+    amountWp:    number;
+    reason:      string;
+    deductionId: string;
+  }) {
+    const { vendor, user } = await this.getVendorUser(params.vendorId);
+    if (!vendor || !user) return;
+
+    const vars: Record<string, string | number> = {
+      vendorName:  vendor.businessName,
+      amountWP:    params.amountWp,
+      reason:      params.reason,
+      deductionId: params.deductionId,
+    };
+    const meta = { deductionId: params.deductionId };
+
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('deduction.applied.vendor', user.email, vars),
+        user.phone && this.sendSms('deduction.applied.vendor', user.phone, vars),
+        this.sendPushToUser('deduction.applied.vendor', user.id, vars, { deductionId: params.deductionId }),
+        this.sendInApp('deduction.applied.vendor', vendor.userId, vars, 'payout', meta),
+      ]);
+    }, this.logger, 'deduction.applied.vendor');
+  }
+
+  // ─── Suspension due-process (WS4 1.14) — addressed by userId ────────────────────
+
+  async notifySuspensionNotice(userId: string, params: { reason: string; respondBy: Date; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const vars: Record<string, string | number> = {
+      reason: params.reason,
+      respondBy: params.respondBy.toISOString().slice(0, 10),
+      noticeId: params.noticeId,
+    };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('suspension.notice', user.email, vars),
+        user.phone && this.sendSms('suspension.notice', user.phone, vars),
+        this.sendPushToUser('suspension.notice', user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp('suspension.notice', user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, 'suspension.notice');
+  }
+
+  async notifySuspensionEnforced(userId: string, params: { reason: string; immediate: boolean; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { reason: params.reason, noticeId: params.noticeId };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('suspension.enforced', user.email, vars),
+        user.phone && this.sendSms('suspension.enforced', user.phone, vars),
+        this.sendPushToUser('suspension.enforced', user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp('suspension.enforced', user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, 'suspension.enforced');
+  }
+
+  async notifySuspensionReviewDecided(userId: string, params: { decision: 'upheld' | 'overturned'; noticeId: string }) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    const key = params.decision === 'overturned' ? 'suspension.reinstated' : 'suspension.upheld';
+    const vars: Record<string, string | number> = { noticeId: params.noticeId };
+    const meta = { noticeId: params.noticeId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail(key, user.email, vars),
+        user.phone && this.sendSms(key, user.phone, vars),
+        this.sendPushToUser(key, user.id, vars, { noticeId: params.noticeId }),
+        this.sendInApp(key, user.id, vars, 'account', meta),
+      ]);
+    }, this.logger, key);
+  }
+
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+
+  async notifyCustomerUncollected(customerId: string, params: { orderRef: string; orderId: string }) {
+    const user = await this.getUser(customerId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { orderRef: params.orderRef };
+    const meta = { orderId: params.orderId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('order.uncollected.customer', user.email, vars),
+        user.phone && this.sendSms('order.uncollected.customer', user.phone, vars),
+        this.sendPushToUser('order.uncollected.customer', user.id, vars, { orderId: params.orderId }),
+        this.sendInApp('order.uncollected.customer', user.id, vars, 'order', meta),
+      ]);
+    }, this.logger, 'order.uncollected.customer');
+  }
+
+  async notifyCustomerOrderAbandoned(customerId: string, params: { orderRef: string; orderId: string }) {
+    const user = await this.getUser(customerId);
+    if (!user) return;
+    const vars: Record<string, string | number> = { orderRef: params.orderRef };
+    const meta = { orderId: params.orderId };
+    fire(async () => {
+      await Promise.all([
+        user.email && this.sendEmail('order.abandoned.customer', user.email, vars),
+        user.phone && this.sendSms('order.abandoned.customer', user.phone, vars),
+        this.sendPushToUser('order.abandoned.customer', user.id, vars, { orderId: params.orderId }),
+        this.sendInApp('order.abandoned.customer', user.id, vars, 'order', meta),
+      ]);
+    }, this.logger, 'order.abandoned.customer');
+  }
 }

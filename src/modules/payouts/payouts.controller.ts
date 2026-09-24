@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { RequestPayoutDto } from './dto/request-payout.dto';
+import { HoldPayoutDto } from './dto/hold-payout.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
 import { PayoutStatus } from '../../common/enums/payout-status.enum';
@@ -81,6 +82,29 @@ export class PayoutsController {
     @Request() req: { user: { sub: string } },
   ) {
     return this.payoutsService.approvePayout(id, req.user.sub);
+  }
+
+  // ─── Admin: withhold / release a payout (investigation window) ──────────────────
+
+  @Post(':id/hold')
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'Withhold a pending payout for investigation (auto-releases after the window)' })
+  holdPayout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: HoldPayoutDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.payoutsService.holdPayout(id, req.user.sub, dto.reason);
+  }
+
+  @Post(':id/release')
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'Release a withheld payout back to pending' })
+  releasePayout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.payoutsService.releasePayout(id, req.user.sub, 'manual');
   }
 
   // ─── Admin: trigger bonus cycle manually ──────────────────────────────────────

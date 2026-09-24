@@ -29,7 +29,8 @@ export class LogGarmentCountDto {
    * Preferred: the rep selects catalogue items from the fetched list and the app
    * sends their ids. Ids are validated against the catalogue, priced against the
    * order's vendor, and (when the vendor hasn't priced an item) fall back to the
-   * system median (P50) with the gap flagged to the vendor and admin.
+   * system average — floored at the item's admin base price — with the gap flagged
+   * to the vendor and admin.
    */
   @ApiPropertyOptional({
     type: [GarmentLogItemDto],

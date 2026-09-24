@@ -6,7 +6,8 @@
     "deleteOutDir": true,
     "plugins": ["@nestjs/swagger"],
     "assets": [
-      { "include": "database/seeds/policy-docx/**/*", "outDir": "dist", "watchAssets": true }
+      { "include": "database/seeds/policy-docx/**/*", "outDir": "dist", "watchAssets": true },
+      { "include": "modules/receipts/assets/**/*", "outDir": "dist", "watchAssets": true }
     ],
     "watchAssets": true
   }
