@@ -171,6 +171,12 @@ export class VendorsService {
       return { vendor, user };
     });
 
+    // Issue this vendor's referral code so they can refer others (mirrors
+    // self-signup). Idempotent + fire-and-forget — never fail creation over it.
+    this.referralsService
+      .issueCode(result.user.id, 'vendor')
+      .catch((err: Error) => this.logger.warn(`Vendor referral code issue skipped: ${err.message}`));
+
     // Generate invite token and send email outside the transaction
     const inviteToken = uuidv4();
     const INVITE_TTL = 7 * 24 * 60 * 60;

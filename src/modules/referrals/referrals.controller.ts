@@ -57,6 +57,14 @@ export class ReferralsController {
     return this.service.myReferrals(userId);
   }
 
+  @Get('user/:userId')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: "Admin: a specific user's referral code, referrals and payout summary" })
+  userReferrals(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.service.myReferrals(userId);
+  }
+
   @Get('summary')
   @ApiBearerAuth()
   @Roles(Role.ADMIN, Role.FINANCE)
