@@ -37,6 +37,27 @@ export class ReferralsService implements OnModuleInit {
   async onModuleInit() {
     try { await this.seedDefaultRules(); }
     catch (err) { this.logger.warn(`Skipped reward-rule seeding (${(err as Error).message})`); }
+    try {
+      const n = await this.backfillVendorCodes();
+      if (n > 0) this.logger.log(`Referral backfill: issued ${n} vendor code(s)`);
+    } catch (err) { this.logger.warn(`Skipped vendor code backfill (${(err as Error).message})`); }
+  }
+
+  /**
+   * Ensure every existing vendor has a referral code. Idempotent and cheap after the
+   * first run (returns 0 once all vendors are covered). Self-signup and admin-create
+   * already issue codes for new vendors — this catches ones created before that.
+   */
+  async backfillVendorCodes(): Promise<number> {
+    const rows = await this.users
+      .createQueryBuilder('u')
+      .innerJoin('vendors', 'v', 'v.user_id = u.id')
+      .leftJoin('referral_codes', 'rc', 'rc.owner_user_id = u.id')
+      .where('rc.id IS NULL')
+      .select('u.id', 'id')
+      .getRawMany<{ id: string }>();
+    for (const r of rows) await this.issueCode(r.id, 'vendor');
+    return rows.length;
   }
 
   // ─── Reward rules (admin-configurable; placeholder defaults = CAC levers) ──────
