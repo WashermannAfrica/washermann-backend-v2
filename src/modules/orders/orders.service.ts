@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
 import { Order } from '../../database/entities/order.entity';
@@ -18,6 +18,7 @@ import { OrderStatusHistory } from '../../database/entities/order-status-history
 import { RatingEvent } from '../../database/entities/rating-event.entity';
 import { Rep } from '../../database/entities/rep.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
+import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
 import { ConversionRate } from '../../database/entities/conversion-rate.entity';
@@ -33,11 +34,14 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { RepsService } from '../reps/reps.service';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
+import { TransportService } from '../transport/transport.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
 import { AreasService } from '../areas/areas.service';
 import { AssignmentService } from '../assignment/assignment.service';
 import { CatalogueService } from '../catalogue/catalogue.service';
+import { GiftCardsService } from '../gift-cards/gift-cards.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 import type { GarmentLogLine } from '../../database/entities/order.entity';
 
 /**
@@ -61,8 +65,10 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.IN_PROGRESS]:         [OrderStatus.READY_FOR_DELIVERY],
   [OrderStatus.READY_FOR_DELIVERY]:  [OrderStatus.REP_COLLECTED],
   [OrderStatus.REP_COLLECTED]:       [OrderStatus.OUT_FOR_DELIVERY],
-  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED],
+  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED, OrderStatus.DELIVERY_FAILED],
+  [OrderStatus.DELIVERY_FAILED]:     [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.ABANDONED],
   [OrderStatus.DELIVERED]:           [OrderStatus.COMPLETED],
+  [OrderStatus.ABANDONED]:           [],
   [OrderStatus.COMPLETED]:           [],
   [OrderStatus.DISPUTED]:            [],
   [OrderStatus.CANCELLED]:           [],
@@ -110,6 +116,7 @@ export class OrdersService {
     private vendorsService: VendorsService,
     private repsService: RepsService,
     private platformConfigService: PlatformConfigService,
+    private transportService: TransportService,
     private notificationsService: NotificationsService,
     private usersService: UsersService,
     private areasService: AreasService,
@@ -119,17 +126,20 @@ export class OrdersService {
     private dataSource: DataSource,
     private configService: ConfigService,
     private catalogueService: CatalogueService,
+    private giftCardsService: GiftCardsService,
+    private receiptsService: ReceiptsService,
   ) {}
 
   // ─── Place order ─────────────────────────────────────────────────────────────
 
   /** Resolve the authoritative quote for the order's flow, validating its required fields. */
-  private async quoteForFlow(dto: PlaceOrderDto): Promise<Quote> {
+  private async quoteForFlow(dto: PlaceOrderDto, chosenVendorId?: string): Promise<Quote> {
     if (dto.flow === 'wash_iron') {
       if (!dto.selections?.length) {
         throw new BadRequestException('selections are required for a wash_iron order');
       }
-      return this.orderQuoteService.quoteWashIron(dto.selections);
+      // Choose-Washerman prices wash_iron items from the chosen vendor's own rates.
+      return this.orderQuoteService.quoteWashIron(dto.selections, chosenVendorId);
     }
     if (dto.flow === 'wash_fold') {
       if (!dto.bagId) throw new BadRequestException('bagId is required for a wash_fold order');
@@ -199,9 +209,44 @@ export class OrdersService {
       );
     }
 
-    // 1. Authoritative quote for the chosen flow (server-side; client prices ignored)
-    const quote = await this.quoteForFlow(dto);
+    // 0b. Choose-Washerman — validate the chosen vendor serves this area and is verified.
+    const allocationMode: 'automatic' | 'choose' = dto.allocationMode ?? 'automatic';
+    let chosenVendor: Vendor | null = null;
+    if (allocationMode === 'choose') {
+      if (!dto.vendorId) throw new BadRequestException('vendorId is required when choosing a washerman');
+      chosenVendor = await this.vendorRepository.findOne({ where: { id: dto.vendorId } });
+      if (!chosenVendor) throw new BadRequestException('Chosen washerman not found');
+      if (chosenVendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
+        throw new BadRequestException('Chosen washerman is not available');
+      }
+      if (!Array.isArray(chosenVendor.areaIds) || !chosenVendor.areaIds.includes(areaId)) {
+        throw new BadRequestException('Chosen washerman does not serve this area');
+      }
+    }
+
+    // 1. Authoritative quote for the chosen flow (server-side; client prices ignored).
+    //    In choose mode, wash_iron items are priced from the chosen vendor's own rates.
+    const quote = await this.quoteForFlow(dto, chosenVendor?.id);
     const cfg = await this.platformConfigService.getConfig();
+
+    // Distance-based transport estimate — coordinates are mandatory (no flat fallback).
+    if (dto.pickupLatitude == null || dto.pickupLongitude == null) {
+      throw new BadRequestException('Pickup coordinates are required to price transport');
+    }
+    const pickupCoord = { lat: dto.pickupLatitude, lng: dto.pickupLongitude };
+    // Choose mode with a located vendor → charge the exact round-trip to that vendor;
+    // otherwise estimate across the area's located vendors.
+    const transportEst =
+      chosenVendor?.latitude != null && chosenVendor?.longitude != null
+        ? await this.transportService.actualForVendor(pickupCoord, {
+            lat: chosenVendor.latitude,
+            lng: chosenVendor.longitude,
+          })
+        : await this.transportService.estimateForArea(pickupCoord, areaId);
+    const transportWp = transportEst.transportWp;
+    const transportNgn = quote.conversionRateSnapshot > 0
+      ? Math.round(transportWp / quote.conversionRateSnapshot)
+      : 0;
 
     // Shape the quote into the pricing snapshot the rest of the method consumes.
     const pricing = {
@@ -215,9 +260,9 @@ export class OrdersService {
       subtotalWP:             quote.totalWp,
       serviceChargeWP:        0,
       vatWP:                  0,
-      transportWP:            0,
-      totalWP:                quote.totalWp,
-      nairaEquivalent:        quote.totalNgn,
+      transportWP:            transportWp,
+      totalWP:                quote.totalWp + transportWp,
+      nairaEquivalent:        quote.totalNgn + transportNgn,
       conversionRateId:       quote.conversionRateId,
       conversionRateSnapshot: quote.conversionRateSnapshot,
       calculatedAt:           quote.calculatedAt,
@@ -225,58 +270,20 @@ export class OrdersService {
       charges:                this.decomposeCharges(quote.totalWp, dto.flow, cfg),
     };
 
-    // 2. Check wallet has enough WP
-    const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
-    if (!wallet) throw new NotFoundException('User wallet not found');
-    if (wallet.balance < pricing.totalWP) {
-      throw new BadRequestException(
-        `Insufficient WashPoints. Required: ${pricing.totalWP} WP, Available: ${wallet.balance} WP`,
-      );
-    }
-
-    // 3. Generate order reference
+    // 2. Generate order reference
     const ref = await this.generateReference();
 
+    // The order is created as a DRAFT (PENDING_PAYMENT). No wallet debit or escrow
+    // happens until the customer confirms payment — see confirmPayment().
     const result = await this.dataSource.transaction(async (manager) => {
-      // 4. Debit user wallet — also proportionally reduce fiatBalanceKobo (WACB method)
-      const balanceBefore     = wallet.balance;
-      const fiatBefore        = wallet.fiatBalanceKobo ?? 0;
-      const debitWP           = pricing.totalWP;
-      // Proportional fiat deduction: (debitWP / balanceBefore) × fiatBefore
-      const fiatDeductKobo    = balanceBefore > 0
-        ? Math.round((debitWP / balanceBefore) * fiatBefore)
-        : 0;
-      wallet.balance         -= debitWP;
-      wallet.fiatBalanceKobo  = Math.max(0, fiatBefore - fiatDeductKobo);
-      await manager.save(wallet);
-
-      // 5. Write ledger entry
-      const ledgerEntry = manager.create(LedgerEntry, {
-        walletId:                wallet.id,
-        userId:                  customerId,
-        type:                    'debit',
-        amount:                  pricing.totalWP,
-        balanceBefore,
-        balanceAfter:            wallet.balance,
-        source:                  LedgerSource.ORDER_DEBIT,
-        conversionRateId:        pricing.conversionRateId,
-        conversionRateSnapshot:  pricing.conversionRateSnapshot,
-        reference:               ref,
-        description:             `Order payment: ${ref}`,
-        metadata:                null,
-        vaultId:                 null,
-        fiatAmountKobo:          null,
-        fiatCurrency:            null,
-      });
-      await manager.save(ledgerEntry);
-
-      // 6. Create order
       const order = manager.create(Order, {
         reference:               ref,
         customerId,
         companyId:               dto.companyId ?? null,
         repId:                   null,
         vendorId:                null,
+        allocationMode,
+        chosenVendorId:          chosenVendor?.id ?? null,
         areaId,
         areaLocationId,
         coverageMatched,
@@ -304,54 +311,121 @@ export class OrdersService {
         vendorShareNairaSnapshot: null,
         repShareWP:              null,
         platformShareWP:         null,
+        transportEstimateWp:     transportWp,
         garmentLog:              null,
-        status:                  OrderStatus.PAID,
+        status:                  OrderStatus.PENDING_PAYMENT,
         autoCompleteAt:          null,
       });
       await manager.save(order);
 
-      // 7. Create escrow
-      const escrow = manager.create(OrderEscrow, {
-        orderId:           order.id,
-        wpAmount:          pricing.totalWP,
-        nairaEquivalent:   pricing.nairaEquivalent,
-        conversionRateId:  pricing.conversionRateId,
-        status:            'held',
-      });
-      await manager.save(escrow);
-
-      // 8. Write status history
+      // Status history: draft created, awaiting payment.
       await manager.save(
         manager.create(OrderStatusHistory, {
           orderId:         order.id,
           fromStatus:      null,
-          toStatus:        OrderStatus.PAID,
+          toStatus:        OrderStatus.PENDING_PAYMENT,
           triggeredBy:     customerId,
           triggeredByRole: 'customer',
-          note:            'Order placed and paid',
+          note:            'Order created — awaiting payment',
         }),
       );
-
-      // 9. Fire order-placed notifications (fire-and-forget)
-      this.notificationsService.notifyOrderPlaced({
-        customerId:        customerId,
-        orderRef:          ref,
-        totalWP:           pricing.totalWP,
-        nairaEquivalent:   pricing.nairaEquivalent,
-        pickupAddress:     dto.pickupAddress,
-        scheduledPickupAt: new Date(dto.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }),
-      });
 
       return { order, pricing };
     });
 
-    // Auto-start the rep broadcast the moment payment lands (fire-and-forget —
-    // never fail the order over it; the every-minute cron sweep is the safety net).
-    this.assignmentService
-      .startRepAssignment(result.order.id)
-      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${result.order.reference}: ${(err as Error).message}`));
-
     return result;
+  }
+
+  /**
+   * Confirm and pay for a draft order (PENDING_PAYMENT). Optionally redeems a gift
+   * card to top up the wallet first, then debits the wallet, places escrow, marks the
+   * order PAID and starts the rep broadcast. Idempotent: a PAID order returns as-is.
+   */
+  async confirmPayment(orderId: string, customerId: string, opts: { giftCardCode?: string } = {}) {
+    const order = await this.findOne(orderId);
+    if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
+    if (order.status === OrderStatus.PAID) return { order, alreadyPaid: true };
+    if (order.status !== OrderStatus.PENDING_PAYMENT) {
+      throw new BadRequestException('This order is no longer awaiting payment');
+    }
+
+    // Optional gift-card augmentation — credits the wallet before we charge it.
+    if (opts.giftCardCode) {
+      await this.giftCardsService.redeemGiftCard(opts.giftCardCode.trim(), customerId);
+    }
+
+    const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+    if (!wallet) throw new NotFoundException('User wallet not found');
+    if (wallet.balance < order.totalWP) {
+      throw new BadRequestException(
+        `Insufficient WashPoints. Required: ${order.totalWP} WP, Available: ${wallet.balance} WP`,
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // Debit wallet — proportionally reduce fiatBalanceKobo (WACB method).
+      const balanceBefore  = wallet.balance;
+      const fiatBefore     = wallet.fiatBalanceKobo ?? 0;
+      const fiatDeductKobo = balanceBefore > 0 ? Math.round((order.totalWP / balanceBefore) * fiatBefore) : 0;
+      wallet.balance        -= order.totalWP;
+      wallet.fiatBalanceKobo = Math.max(0, fiatBefore - fiatDeductKobo);
+      await manager.save(wallet);
+
+      await manager.save(manager.create(LedgerEntry, {
+        walletId:               wallet.id,
+        userId:                 customerId,
+        type:                   'debit',
+        amount:                 order.totalWP,
+        balanceBefore,
+        balanceAfter:           wallet.balance,
+        source:                 LedgerSource.ORDER_DEBIT,
+        conversionRateId:       order.conversionRateId,
+        conversionRateSnapshot: order.conversionRateSnapshot,
+        reference:              order.reference,
+        description:            `Order payment: ${order.reference}`,
+        metadata:               null,
+        vaultId:                null,
+        fiatAmountKobo:         null,
+        fiatCurrency:           null,
+      }));
+
+      // Escrow the funds.
+      await manager.save(manager.create(OrderEscrow, {
+        orderId:          order.id,
+        wpAmount:         order.totalWP,
+        nairaEquivalent:  order.nairaEquivalentSnapshot,
+        conversionRateId: order.conversionRateId,
+        status:           'held',
+      }));
+
+      order.status = OrderStatus.PAID;
+      await manager.save(order);
+
+      await manager.save(manager.create(OrderStatusHistory, {
+        orderId:         order.id,
+        fromStatus:      OrderStatus.PENDING_PAYMENT,
+        toStatus:        OrderStatus.PAID,
+        triggeredBy:     customerId,
+        triggeredByRole: 'customer',
+        note:            'Payment confirmed',
+      }));
+    });
+
+    this.notificationsService.notifyOrderPlaced({
+      customerId,
+      orderRef:          order.reference,
+      totalWP:           order.totalWP,
+      nairaEquivalent:   order.nairaEquivalentSnapshot ?? 0,
+      pickupAddress:     order.pickupAddress,
+      scheduledPickupAt: order.scheduledPickupAt ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }) : '',
+    });
+
+    // Auto-start the rep broadcast the moment payment lands (fire-and-forget).
+    this.assignmentService
+      .startRepAssignment(order.id)
+      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`));
+
+    return { order, alreadyPaid: false };
   }
 
   // ─── List orders (admin / customer) ──────────────────────────────────────────
@@ -497,6 +571,10 @@ export class OrdersService {
       order.cancelledAt = new Date();
     }
 
+    if (toStatus === OrderStatus.ABANDONED) {
+      order.abandonedAt = new Date();
+    }
+
     await this.orderRepository.save(order);
 
     await this.statusHistoryRepository.save(
@@ -581,6 +659,138 @@ export class OrdersService {
     return this.transition(orderId, toStatus, vendorUserId, 'vendor');
   }
 
+  // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
+
+  /** Rep records a failed delivery attempt → DELIVERY_FAILED + first uncollected notice. */
+  async recordFailedDelivery(orderId: string, repUserId: string, note?: string) {
+    const order = await this.findOne(orderId);
+    await this.assertRepAssigned(order, repUserId);
+    if (order.status !== OrderStatus.OUT_FOR_DELIVERY && order.status !== OrderStatus.DELIVERY_FAILED) {
+      throw new BadRequestException('Delivery can only be marked failed while out for delivery');
+    }
+    await this.transition(orderId, OrderStatus.DELIVERY_FAILED, repUserId, 'rep', note ?? 'Delivery attempt failed — customer unavailable');
+
+    const fresh = await this.findOne(orderId);
+    fresh.deliveryAttempts += 1;
+    const now = new Date();
+    if (!fresh.firstUncollectedNoticeAt) {
+      fresh.firstUncollectedNoticeAt = now;
+      fresh.uncollectedNoticeCount = 1;
+    }
+    fresh.lastUncollectedNoticeAt = now;
+    await this.orderRepository.save(fresh);
+
+    this.notificationsService.notifyCustomerUncollected(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+    return fresh;
+  }
+
+  /**
+   * Abandonment settlement (Option A — full split). The service was fully rendered,
+   * so the vendor and rep are paid their normal shares and escrow is released; the
+   * customer's WashPoints are consumed (no refund). The order is marked ABANDONED
+   * (not COMPLETED) so the garments are tracked for disposal. Idempotent: only acts
+   * on a DELIVERY_FAILED order.
+   */
+  async settleAbandonment(orderId: string, triggeredBy: string | null) {
+    const order = await this.findOne(orderId);
+    if (order.status !== OrderStatus.DELIVERY_FAILED) {
+      throw new BadRequestException('Only a failed-delivery order can be abandoned');
+    }
+
+    // Release escrow (service rendered).
+    const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+    if (escrow && escrow.status !== 'released') {
+      escrow.status = 'released';
+      escrow.releasedAt = new Date();
+      await this.escrowRepository.save(escrow);
+    }
+
+    // Pay the vendor + rep their shares (full split), if calculated.
+    if (order.vendorId && (order.vendorShareWP ?? 0) > 0) {
+      await this.vendorsService.creditWallet(
+        order.vendorId,
+        order.vendorShareWP!,
+        LedgerSource.VENDOR_EARNING,
+        `Order abandoned — service rendered: ${order.reference}`,
+        { orderId, nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined, reference: order.reference },
+      );
+    }
+    if (order.repId && (order.repShareWP ?? 0) > 0) {
+      await this.repsService.creditWallet(
+        order.repId,
+        order.repShareWP!,
+        LedgerSource.REP_EARNING,
+        `Order abandoned — service rendered: ${order.reference}`,
+        { orderId, reference: order.reference },
+      );
+    }
+
+    // Mark ABANDONED (records history) and flag disposal pending.
+    await this.transition(orderId, OrderStatus.ABANDONED, triggeredBy, 'system',
+      'Garments uncollected after notices — abandoned; escrow settled to vendor/rep (service rendered)');
+    const fresh = await this.findOne(orderId);
+    // Credit rep transport (logistics) on top of their service share.
+    const repTransport = await this.computeAndCreditRepTransport(fresh);
+    fresh.platformShareWP = fresh.totalWP - (fresh.vendorShareWP ?? 0) - (fresh.repShareWP ?? 0) - repTransport;
+    fresh.disposalMethod = 'pending';
+    await this.orderRepository.save(fresh);
+    return fresh;
+  }
+
+  /**
+   * Cron helper (WS4 1.6). For orders stuck in DELIVERY_FAILED: send a 2nd notice
+   * after a gap, then — once ≥2 notices have gone out and `abandonmentDays` have
+   * elapsed since the first — treat the garments as abandoned (bailee duty met) and
+   * settle the escrow to the vendor/rep (Option A, full split).
+   */
+  async sweepUncollected(): Promise<{ notices: number; abandoned: number }> {
+    const config = await this.platformConfigService.getConfig();
+    const abandonmentDays = config.abandonmentDays ?? 30;
+    const gapDays = Math.max(1, Math.ceil(abandonmentDays / 2));
+    const now = Date.now();
+    const DAY = 86_400_000;
+
+    const failed = await this.orderRepository.find({ where: { status: OrderStatus.DELIVERY_FAILED } });
+    let notices = 0;
+    let abandoned = 0;
+
+    for (const o of failed) {
+      const first = o.firstUncollectedNoticeAt?.getTime() ?? now;
+      const last = o.lastUncollectedNoticeAt?.getTime() ?? first;
+      const daysSinceFirst = (now - first) / DAY;
+      const daysSinceLast = (now - last) / DAY;
+
+      if (o.uncollectedNoticeCount < 2 && daysSinceLast >= gapDays) {
+        o.uncollectedNoticeCount += 1;
+        o.lastUncollectedNoticeAt = new Date();
+        await this.orderRepository.save(o);
+        this.notificationsService.notifyCustomerUncollected(o.customerId, { orderRef: o.reference, orderId: o.id });
+        notices++;
+      } else if (o.uncollectedNoticeCount >= 2 && daysSinceFirst >= abandonmentDays) {
+        try {
+          const fresh = await this.settleAbandonment(o.id, null);
+          this.notificationsService.notifyCustomerOrderAbandoned(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+          abandoned++;
+        } catch {
+          // leave for the next sweep / manual handling
+        }
+      }
+    }
+    return { notices, abandoned };
+  }
+
+  /** Admin records the disposal outcome of an abandoned order's garments. */
+  async recordDisposal(orderId: string, adminId: string, method: string, note?: string) {
+    const order = await this.findOne(orderId);
+    if (order.status !== OrderStatus.ABANDONED) {
+      throw new BadRequestException('Only abandoned orders can record a disposal outcome');
+    }
+    order.disposalMethod = method;
+    order.disposalNote = (note ?? '').slice(0, 1000) || null;
+    await this.orderRepository.save(order);
+    return order;
+  }
+
   // ─── Rep logs garment count at pickup ────────────────────────────────────────
 
   async logGarmentCount(orderId: string, repUserId: string, dto: LogGarmentCountDto) {
@@ -600,7 +810,8 @@ export class OrdersService {
 
     // Resolve the log into structured, priced lines. Each line is priced against
     // the ORDER'S vendor: their own approved price if they have one for the item,
-    // otherwise the system median (P50) with the gap recorded.
+    // otherwise the system average, floored at the item's admin base price, with
+    // the gap recorded.
     const { lines, totalNaira, totalWP, unpriced } = await this.resolveAndPriceGarmentLog(
       order.vendorId!,
       dto,
@@ -633,7 +844,7 @@ export class OrdersService {
     const itemCount = lines.reduce((s, l) => s + l.count, 0);
     const unpricedNames = unpriced.map((u) => u.name);
     const historyNote = unpriced.length
-      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (mean) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
+      ? `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}). Vendor has no price for: ${unpricedNames.join(', ')} — system average (floored at the item's base price) used for ${unpriced.length > 1 ? 'those items' : 'that item'}.`
       : `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}).`;
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
@@ -695,6 +906,49 @@ export class OrdersService {
 
   // ─── Complete order & release escrow ─────────────────────────────────────────
 
+  /**
+   * Compute the actual transport (customer↔assigned-vendor round trip) and credit
+   * the rep `min(actual, estimate)` as logistics comp — on top of their service
+   * share. Mutates the order's transport fields (caller saves). If the vendor has
+   * no coordinates, the actual falls back to the estimate so the rep isn't
+   * shortchanged and the platform never pays more than the customer was charged.
+   */
+  private async computeAndCreditRepTransport(order: Order): Promise<number> {
+    const estimate = order.transportEstimateWp ?? 0;
+    if (!order.repId || estimate <= 0) {
+      order.actualTransportWp = order.actualTransportWp ?? estimate;
+      order.repTransportWp = 0;
+      return 0;
+    }
+
+    let actual = estimate; // fallback when vendor coords are missing
+    if (order.vendorId && order.pickupLatitude != null && order.pickupLongitude != null) {
+      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+      if (vendor?.latitude != null && vendor?.longitude != null) {
+        const res = await this.transportService.actualForVendor(
+          { lat: order.pickupLatitude, lng: order.pickupLongitude },
+          { lat: vendor.latitude, lng: vendor.longitude },
+        );
+        actual = res.transportWp;
+      }
+    }
+
+    const repTransport = this.transportService.repTransportWp(actual, estimate);
+    order.actualTransportWp = actual;
+    order.repTransportWp = repTransport;
+
+    if (repTransport > 0) {
+      await this.repsService.creditWallet(
+        order.repId,
+        repTransport,
+        LedgerSource.REP_TRANSPORT,
+        `Transport (logistics) — order ${order.reference}`,
+        { orderId: order.id, reference: order.reference },
+      );
+    }
+    return repTransport;
+  }
+
   async completeOrder(orderId: string, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
     const order = await this.findOne(orderId);
 
@@ -705,7 +959,7 @@ export class OrdersService {
       throw new BadRequestException('Earnings split not yet calculated — garment count must be logged first');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const completed = await this.dataSource.transaction(async (manager) => {
       // Release escrow
       const escrow = await this.escrowRepository.findOne({ where: { orderId } });
       if (escrow) {
@@ -735,6 +989,10 @@ export class OrdersService {
           { orderId, reference: order.reference },
         );
       }
+
+      // Credit rep transport (logistics) on top of their service share, and record it.
+      const repTransport = await this.computeAndCreditRepTransport(order);
+      order.platformShareWP = order.totalWP - (order.vendorShareWP ?? 0) - (order.repShareWP ?? 0) - repTransport;
 
       // Mark completed
       order.status      = OrderStatus.COMPLETED;
@@ -770,6 +1028,49 @@ export class OrdersService {
 
       return order;
     });
+
+    // Generate the four settlement receipts now that all splits are final
+    // (fire-and-forget — never fail completion over an image render).
+    this.receiptsService.generateForOrderSafe(completed.id);
+
+    return completed;
+  }
+
+  // ─── Draft expiry ─────────────────────────────────────────────────────────────
+
+  /**
+   * Cancel draft orders (PENDING_PAYMENT) that have sat unpaid past the configured
+   * window (default 24h from creation). No wallet/escrow to unwind — a draft was
+   * never charged — so this just flips status and records history. Returns the count.
+   */
+  async expireStaleDrafts(): Promise<number> {
+    const cfg = await this.platformConfigService.getConfig();
+    const hours = cfg.draftOrderExpiryHours ?? 24;
+    const cutoff = new Date(Date.now() - hours * 3600_000);
+
+    const stale = await this.orderRepository.find({
+      where: { status: OrderStatus.PENDING_PAYMENT, createdAt: LessThan(cutoff) },
+    });
+    if (stale.length === 0) return 0;
+
+    for (const order of stale) {
+      await this.dataSource.transaction(async (manager) => {
+        order.status             = OrderStatus.CANCELLED;
+        order.cancelledAt        = new Date();
+        order.cancellationReason = 'Draft expired — payment not confirmed in time';
+        await manager.save(order);
+
+        await manager.save(manager.create(OrderStatusHistory, {
+          orderId:         order.id,
+          fromStatus:      OrderStatus.PENDING_PAYMENT,
+          toStatus:        OrderStatus.CANCELLED,
+          triggeredBy:     null,
+          triggeredByRole: 'system',
+          note:            'Draft expired — payment not confirmed in time',
+        }));
+      });
+    }
+    return stale.length;
   }
 
   // ─── Cancel order ─────────────────────────────────────────────────────────────
@@ -789,41 +1090,47 @@ export class OrdersService {
       throw new BadRequestException('Order cannot be cancelled at this stage');
     }
 
+    // A draft (PENDING_PAYMENT) order was never debited — cancelling it must not
+    // refund anything. Only a paid order (funds held in escrow) gets refunded.
+    const wasPaid = order.status !== OrderStatus.PENDING_PAYMENT;
+
     return this.dataSource.transaction(async (manager) => {
-      // Refund user wallet
-      const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
-      if (wallet) {
-        const balanceBefore  = wallet.balance;
-        wallet.balance      += order.totalWP;
-        await manager.save(wallet);
+      if (wasPaid) {
+        // Refund user wallet
+        const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+        if (wallet) {
+          const balanceBefore  = wallet.balance;
+          wallet.balance      += order.totalWP;
+          await manager.save(wallet);
 
-        await manager.save(
-          manager.create(LedgerEntry, {
-            walletId:               wallet.id,
-            userId:                 customerId,
-            type:                   'credit',
-            amount:                 order.totalWP,
-            balanceBefore,
-            balanceAfter:           wallet.balance,
-            source:                 LedgerSource.CANCELLATION_REFUND,
-            conversionRateId:       null,
-            conversionRateSnapshot: null,
-            reference:              order.reference,
-            description:            `Refund for cancelled order: ${order.reference}`,
-            metadata:               null,
-            vaultId:                null,
-            fiatAmountKobo:         null,
-            fiatCurrency:           null,
-          }),
-        );
-      }
+          await manager.save(
+            manager.create(LedgerEntry, {
+              walletId:               wallet.id,
+              userId:                 customerId,
+              type:                   'credit',
+              amount:                 order.totalWP,
+              balanceBefore,
+              balanceAfter:           wallet.balance,
+              source:                 LedgerSource.CANCELLATION_REFUND,
+              conversionRateId:       null,
+              conversionRateSnapshot: null,
+              reference:              order.reference,
+              description:            `Refund for cancelled order: ${order.reference}`,
+              metadata:               null,
+              vaultId:                null,
+              fiatAmountKobo:         null,
+              fiatCurrency:           null,
+            }),
+          );
+        }
 
-      // Release escrow
-      const escrow = await this.escrowRepository.findOne({ where: { orderId } });
-      if (escrow) {
-        escrow.status = 'refunded';
-        escrow.releasedAt = new Date();
-        await manager.save(escrow);
+        // Release escrow
+        const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+        if (escrow) {
+          escrow.status = 'refunded';
+          escrow.releasedAt = new Date();
+          await manager.save(escrow);
+        }
       }
 
       // Mark cancelled
@@ -962,8 +1269,11 @@ export class OrdersService {
         let unit = vendorPriceByItem.get(entry.itemId);
         const pricedByVendor = unit != null && unit > 0;
         if (!pricedByVendor) {
-          // Vendor hasn't priced it → pay the system arithmetic mean; flag the gap.
-          unit = (await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId)) ?? 0;
+          // Vendor hasn't priced it → pay the system arithmetic mean, floored at the
+          // item's admin base price so a completed order never earns ₦0. Flag the gap.
+          const mean = await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId);
+          const floor = cat.floorPriceNgn ?? 0;
+          unit = Math.max(mean ?? 0, floor);
           unpriced.push({ itemId: entry.itemId, name: cat.name });
         }
         totalNaira += (unit ?? 0) * entry.count;

@@ -263,6 +263,25 @@ export class UploadService implements OnModuleInit {
     }
   }
 
+  // ─── Order receipts (server-generated PNGs) ───────────────────────────────────
+
+  /**
+   * Upload a generated receipt PNG. Deterministic public id per (order, party) so a
+   * regenerate overwrites the previous image. Returns the public URL + storage key.
+   */
+  async uploadReceiptImage(
+    orderRef: string,
+    party: string,
+    buffer: Buffer,
+  ): Promise<{ url: string; publicId: string }> {
+    const safeRef = orderRef.replace(/[^a-zA-Z0-9_-]/g, '');
+    const result = await this.uploadBuffer(buffer, 'receipts', `receipt_${safeRef}_${party}`, {
+      resourceType: 'image',
+      allowedFormats: ['png'],
+    });
+    return { url: result.secure_url, publicId: result.public_id };
+  }
+
   private validateDocument(file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file provided');
 

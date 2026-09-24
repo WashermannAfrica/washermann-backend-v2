@@ -18,6 +18,11 @@ class UpsertRewardRuleDto {
 
 class RejectReferralDto {
   @IsOptional() @IsString() note?: string;
+  @IsOptional() @IsBoolean() fraud?: boolean;
+}
+
+class ClawbackReferralDto {
+  @IsString() reason: string;
 }
 
 class AdjustReferralDto {
@@ -49,6 +54,14 @@ export class ReferralsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'My referral code, referrals and payout summary' })
   me(@CurrentUser('id') userId: string) {
+    return this.service.myReferrals(userId);
+  }
+
+  @Get('user/:userId')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: "Admin: a specific user's referral code, referrals and payout summary" })
+  userReferrals(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.service.myReferrals(userId);
   }
 
@@ -100,7 +113,19 @@ export class ReferralsController {
     @Body() dto: RejectReferralDto,
     @CurrentUser('id') adminId: string,
   ) {
-    return this.service.rejectReferral(id, adminId, dto.note);
+    return this.service.rejectReferral(id, adminId, dto.note, dto.fraud ?? false);
+  }
+
+  @Post(':id/clawback')
+  @ApiBearerAuth()
+  @Roles(Role.ADMIN, Role.FINANCE)
+  @ApiOperation({ summary: 'Admin: claw back a PAID referral (fraud/self-referral only) — flags it for recovery' })
+  clawback(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ClawbackReferralDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.service.clawbackReferral(id, adminId, dto.reason);
   }
 
   @Patch(':id')

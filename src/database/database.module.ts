@@ -29,6 +29,8 @@ import { VendorDocument } from './entities/vendor-document.entity';
 import { VendorPricing } from './entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from './entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from './entities/vendor-ledger-entry.entity';
+import { EarningsDeduction } from './entities/earnings-deduction.entity';
+import { SuspensionNotice } from './entities/suspension-notice.entity';
 import { Rep } from './entities/rep.entity';
 import { RepPseudoWallet } from './entities/rep-pseudo-wallet.entity';
 import { RepPseudoLedgerEntry } from './entities/rep-pseudo-ledger-entry.entity';
@@ -39,6 +41,8 @@ import { PayoutRequest } from './entities/payout-request.entity';
 import { RatingEvent } from './entities/rating-event.entity';
 import { Order } from './entities/order.entity';
 import { OrderEscrow } from './entities/order-escrow.entity';
+import { OrderFundingLink } from './entities/order-funding-link.entity';
+import { OrderReceipt } from './entities/order-receipt.entity';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { AssignmentBroadcast } from './entities/assignment-broadcast.entity';
 import { InAppNotification } from './entities/in-app-notification.entity';
@@ -100,11 +104,11 @@ import { PolicyAcceptance } from './entities/policy-acceptance.entity';
             // Phase 6
             Area, AreaLocation, CoverageGap,
             BlogPost,
-            Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry,
+            Vendor, VendorDocument, VendorPricing, VendorEarningsWallet, VendorLedgerEntry, EarningsDeduction,
             Rep, RepPseudoWallet, RepPseudoLedgerEntry,
             PlatformPriceList, PlatformConfig, RepBonusTier,
             PayoutRequest, RatingEvent,
-            Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast,
+            Order, OrderEscrow, OrderStatusHistory, AssignmentBroadcast, OrderFundingLink, OrderReceipt,
             // Notifications
             InAppNotification, NotificationTemplate,
             // Packages
@@ -133,6 +137,7 @@ import { PolicyAcceptance } from './entities/policy-acceptance.entity';
             SupportConversation, SupportMessage,
             // Policy CMS + consent
             Policy, PolicyVersion, PolicyAcceptance,
+            SuspensionNotice,
           ],
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
           synchronize: config.get<boolean>('database.synchronize'),

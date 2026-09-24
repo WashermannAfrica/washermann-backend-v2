@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -78,6 +79,16 @@ export class PricingController {
   @ApiOperation({ summary: 'Get price config (legacy — prefer /pricing/model/:areaId)' })
   getClientConfig(@Param('areaId', ParseUUIDPipe) areaId: string) {
     return this.pricingService.getClientConfig(areaId);
+  }
+
+  @Get('transport/:areaId')
+  @ApiOperation({ summary: 'Distance-based transport estimate for a cart preview (pass the customer pickup lat/lng)' })
+  transportEstimate(
+    @Param('areaId', ParseUUIDPipe) areaId: string,
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+  ) {
+    return this.pricingService.estimateTransport(areaId, Number(lat), Number(lng));
   }
 
   // ─── Special pricing packages (customer) ─────────────────────────────────────

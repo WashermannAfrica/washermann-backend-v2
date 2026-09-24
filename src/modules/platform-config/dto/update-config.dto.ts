@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdatePlatformConfigDto {
@@ -47,6 +47,72 @@ export class UpdatePlatformConfigDto {
   @Min(1)
   @Max(168)
   orderAutoCompleteHours?: number;
+
+  @ApiPropertyOptional({ description: 'Hours an unpaid draft order is kept before auto-cancel', example: 24, minimum: 1, maximum: 168 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  draftOrderExpiryHours?: number;
+
+  @ApiPropertyOptional({ description: 'Business days a payout may be withheld before auto-release', example: 10, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  payoutWithholdingDays?: number;
+
+  @ApiPropertyOptional({ description: 'Business days a vendor has to respond before a claim deduction', example: 5, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  deductionResponseDays?: number;
+
+  @ApiPropertyOptional({ description: 'Days a referral reward may be corrected/clawed back pre-payout', example: 60, minimum: 0, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  rewardClawbackDays?: number;
+
+  @ApiPropertyOptional({ description: 'Days after first notice before an order is treated as abandoned', example: 30, minimum: 1, maximum: 365 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  abandonmentDays?: number;
+
+  @ApiPropertyOptional({ description: 'Business days to respond after a suspension notice / internal-review window', example: 7, minimum: 0, maximum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  suspensionNoticeDays?: number;
+
+  @ApiPropertyOptional({ description: 'Transport base fare (WP)', example: 100, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportBaseFareWp?: number;
+
+  @ApiPropertyOptional({ description: 'Transport cost per km (WP), applied to round-trip distance', example: 20, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  transportPerKmWp?: number;
+
+  @ApiPropertyOptional({ description: 'Minimum transport fee (WP)', example: 0, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportMinWp?: number;
+
+  @ApiPropertyOptional({ description: 'Maximum transport fee (WP); 0 = no cap', example: 0, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  transportMaxWp?: number;
+
+  @ApiPropertyOptional({ enum: ['average', 'p75'] })
+  @IsOptional() @IsIn(['average', 'p75'])
+  transportEstimateBasis?: 'average' | 'p75';
+
+  @ApiPropertyOptional({ enum: ['haversine', 'google'] })
+  @IsOptional() @IsIn(['haversine', 'google'])
+  transportDistanceProvider?: 'haversine' | 'google';
 
   @ApiPropertyOptional({ description: 'VAT percentage (0 = disabled)', example: 7.5, minimum: 0, maximum: 30 })
   @IsOptional()

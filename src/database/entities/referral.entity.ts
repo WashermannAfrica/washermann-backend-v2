@@ -4,7 +4,7 @@ import { BaseEntity } from './base.entity';
 import { DecimalTransformer } from '../../common/transformers/column.transformers';
 import { ReferrerType, ReferredType } from './referral-code.entity';
 
-export type ReferralStatus = 'pending' | 'available' | 'paid' | 'rejected';
+export type ReferralStatus = 'pending' | 'available' | 'paid' | 'rejected' | 'clawed_back';
 export type RewardKind = 'fixed' | 'percent';
 export type RewardCurrency = 'cash' | 'wp';
 
