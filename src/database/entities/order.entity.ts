@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from './base.entity';
 import { User } from './user.entity';
@@ -14,8 +14,31 @@ export type BagSize = 'small' | 'medium' | 'large' | 'xl';
 /** Service type options */
 export type ServiceType = 'wash_fold' | 'wash_iron';
 
-/** Order flow (catalogue pricing model) */
-export type OrderFlow = 'wash_fold' | 'wash_iron' | 'bundle';
+/** Order flow (catalogue pricing model + rep-only logistics legs) */
+export type OrderFlow =
+  | 'wash_fold'
+  | 'wash_iron'
+  | 'bundle'
+  // Logistics (mobility) legs — no washing; rep moves clothes A→B.
+  | 'logistics_delivery' // origin = vendor shop, destination = recipient/customer
+  | 'logistics_collect'; // origin = recipient, destination = vendor shop
+
+/** Who initiated an order. Washing orders are always 'customer'. */
+export type OrderRequesterType = 'customer' | 'vendor';
+
+/** The non-app counterparty on a logistics leg (a vendor's own customer). */
+export interface LogisticsRecipient {
+  name: string;
+  phone: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+/** True for the rep-only logistics flows. */
+export const LOGISTICS_FLOWS: OrderFlow[] = ['logistics_delivery', 'logistics_collect'];
+export const isLogisticsFlow = (f: OrderFlow | null | undefined): boolean =>
+  f === 'logistics_delivery' || f === 'logistics_collect';
 
 /** A selected catalogue item + quantity (wash_iron flow) */
 export interface OrderItemSelection {
@@ -201,6 +224,42 @@ export class Order extends BaseEntity {
   @ApiProperty({ nullable: true })
   @Column({ name: 'special_instructions', type: 'varchar', length: 1000, nullable: true })
   specialInstructions: string | null;
+
+  // ─── Logistics (mobility) legs ───────────────────────────────────────────────
+  // Present only for logistics_* flows. A leg moves clothes A→B by rep, no washing.
+
+  @ApiProperty({ enum: ['customer', 'vendor'], default: 'customer', description: 'Who initiated the order' })
+  @Column({ name: 'requester_type', type: 'varchar', length: 12, default: 'customer' })
+  requesterType: OrderRequesterType;
+
+  @ApiProperty({ nullable: true, description: 'Destination (B) latitude for a logistics leg' })
+  @Column({ name: 'dropoff_latitude', type: 'float', nullable: true })
+  dropoffLatitude: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Destination (B) longitude for a logistics leg' })
+  @Column({ name: 'dropoff_longitude', type: 'float', nullable: true })
+  dropoffLongitude: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Ad-hoc counterparty (vendor-initiated logistics)' })
+  @Column({ name: 'recipient', type: 'jsonb', nullable: true })
+  recipient: LogisticsRecipient | null;
+
+  @ApiProperty({ nullable: true, description: 'Platform mobility fee (WP) on a logistics leg' })
+  @Column({ name: 'mobility_fee_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  mobilityFeeWp: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Links the two legs of a combined round-trip (collect leg id)' })
+  @Column({ name: 'parent_order_id', type: 'uuid', nullable: true })
+  parentOrderId: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Combined round-trip: set when the vendor taps “ready to deliver”' })
+  @Column({ name: 'ready_to_deliver_at', type: 'timestamp with time zone', nullable: true })
+  readyToDeliverAt: Date | null;
+
+  @ApiProperty({ nullable: true, description: 'Public token for the recipient tracking link' })
+  @Index()
+  @Column({ name: 'tracking_token', type: 'varchar', length: 64, nullable: true })
+  trackingToken: string | null;
 
   // ─── Pricing (locked at placement) ───────────────────────────────────────────
 

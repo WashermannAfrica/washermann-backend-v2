@@ -51,6 +51,8 @@ export class PlatformConfigService {
       transportMaxWp: 0,
       transportEstimateBasis: 'average',
       transportDistanceProvider: 'haversine',
+      logisticsMobilityFeeWp: 0,
+      logisticsMobilityFeePercent: 0,
       assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
       priceSuggestionPercentile: 70,
@@ -88,6 +90,8 @@ export class PlatformConfigService {
     if (dto.transportMaxWp             != null) config.transportMaxWp             = dto.transportMaxWp;
     if (dto.transportEstimateBasis     != null) config.transportEstimateBasis     = dto.transportEstimateBasis;
     if (dto.transportDistanceProvider  != null) config.transportDistanceProvider  = dto.transportDistanceProvider;
+    if (dto.logisticsMobilityFeeWp     != null) config.logisticsMobilityFeeWp     = dto.logisticsMobilityFeeWp;
+    if (dto.logisticsMobilityFeePercent!= null) config.logisticsMobilityFeePercent= dto.logisticsMobilityFeePercent;
     if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
     if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
     config.updatedBy = adminId;
