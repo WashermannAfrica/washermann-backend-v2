@@ -442,6 +442,7 @@ export class OrdersService {
     search?: string;
     sortBy?: string;
     sortDir?: 'ASC' | 'DESC';
+    flow?: string;
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -474,6 +475,11 @@ export class OrdersService {
     if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
     if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
     if (query.serviceType) qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
+    if (query.flow) {
+      // 'logistics' selects both logistics leg flows; otherwise match the exact flow.
+      if (query.flow === 'logistics') qb.andWhere("o.flow IN ('logistics_delivery','logistics_collect')");
+      else qb.andWhere('o.flow = :flow', { flow: query.flow });
+    }
     if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
     const [rows, total] = await qb.getManyAndCount();
@@ -955,7 +961,7 @@ export class OrdersService {
    */
   private async settleLogisticsLeg(order: Order, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
     const repTransport = order.transportEstimateWp ?? 0;
-    return this.dataSource.transaction(async (manager) => {
+    const settled = await this.dataSource.transaction(async (manager) => {
       const escrow = await this.escrowRepository.findOne({ where: { orderId: order.id } });
       if (escrow) {
         escrow.status = 'released';
@@ -991,6 +997,11 @@ export class OrdersService {
 
       return order;
     });
+
+    // Generate the logistics receipts (requester invoice + rep + platform).
+    this.receiptsService.generateForOrderSafe(settled.id);
+
+    return settled;
   }
 
   async completeOrder(orderId: string, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
