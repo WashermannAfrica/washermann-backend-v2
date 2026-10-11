@@ -72,6 +72,26 @@ export class UsersController {
     return this.usersService.getProfileCompletion(userId);
   }
 
+  @Get('me/activities')
+  @ApiOperation({
+    summary: 'Recent activity feed (self)',
+    description:
+      "The signed-in user's recent activity — order status changes on their own orders merged with wallet (WashPoints) movements, newest first. Page with the `before` cursor returned as meta.nextCursor.",
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '1–50, default 20' })
+  @ApiQuery({ name: 'before', required: false, type: String, description: 'ISO timestamp cursor (pass meta.nextCursor)' })
+  @ApiResponse({ status: 200, description: 'Merged, chronological activity feed' })
+  getMyActivities(
+    @CurrentUser('id') userId: string,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.usersService.getMyActivities(userId, {
+      limit: limit != null ? Number(limit) : undefined,
+      before,
+    });
+  }
+
   // ─── FCM token registration ───────────────────────────────────────────────────
 
   @Patch('me/fcm-token')

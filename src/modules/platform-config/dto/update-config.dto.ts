@@ -48,6 +48,14 @@ export class UpdatePlatformConfigDto {
   @Max(168)
   orderAutoCompleteHours?: number;
 
+  @ApiPropertyOptional({ description: 'Flat platform mobility fee (WP) per logistics leg', example: 0, minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  logisticsMobilityFeeWp?: number;
+
+  @ApiPropertyOptional({ description: 'Platform mobility fee as a % of leg transport', example: 0, minimum: 0, maximum: 100 })
+  @IsOptional() @IsNumber() @Min(0) @Max(100)
+  logisticsMobilityFeePercent?: number;
+
   @ApiPropertyOptional({ description: 'Hours an unpaid draft order is kept before auto-cancel', example: 24, minimum: 1, maximum: 168 })
   @IsOptional()
   @IsInt()

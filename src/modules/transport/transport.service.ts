@@ -76,4 +76,15 @@ export class TransportService {
   repTransportWp(actualWp: number, estimateWp: number): number {
     return Math.min(actualWp, estimateWp);
   }
+
+  /**
+   * One-way transport fee for a single logistics leg (A→B), plus its distance.
+   * Unlike a wash order (round trip), a leg is a single directional trip.
+   */
+  async legFee(a: Coord, b: Coord): Promise<{ transportWp: number; distanceKm: number }> {
+    const cfg = await this.platformConfig.getConfig();
+    const km = await this.distance.distanceKm(a, b, cfg.transportDistanceProvider);
+    const raw = Number(cfg.transportBaseFareWp) + Number(cfg.transportPerKmWp) * km;
+    return { transportWp: this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp), distanceKm: km };
+  }
 }

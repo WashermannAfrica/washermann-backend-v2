@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { Order } from '../../database/entities/order.entity';
+import { Order, isLogisticsFlow } from '../../database/entities/order.entity';
 import { OrderReceipt, ReceiptParty } from '../../database/entities/order-receipt.entity';
 import { OrderFundingLink } from '../../database/entities/order-funding-link.entity';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
@@ -34,6 +34,8 @@ const ACCENT = {
 };
 
 const ALL_PARTIES: ReceiptParty[] = ['customer', 'vendor', 'rep', 'platform'];
+// Logistics legs have no washing vendor payee — the 'customer' slot is the requester's invoice.
+const LOGISTICS_PARTIES: ReceiptParty[] = ['customer', 'rep', 'platform'];
 
 @Injectable()
 export class ReceiptsService {
@@ -62,8 +64,9 @@ export class ReceiptsService {
 
     const models = await this.buildModels(order);
     const out: OrderReceipt[] = [];
-    for (const party of ALL_PARTIES) {
+    for (const party of this.partiesForOrder(order)) {
       const model = models[party];
+      if (!model) continue;
       const html = renderReceiptHtml(model, this.renderService.wordmark, CONTACT);
       const png = await this.renderService.renderPng(html, 1080);
       const { url, publicId } = await this.uploadService.uploadReceiptImage(order.reference, party, png);
@@ -119,13 +122,21 @@ export class ReceiptsService {
 
   // ─── Authorization ───────────────────────────────────────────────────────────
 
+  /** Which receipts a completed order has, by flow. Logistics has no vendor payee. */
+  private partiesForOrder(order: Order): ReceiptParty[] {
+    return isLogisticsFlow(order.flow) ? LOGISTICS_PARTIES : ALL_PARTIES;
+  }
+
   private async allowedParties(order: Order, userId: string, roles: string[]): Promise<ReceiptParty[]> {
+    const flowParties = this.partiesForOrder(order);
     const isAdmin = roles?.some((r) => [Role.ADMIN, Role.FINANCE].includes(r as Role));
-    if (isAdmin) return [...ALL_PARTIES];
+    if (isAdmin) return [...flowParties];
 
     const parties: ReceiptParty[] = [];
+    // For logistics the 'customer' slot IS the requester's invoice (customerId = the
+    // requesting customer or vendor user), so this covers both requester kinds.
     if (order.customerId === userId) parties.push('customer');
-    if (order.vendorId) {
+    if (!isLogisticsFlow(order.flow) && order.vendorId) {
       const vendor = await this.vendorRepo.findOne({ where: { id: order.vendorId } });
       if (vendor?.userId === userId) parties.push('vendor');
     }
@@ -133,12 +144,14 @@ export class ReceiptsService {
       const rep = await this.repRepo.findOne({ where: { id: order.repId } });
       if (rep?.userId === userId) parties.push('rep');
     }
-    return parties;
+    return parties.filter((p) => flowParties.includes(p));
   }
 
   // ─── Model assembly ─────────────────────────────────────────────────────────────
 
-  private async buildModels(order: Order): Promise<Record<ReceiptParty, ReceiptModel>> {
+  private async buildModels(order: Order): Promise<Partial<Record<ReceiptParty, ReceiptModel>>> {
+    if (isLogisticsFlow(order.flow)) return this.buildLogisticsModels(order);
+
     const rate = Number(order.conversionRateSnapshot) || 0;
     const wpToNaira = (wp: number | null | undefined) => (rate > 0 ? Math.round((Number(wp) || 0) / rate) : 0);
     const fmtN = (naira: number) => `₦${Math.round(naira).toLocaleString('en-NG')}`;
@@ -286,6 +299,115 @@ export class ReceiptsService {
     };
 
     return { customer: customer_, vendor: vendor_, rep: rep_, platform: platform_ };
+  }
+
+  /**
+   * Logistics receipts: a 3-way variant — the requester's invoice, the rep's transport
+   * earnings, and the platform's mobility-fee settlement. No washing, no vendor payee.
+   */
+  private async buildLogisticsModels(order: Order): Promise<Partial<Record<ReceiptParty, ReceiptModel>>> {
+    const rate = Number(order.conversionRateSnapshot) || 0;
+    const wpToNaira = (wp: number | null | undefined) => (rate > 0 ? Math.round((Number(wp) || 0) / rate) : 0);
+    const fmtN = (naira: number) => `₦${Math.round(naira).toLocaleString('en-NG')}`;
+    const fmtWp = (wp: number) => `${Math.round(wp).toLocaleString('en-NG')} WP`;
+    const dateStr = new Date(order.completedAt ?? order.createdAt).toLocaleDateString('en-NG', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    });
+    const ref = order.reference;
+    const snap = (order.pricingSnapshot ?? {}) as any;
+    const isDelivery = order.flow === 'logistics_delivery';
+    const flowLabel = isDelivery ? 'Delivery' : 'Collection';
+
+    const [vendor, rep, requesterUser] = await Promise.all([
+      order.vendorId ? this.vendorRepo.findOne({ where: { id: order.vendorId } }) : Promise.resolve(null),
+      order.repId ? this.repRepo.findOne({ where: { id: order.repId } }) : Promise.resolve(null),
+      this.userRepo.findOne({ where: { id: order.customerId } }),
+    ]);
+    const repUser = rep ? await this.userRepo.findOne({ where: { id: rep.userId } }) : null;
+    const area = await this.areaRepo.findOne({ where: { id: order.areaId } }).catch(() => null);
+    const repName = repUser?.fullName ?? 'Rep';
+    const vendorName = vendor?.businessName ?? 'Vendor';
+    const requesterName = order.requesterType === 'vendor'
+      ? vendorName
+      : ((requesterUser?.fullName ?? '').trim().split(/\s+/)[0] || 'there');
+    const counterparty = order.recipient?.name ?? (order.requesterType === 'customer' ? (requesterUser?.fullName ?? 'Customer') : 'Recipient');
+    const route = `${snap.from ?? (isDelivery ? vendorName : counterparty)} → ${snap.to ?? (isDelivery ? counterparty : vendorName)}`;
+
+    const gross = Math.round(Number(order.nairaEquivalentSnapshot) || wpToNaira(order.totalWP));
+    const repTransportN = wpToNaira(order.repTransportWp ?? order.transportEstimateWp);
+    const feeN = Math.max(0, gross - repTransportN);
+
+    const requester: ReceiptModel = {
+      party: 'customer',
+      accent: ACCENT.customer,
+      tag: `${flowLabel} receipt`,
+      title: `Thanks, ${requesterName} — ${flowLabel.toLowerCase()} booked`,
+      sub: `${ref} · ${dateStr}`,
+      amountLabel: 'Total paid',
+      amountNaira: fmtN(gross),
+      amountSub: `${fmtWp(order.totalWP)} · ${order.requesterType === 'vendor' ? 'paid by vendor' : 'paid by you'}`,
+      stamp: { text: 'Paid', color: '#13c490' },
+      lines: [
+        { label: 'Transport', sub: snap.distanceKm ? `${Number(snap.distanceKm).toFixed(1)} km` : undefined, value: fmtN(repTransportN) },
+        { label: 'Service fee', value: fmtN(feeN) },
+      ],
+      total: { label: 'Total', value: fmtN(gross) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        { k: isDelivery ? 'To' : 'From', v: counterparty },
+        { k: 'Washerman', v: vendorName },
+        { k: 'Rep', v: repName },
+      ],
+      trust: 'A logistics service only — no washing. Held in escrow and released to the rep on delivery.',
+    };
+
+    const repModel: ReceiptModel = {
+      party: 'rep',
+      accent: ACCENT.rep,
+      tag: 'Earnings slip',
+      title: repName,
+      sub: `${ref} · settled ${dateStr}`,
+      amountLabel: 'You earned',
+      amountNaira: fmtN(repTransportN),
+      amountSub: `${fmtWp(order.repTransportWp ?? order.transportEstimateWp ?? 0)} · to pseudo-wallet`,
+      stamp: { text: 'Earned', color: '#db3c8a' },
+      lines: [
+        { label: 'Transport', sub: route, value: fmtN(repTransportN), kind: 'plus' as const },
+      ],
+      total: { label: 'Total earnings', value: fmtN(repTransportN) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        { k: 'Distance', v: snap.distanceKm ? `${Number(snap.distanceKm).toFixed(1)} km` : '—' },
+        { k: 'Area', v: area?.name ?? '—' },
+        { k: 'Payout ref', v: `PL-R-${ref.replace(/[^0-9]/g, '').slice(-4) || ref.slice(-4)}` },
+      ],
+      trust: 'Transport is paid at the leg distance charged to the requester.',
+    };
+
+    const platform: ReceiptModel = {
+      party: 'platform',
+      accent: ACCENT.platform,
+      tag: 'Settlement',
+      title: 'Logistics settlement',
+      sub: `${ref} · ${dateStr}`,
+      amountLabel: 'Net mobility fee',
+      amountNaira: fmtN(feeN),
+      amountSub: `${fmtWp(order.mobilityFeeWp ?? 0)} · platform revenue`,
+      lines: [
+        { label: 'Gross received', value: fmtN(gross) },
+        { label: 'Rep transport', value: fmtN(repTransportN), kind: 'minus' as const },
+      ],
+      total: { label: 'Net mobility fee', value: fmtN(feeN) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        { k: 'Requester', v: order.requesterType === 'vendor' ? 'Vendor' : 'Customer' },
+        { k: 'Conversion', v: rate > 0 ? `₦${(1 / rate).toFixed(2)} / WP` : '—' },
+        { k: 'Reconciled', v: 'Balanced' },
+      ],
+      trust: 'Internal settlement record — transport passes through to the rep; the platform keeps the mobility fee.',
+    };
+
+    return { customer: requester, rep: repModel, platform };
   }
 
   private async buildVendorLines(
