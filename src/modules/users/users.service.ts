@@ -16,6 +16,11 @@ import { Wallet } from '../../database/entities/wallet.entity';
 import { CompanyEmployee } from '../../database/entities/company-employee.entity';
 import { DeviceToken } from '../../database/entities/device-token.entity';
 import { Dispute } from '../../database/entities/dispute.entity';
+import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
+import { LedgerEntry } from '../../database/entities/ledger-entry.entity';
+import { Vendor } from '../../database/entities/vendor.entity';
+import { Rep } from '../../database/entities/rep.entity';
+import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
 import { OPEN_DISPUTE_STATUSES } from '../../common/enums/dispute.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { Role } from '../../common/enums/roles.enum';
@@ -52,6 +57,16 @@ export class UsersService {
     private deviceTokenRepository: Repository<DeviceToken>,
     @InjectRepository(Dispute)
     private disputeRepository: Repository<Dispute>,
+    @InjectRepository(OrderStatusHistory)
+    private orderHistoryRepository: Repository<OrderStatusHistory>,
+    @InjectRepository(LedgerEntry)
+    private ledgerRepository: Repository<LedgerEntry>,
+    @InjectRepository(Vendor)
+    private vendorRepository: Repository<Vendor>,
+    @InjectRepository(Rep)
+    private repRepository: Repository<Rep>,
+    @InjectRepository(VendorLedgerEntry)
+    private vendorLedgerRepository: Repository<VendorLedgerEntry>,
     private readonly redisService: RedisService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
@@ -64,6 +79,138 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     return { data: this.sanitizeUser(user) };
+  }
+
+  /**
+   * The signed-in user's recent activity — order status changes on their own orders
+   * merged with their wallet (WashPoints) movements, newest first. Cursor via `before`
+   * (ISO timestamp): pass back the previous response's `meta.nextCursor` to page.
+   */
+  async getMyActivities(userId: string, opts: { limit?: number; before?: string } = {}) {
+    const limit = Math.min(50, Math.max(1, Math.trunc(opts.limit ?? 20)));
+    let before: Date | null = null;
+    if (opts.before) {
+      before = new Date(opts.before);
+      if (isNaN(before.getTime())) {
+        throw new BadRequestException('Invalid `before` cursor (expected an ISO timestamp)');
+      }
+    }
+
+    // A user may hold several roles — include every stream that applies to them.
+    const [vendor, rep] = await Promise.all([
+      this.vendorRepository.findOne({ where: { userId }, select: { id: true } }),
+      this.repRepository.findOne({ where: { userId }, select: { id: true } }),
+    ]);
+
+    const streams: any[][] = [];
+    // Order status changes — as the customer, and (if applicable) the assigned vendor / rep.
+    streams.push(await this.orderActivitiesFor('customer_id', userId, 'customer', limit, before));
+    if (vendor) streams.push(await this.orderActivitiesFor('vendor_id', vendor.id, 'vendor', limit, before));
+    if (rep)    streams.push(await this.orderActivitiesFor('rep_id', rep.id, 'rep', limit, before));
+    // Wallet movements — customer WashPoints and vendor earnings only.
+    // Reps intentionally get NO wallet stream: the rep pseudo-wallet is an internal
+    // ops tool and is never surfaced to the rep.
+    streams.push(await this.walletActivitiesFor(this.ledgerRepository, 'user_id', userId, 'customer', limit, before));
+    if (vendor) streams.push(await this.walletActivitiesFor(this.vendorLedgerRepository, 'vendor_id', vendor.id, 'vendor', limit, before));
+
+    // Merge all streams, newest first, and cap at `limit`.
+    const items = streams
+      .flat()
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, limit);
+
+    const nextCursor =
+      items.length === limit ? new Date(items[items.length - 1].at).toISOString() : null;
+
+    return { data: items, meta: { limit, nextCursor } };
+  }
+
+  /** Order status-change activities where an order column matches an id (customer/vendor/rep view). */
+  private async orderActivitiesFor(
+    col: 'customer_id' | 'vendor_id' | 'rep_id',
+    id: string,
+    as: 'customer' | 'vendor' | 'rep',
+    limit: number,
+    before: Date | null,
+  ): Promise<any[]> {
+    const qb = this.orderHistoryRepository
+      .createQueryBuilder('h')
+      .innerJoin('orders', 'o', 'o.id = h.order_id')
+      .where(`o.${col} = :id`, { id })   // col is from a fixed whitelist — safe to interpolate
+      .select([
+        'h.order_id AS "orderId"',
+        'o.reference AS reference',
+        'h.to_status AS status',
+        'h.created_at AS at',
+      ])
+      .orderBy('h.created_at', 'DESC')
+      .limit(limit);
+    if (before) qb.andWhere('h.created_at < :before', { before });
+    const rows = await qb.getRawMany<{ orderId: string; reference: string; status: string; at: Date }>();
+    return rows.map((r) => ({
+      kind: 'order',
+      as,
+      at: r.at,
+      title: this.orderStatusTitle(r.status),
+      orderId: r.orderId,
+      reference: r.reference,
+      status: r.status,
+    }));
+  }
+
+  /** Wallet-movement activities from any of the ledger tables (customer / vendor / rep). */
+  private async walletActivitiesFor(
+    repo: Repository<any>,
+    col: 'user_id' | 'vendor_id' | 'rep_id',
+    id: string,
+    wallet: 'customer' | 'vendor' | 'rep',
+    limit: number,
+    before: Date | null,
+  ): Promise<any[]> {
+    const qb = repo
+      .createQueryBuilder('l')
+      .where(`l.${col} = :id`, { id })   // col is from a fixed whitelist — safe to interpolate
+      .orderBy('l.created_at', 'DESC')
+      .take(limit);
+    if (before) qb.andWhere('l.created_at < :before', { before });
+    const rows = await qb.getMany();
+    return rows.map((l: any) => ({
+      kind: 'wallet',
+      wallet,
+      at: l.createdAt,
+      title: l.description,
+      type: l.type,                 // 'credit' | 'debit'
+      source: l.source,
+      amountWp: l.amount,
+      balanceAfterWp: l.balanceAfter,
+      reference: l.reference ?? null,
+    }));
+  }
+
+  private orderStatusTitle(status: string): string {
+    const map: Record<string, string> = {
+      pending_payment: 'Awaiting payment',
+      paid: 'Payment confirmed',
+      broadcasting_rep: 'Finding a rep',
+      rep_assigned: 'Rep assigned',
+      broadcasting_vendor: 'Finding a washerman',
+      vendor_assigned: 'Washerman assigned',
+      scheduled: 'Pickup scheduled',
+      en_route: 'Rep en route to pickup',
+      picked_up: 'Laundry picked up',
+      with_vendor: 'With the washerman',
+      in_progress: 'Being cleaned',
+      ready_for_delivery: 'Ready for delivery',
+      rep_collected: 'Out with the rep',
+      out_for_delivery: 'Out for delivery',
+      delivered: 'Delivered',
+      completed: 'Order completed',
+      cancelled: 'Order cancelled',
+      delivery_failed: 'Delivery failed',
+      abandoned: 'Order abandoned',
+      disputed: 'Dispute opened',
+    };
+    return map[status] ?? status.replace(/_/g, ' ');
   }
 
   async updateProfile(userId: string, dto: UpdateUserDto) {

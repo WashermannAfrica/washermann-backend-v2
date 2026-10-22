@@ -1,8 +1,16 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { Order } from '../../database/entities/order.entity';
-import { OrderReceipt, ReceiptParty } from '../../database/entities/order-receipt.entity';
+import { Order, isLogisticsFlow } from '../../database/entities/order.entity';
+import {
+  OrderReceipt,
+  ReceiptParty,
+} from '../../database/entities/order-receipt.entity';
 import { OrderFundingLink } from '../../database/entities/order-funding-link.entity';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
@@ -34,16 +42,21 @@ const ACCENT = {
 };
 
 const ALL_PARTIES: ReceiptParty[] = ['customer', 'vendor', 'rep', 'platform'];
+// Logistics legs have no washing vendor payee — the 'customer' slot is the requester's invoice.
+const LOGISTICS_PARTIES: ReceiptParty[] = ['customer', 'rep', 'platform'];
 
 @Injectable()
 export class ReceiptsService {
   private readonly logger = new Logger(ReceiptsService.name);
 
   constructor(
-    @InjectRepository(OrderReceipt) private receiptRepo: Repository<OrderReceipt>,
+    @InjectRepository(OrderReceipt)
+    private receiptRepo: Repository<OrderReceipt>,
     @InjectRepository(Order) private orderRepo: Repository<Order>,
-    @InjectRepository(OrderFundingLink) private fundingRepo: Repository<OrderFundingLink>,
-    @InjectRepository(CatalogueItem) private itemRepo: Repository<CatalogueItem>,
+    @InjectRepository(OrderFundingLink)
+    private fundingRepo: Repository<OrderFundingLink>,
+    @InjectRepository(CatalogueItem)
+    private itemRepo: Repository<CatalogueItem>,
     @InjectRepository(Vendor) private vendorRepo: Repository<Vendor>,
     @InjectRepository(Rep) private repRepo: Repository<Rep>,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -62,18 +75,31 @@ export class ReceiptsService {
 
     const models = await this.buildModels(order);
     const out: OrderReceipt[] = [];
-    for (const party of ALL_PARTIES) {
+    for (const party of this.partiesForOrder(order)) {
       const model = models[party];
-      const html = renderReceiptHtml(model, this.renderService.wordmark, CONTACT);
+      if (!model) continue;
+      const html = renderReceiptHtml(
+        model,
+        this.renderService.wordmark,
+        CONTACT,
+      );
       const png = await this.renderService.renderPng(html, 1080);
-      const { url, publicId } = await this.uploadService.uploadReceiptImage(order.reference, party, png);
-      const existing = await this.receiptRepo.findOne({ where: { orderId, party } });
+      const { url, publicId } = await this.uploadService.uploadReceiptImage(
+        order.reference,
+        party,
+        png,
+      );
+      const existing = await this.receiptRepo.findOne({
+        where: { orderId, party },
+      });
       const row = existing ?? this.receiptRepo.create({ orderId, party });
       row.url = url;
       row.storageKey = publicId;
       out.push(await this.receiptRepo.save(row));
     }
-    this.logger.log(`Generated ${out.length} receipts for order ${order.reference}`);
+    this.logger.log(
+      `Generated ${out.length} receipts for order ${order.reference}`,
+    );
     return out;
   }
 
@@ -82,7 +108,9 @@ export class ReceiptsService {
     try {
       await this.generateForOrder(orderId);
     } catch (err) {
-      this.logger.error(`Receipt generation failed for order ${orderId}: ${(err as Error).message}`);
+      this.logger.error(
+        `Receipt generation failed for order ${orderId}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -91,7 +119,8 @@ export class ReceiptsService {
     const order = await this.orderRepo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
     const allowed = await this.allowedParties(order, userId, roles);
-    if (allowed.length === 0) throw new ForbiddenException('You cannot view receipts for this order');
+    if (allowed.length === 0)
+      throw new ForbiddenException('You cannot view receipts for this order');
 
     const rows = await this.receiptRepo.find({ where: { orderId } });
     const byParty = new Map(rows.map((r) => [r.party, r]));
@@ -106,11 +135,17 @@ export class ReceiptsService {
   }
 
   /** One receipt's URL, with authorization. */
-  async getOne(orderId: string, party: ReceiptParty, userId: string, roles: string[]) {
+  async getOne(
+    orderId: string,
+    party: ReceiptParty,
+    userId: string,
+    roles: string[],
+  ) {
     const order = await this.orderRepo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
     const allowed = await this.allowedParties(order, userId, roles);
-    if (!allowed.includes(party)) throw new ForbiddenException('You cannot view this receipt');
+    if (!allowed.includes(party))
+      throw new ForbiddenException('You cannot view this receipt');
 
     const row = await this.receiptRepo.findOne({ where: { orderId, party } });
     if (!row) throw new NotFoundException('Receipt not generated yet');
@@ -119,54 +154,97 @@ export class ReceiptsService {
 
   // ─── Authorization ───────────────────────────────────────────────────────────
 
-  private async allowedParties(order: Order, userId: string, roles: string[]): Promise<ReceiptParty[]> {
-    const isAdmin = roles?.some((r) => [Role.ADMIN, Role.FINANCE].includes(r as Role));
-    if (isAdmin) return [...ALL_PARTIES];
+  /** Which receipts a completed order has, by flow. Logistics has no vendor payee. */
+  private partiesForOrder(order: Order): ReceiptParty[] {
+    return isLogisticsFlow(order.flow) ? LOGISTICS_PARTIES : ALL_PARTIES;
+  }
+
+  private async allowedParties(
+    order: Order,
+    userId: string,
+    roles: string[],
+  ): Promise<ReceiptParty[]> {
+    const flowParties = this.partiesForOrder(order);
+    const isAdmin = roles?.some((r) =>
+      [Role.ADMIN, Role.FINANCE].includes(r as Role),
+    );
+    if (isAdmin) return [...flowParties];
 
     const parties: ReceiptParty[] = [];
+    // For logistics the 'customer' slot IS the requester's invoice (customerId = the
+    // requesting customer or vendor user), so this covers both requester kinds.
     if (order.customerId === userId) parties.push('customer');
-    if (order.vendorId) {
-      const vendor = await this.vendorRepo.findOne({ where: { id: order.vendorId } });
+    if (!isLogisticsFlow(order.flow) && order.vendorId) {
+      const vendor = await this.vendorRepo.findOne({
+        where: { id: order.vendorId },
+      });
       if (vendor?.userId === userId) parties.push('vendor');
     }
     if (order.repId) {
       const rep = await this.repRepo.findOne({ where: { id: order.repId } });
       if (rep?.userId === userId) parties.push('rep');
     }
-    return parties;
+    return parties.filter((p) => flowParties.includes(p));
   }
 
   // ─── Model assembly ─────────────────────────────────────────────────────────────
 
-  private async buildModels(order: Order): Promise<Record<ReceiptParty, ReceiptModel>> {
+  private async buildModels(
+    order: Order,
+  ): Promise<Partial<Record<ReceiptParty, ReceiptModel>>> {
+    if (isLogisticsFlow(order.flow)) return this.buildLogisticsModels(order);
+
     const rate = Number(order.conversionRateSnapshot) || 0;
-    const wpToNaira = (wp: number | null | undefined) => (rate > 0 ? Math.round((Number(wp) || 0) / rate) : 0);
-    const fmtN = (naira: number) => `₦${Math.round(naira).toLocaleString('en-NG')}`;
-    const fmtWp = (wp: number) => `${Math.round(wp).toLocaleString('en-NG')} WP`;
-    const dateStr = new Date(order.completedAt ?? order.createdAt).toLocaleDateString('en-NG', {
-      day: 'numeric', month: 'short', year: 'numeric',
+    const wpToNaira = (wp: number | null | undefined) =>
+      rate > 0 ? Math.round((Number(wp) || 0) / rate) : 0;
+    const fmtN = (naira: number) =>
+      `₦${Math.round(naira).toLocaleString('en-NG')}`;
+    const fmtWp = (wp: number) =>
+      `${Math.round(wp).toLocaleString('en-NG')} WP`;
+    const dateStr = new Date(
+      order.completedAt ?? order.createdAt,
+    ).toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
     });
     const ref = order.reference;
     const snapshot = (order.pricingSnapshot ?? {}) as any;
-    const lineItems: Array<{ label: string; qty: number; subtotalWP: number }> = snapshot.lineItems ?? [];
+    const lineItems: Array<{ label: string; qty: number; subtotalWP: number }> =
+      snapshot.lineItems ?? [];
     const charges = snapshot.charges ?? {};
 
     // Names + related actors.
     const [customer, vendor, rep] = await Promise.all([
       this.userRepo.findOne({ where: { id: order.customerId } }),
-      order.vendorId ? this.vendorRepo.findOne({ where: { id: order.vendorId } }) : Promise.resolve(null),
-      order.repId ? this.repRepo.findOne({ where: { id: order.repId } }) : Promise.resolve(null),
+      order.vendorId
+        ? this.vendorRepo.findOne({ where: { id: order.vendorId } })
+        : Promise.resolve(null),
+      order.repId
+        ? this.repRepo.findOne({ where: { id: order.repId } })
+        : Promise.resolve(null),
     ]);
-    const repUser = rep ? await this.userRepo.findOne({ where: { id: rep.userId } }) : null;
-    const area = await this.areaRepo.findOne({ where: { id: order.areaId } }).catch(() => null);
-    const firstName = (customer?.fullName ?? '').trim().split(/\s+/)[0] || 'there';
+    const repUser = rep
+      ? await this.userRepo.findOne({ where: { id: rep.userId } })
+      : null;
+    const area = await this.areaRepo
+      .findOne({ where: { id: order.areaId } })
+      .catch(() => null);
+    const firstName =
+      (customer?.fullName ?? '').trim().split(/\s+/)[0] || 'there';
     const vendorName = vendor?.businessName ?? 'Your washerman';
-    const vendorLabel = vendor?.rating ? `${vendorName} · ${Number(vendor.rating).toFixed(1)}` : vendorName;
+    const vendorLabel = vendor?.rating
+      ? `${vendorName} · ${Number(vendor.rating).toFixed(1)}`
+      : vendorName;
     const repName = repUser?.fullName ?? 'Your rep';
 
     // Money splits (₦), platform as residual so the four always reconcile.
-    const gross = Math.round(Number(order.nairaEquivalentSnapshot) || wpToNaira(order.totalWP));
-    const vendorN = Math.round(Number(order.vendorShareNairaSnapshot) || wpToNaira(order.vendorShareWP));
+    const gross = Math.round(
+      Number(order.nairaEquivalentSnapshot) || wpToNaira(order.totalWP),
+    );
+    const vendorN = Math.round(
+      Number(order.vendorShareNairaSnapshot) || wpToNaira(order.vendorShareWP),
+    );
     const repCommissionN = wpToNaira(order.repShareWP);
     const repTransportN = wpToNaira(order.repTransportWp);
     const repTotalN = repCommissionN + repTransportN;
@@ -175,9 +253,16 @@ export class ReceiptsService {
     const transportChargedN = wpToNaira(order.transportEstimateWp);
 
     const paidVia = await this.resolvePaidVia(order.id);
-    const flowLabel = order.flow === 'wash_iron' ? 'Wash & Iron' : order.flow === 'bundle' ? 'Bundle' : 'Wash & Fold';
+    const flowLabel =
+      order.flow === 'wash_iron'
+        ? 'Wash & Iron'
+        : order.flow === 'bundle'
+          ? 'Bundle'
+          : 'Wash & Fold';
     const inclusionsLabel =
-      order.flow === 'wash_iron' ? 'Wash & iron, service & VAT' : 'Wash, service & VAT';
+      order.flow === 'wash_iron'
+        ? 'Wash & iron, service & VAT'
+        : 'Wash, service & VAT';
 
     // ── Customer ──
     const customerItemLines = lineItems.map((l) => ({
@@ -198,7 +283,11 @@ export class ReceiptsService {
       lines: [
         ...customerItemLines,
         { label: inclusionsLabel, value: 'included', kind: 'muted' as const },
-        { label: 'Pickup & delivery', sub: 'round trip', value: fmtN(transportChargedN) },
+        {
+          label: 'Pickup & delivery',
+          sub: 'round trip',
+          value: fmtN(transportChargedN),
+        },
       ],
       total: { label: 'Total', value: fmtN(gross) },
       meta: [
@@ -207,11 +296,17 @@ export class ReceiptsService {
         { k: 'Service', v: flowLabel },
         { k: 'Order date', v: dateStr },
       ],
-      trust: 'Held in escrow until you confirm delivery — released to your washerman only then.',
+      trust:
+        'Held in escrow until you confirm delivery — released to your washerman only then.',
     };
 
     // ── Vendor ──
-    const vendorLines = await this.buildVendorLines(order, lineItems, fmtN, vendorN);
+    const vendorLines = await this.buildVendorLines(
+      order,
+      lineItems,
+      fmtN,
+      vendorN,
+    );
     const garments = this.garmentCount(order);
     const vendor_: ReceiptModel = {
       party: 'vendor',
@@ -224,14 +319,25 @@ export class ReceiptsService {
       amountSub: `${fmtWp(order.vendorShareWP ?? 0)} · your quoted prices`,
       stamp: { text: 'Earned', color: '#a9832a' },
       lines: vendorLines,
-      total: { label: 'Payout', sub: `${garments} garments logged`, value: fmtN(vendorN) },
+      total: {
+        label: 'Payout',
+        sub: `${garments} garments logged`,
+        value: fmtN(vendorN),
+      },
       meta: [
         { k: 'Service', v: flowLabel },
-        { k: 'Chosen by', v: order.allocationMode === 'choose' ? 'Customer (direct)' : 'Auto-allocated' },
+        {
+          k: 'Chosen by',
+          v:
+            order.allocationMode === 'choose'
+              ? 'Customer (direct)'
+              : 'Auto-allocated',
+        },
         { k: 'Picked up by', v: repName },
         { k: 'Payout ref', v: `PL-V-${refTail(ref)}` },
       ],
-      trust: 'Paid from escrow on delivery. You are paid your own prices per garment — platform charges are separate.',
+      trust:
+        'Paid from escrow on delivery. You are paid your own prices per garment — platform charges are separate.',
     };
 
     // ── Rep ──
@@ -246,8 +352,18 @@ export class ReceiptsService {
       amountSub: `${fmtWp((order.repShareWP ?? 0) + (order.repTransportWp ?? 0))} · to pseudo-wallet`,
       stamp: { text: 'Earned', color: '#db3c8a' },
       lines: [
-        { label: 'Handling commission', sub: 'garment handling share', value: fmtN(repCommissionN), kind: 'plus' as const },
-        { label: 'Transport', sub: 'round trip', value: fmtN(repTransportN), kind: 'plus' as const },
+        {
+          label: 'Handling commission',
+          sub: 'garment handling share',
+          value: fmtN(repCommissionN),
+          kind: 'plus' as const,
+        },
+        {
+          label: 'Transport',
+          sub: 'round trip',
+          value: fmtN(repTransportN),
+          kind: 'plus' as const,
+        },
       ],
       total: { label: 'Total earnings', value: fmtN(repTotalN) },
       meta: [
@@ -256,7 +372,8 @@ export class ReceiptsService {
         { k: 'Area', v: area?.name ?? '—' },
         { k: 'Payout ref', v: `PL-R-${refTail(ref)}` },
       ],
-      trust: 'Transport is paid at actual, capped at the estimate charged to the customer.',
+      trust:
+        'Transport is paid at actual, capped at the estimate charged to the customer.',
     };
 
     // ── Platform ──
@@ -271,21 +388,214 @@ export class ReceiptsService {
       amountSub: `${fmtWp(order.platformShareWP ?? 0)} · after all splits`,
       lines: [
         { label: 'Gross received', value: fmtN(gross) },
-        { label: 'Vendor payout', value: fmtN(vendorN), kind: 'minus' as const },
-        { label: 'Rep earnings', sub: 'commission + transport', value: fmtN(repTotalN), kind: 'minus' as const },
-        { label: 'VAT remitted', sub: 'pass-through', value: fmtN(vatN), kind: 'minus' as const },
+        {
+          label: 'Vendor payout',
+          value: fmtN(vendorN),
+          kind: 'minus' as const,
+        },
+        {
+          label: 'Rep earnings',
+          sub: 'commission + transport',
+          value: fmtN(repTotalN),
+          kind: 'minus' as const,
+        },
+        {
+          label: 'VAT remitted',
+          sub: 'pass-through',
+          value: fmtN(vatN),
+          kind: 'minus' as const,
+        },
       ],
       total: { label: 'Net margin', value: fmtN(platformN) },
       meta: [
-        { k: 'Allocation', v: order.allocationMode === 'choose' ? 'Choose-Washerman' : 'Automatic' },
+        {
+          k: 'Allocation',
+          v:
+            order.allocationMode === 'choose'
+              ? 'Choose-Washerman'
+              : 'Automatic',
+        },
         { k: 'Escrow', v: 'Released' },
-        { k: 'Conversion', v: rate > 0 ? `₦${(1 / rate).toFixed(2)} / WP` : '—' },
+        {
+          k: 'Conversion',
+          v: rate > 0 ? `₦${(1 / rate).toFixed(2)} / WP` : '—',
+        },
         { k: 'Reconciled', v: 'Balanced' },
       ],
-      trust: 'Internal settlement record — every naira received has a destination.',
+      trust:
+        'Internal settlement record — every naira received has a destination.',
     };
 
-    return { customer: customer_, vendor: vendor_, rep: rep_, platform: platform_ };
+    return {
+      customer: customer_,
+      vendor: vendor_,
+      rep: rep_,
+      platform: platform_,
+    };
+  }
+
+  /**
+   * Logistics receipts: a 3-way variant — the requester's invoice, the rep's transport
+   * earnings, and the platform's mobility-fee settlement. No washing, no vendor payee.
+   */
+  private async buildLogisticsModels(
+    order: Order,
+  ): Promise<Partial<Record<ReceiptParty, ReceiptModel>>> {
+    const rate = Number(order.conversionRateSnapshot) || 0;
+    const wpToNaira = (wp: number | null | undefined) =>
+      rate > 0 ? Math.round((Number(wp) || 0) / rate) : 0;
+    const fmtN = (naira: number) =>
+      `₦${Math.round(naira).toLocaleString('en-NG')}`;
+    const fmtWp = (wp: number) =>
+      `${Math.round(wp).toLocaleString('en-NG')} WP`;
+    const dateStr = new Date(
+      order.completedAt ?? order.createdAt,
+    ).toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    const ref = order.reference;
+    const snap = (order.pricingSnapshot ?? {}) as any;
+    const isDelivery = order.flow === 'logistics_delivery';
+    const flowLabel = isDelivery ? 'Delivery' : 'Collection';
+
+    const [vendor, rep, requesterUser] = await Promise.all([
+      order.vendorId
+        ? this.vendorRepo.findOne({ where: { id: order.vendorId } })
+        : Promise.resolve(null),
+      order.repId
+        ? this.repRepo.findOne({ where: { id: order.repId } })
+        : Promise.resolve(null),
+      this.userRepo.findOne({ where: { id: order.customerId } }),
+    ]);
+    const repUser = rep
+      ? await this.userRepo.findOne({ where: { id: rep.userId } })
+      : null;
+    const area = await this.areaRepo
+      .findOne({ where: { id: order.areaId } })
+      .catch(() => null);
+    const repName = repUser?.fullName ?? 'Rep';
+    const vendorName = vendor?.businessName ?? 'Vendor';
+    const requesterName =
+      order.requesterType === 'vendor'
+        ? vendorName
+        : (requesterUser?.fullName ?? '').trim().split(/\s+/)[0] || 'there';
+    const counterparty =
+      order.recipient?.name ??
+      (order.requesterType === 'customer'
+        ? (requesterUser?.fullName ?? 'Customer')
+        : 'Recipient');
+    const route = `${snap.from ?? (isDelivery ? vendorName : counterparty)} → ${snap.to ?? (isDelivery ? counterparty : vendorName)}`;
+
+    const gross = Math.round(
+      Number(order.nairaEquivalentSnapshot) || wpToNaira(order.totalWP),
+    );
+    const repTransportN = wpToNaira(
+      order.repTransportWp ?? order.transportEstimateWp,
+    );
+    const feeN = Math.max(0, gross - repTransportN);
+
+    const requester: ReceiptModel = {
+      party: 'customer',
+      accent: ACCENT.customer,
+      tag: `${flowLabel} receipt`,
+      title: `Thanks, ${requesterName} — ${flowLabel.toLowerCase()} booked`,
+      sub: `${ref} · ${dateStr}`,
+      amountLabel: 'Total paid',
+      amountNaira: fmtN(gross),
+      amountSub: `${fmtWp(order.totalWP)} · ${order.requesterType === 'vendor' ? 'paid by vendor' : 'paid by you'}`,
+      stamp: { text: 'Paid', color: '#13c490' },
+      lines: [
+        {
+          label: 'Transport',
+          sub: snap.distanceKm
+            ? `${Number(snap.distanceKm).toFixed(1)} km`
+            : undefined,
+          value: fmtN(repTransportN),
+        },
+        { label: 'Service fee', value: fmtN(feeN) },
+      ],
+      total: { label: 'Total', value: fmtN(gross) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        { k: isDelivery ? 'To' : 'From', v: counterparty },
+        { k: 'Washerman', v: vendorName },
+        { k: 'Rep', v: repName },
+      ],
+      trust:
+        'A logistics service only — no washing. Held in escrow and released to the rep on delivery.',
+    };
+
+    const repModel: ReceiptModel = {
+      party: 'rep',
+      accent: ACCENT.rep,
+      tag: 'Earnings slip',
+      title: repName,
+      sub: `${ref} · settled ${dateStr}`,
+      amountLabel: 'You earned',
+      amountNaira: fmtN(repTransportN),
+      amountSub: `${fmtWp(order.repTransportWp ?? order.transportEstimateWp ?? 0)} · to pseudo-wallet`,
+      stamp: { text: 'Earned', color: '#db3c8a' },
+      lines: [
+        {
+          label: 'Transport',
+          sub: route,
+          value: fmtN(repTransportN),
+          kind: 'plus' as const,
+        },
+      ],
+      total: { label: 'Total earnings', value: fmtN(repTransportN) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        {
+          k: 'Distance',
+          v: snap.distanceKm ? `${Number(snap.distanceKm).toFixed(1)} km` : '—',
+        },
+        { k: 'Area', v: area?.name ?? '—' },
+        {
+          k: 'Payout ref',
+          v: `PL-R-${ref.replace(/[^0-9]/g, '').slice(-4) || ref.slice(-4)}`,
+        },
+      ],
+      trust: 'Transport is paid at the leg distance charged to the requester.',
+    };
+
+    const platform: ReceiptModel = {
+      party: 'platform',
+      accent: ACCENT.platform,
+      tag: 'Settlement',
+      title: 'Logistics settlement',
+      sub: `${ref} · ${dateStr}`,
+      amountLabel: 'Net mobility fee',
+      amountNaira: fmtN(feeN),
+      amountSub: `${fmtWp(order.mobilityFeeWp ?? 0)} · platform revenue`,
+      lines: [
+        { label: 'Gross received', value: fmtN(gross) },
+        {
+          label: 'Rep transport',
+          value: fmtN(repTransportN),
+          kind: 'minus' as const,
+        },
+      ],
+      total: { label: 'Net mobility fee', value: fmtN(feeN) },
+      meta: [
+        { k: 'Type', v: `${flowLabel} (logistics)` },
+        {
+          k: 'Requester',
+          v: order.requesterType === 'vendor' ? 'Vendor' : 'Customer',
+        },
+        {
+          k: 'Conversion',
+          v: rate > 0 ? `₦${(1 / rate).toFixed(2)} / WP` : '—',
+        },
+        { k: 'Reconciled', v: 'Balanced' },
+      ],
+      trust:
+        'Internal settlement record — transport passes through to the rep; the platform keeps the mobility fee.',
+    };
+
+    return { customer: requester, rep: repModel, platform };
   }
 
   private async buildVendorLines(
@@ -319,7 +629,8 @@ export class ReceiptsService {
 
   private garmentCount(order: Order): number {
     const selections = order.itemSelections ?? [];
-    if (selections.length) return selections.reduce((s, i) => s + (i.qty ?? 0), 0);
+    if (selections.length)
+      return selections.reduce((s, i) => s + (i.qty ?? 0), 0);
     const log = order.garmentLog as any;
     if (typeof log === 'number') return log;
     if (log && typeof log.count === 'number') return log.count;
@@ -327,10 +638,14 @@ export class ReceiptsService {
   }
 
   private async resolvePaidVia(orderId: string): Promise<string> {
-    const link = await this.fundingRepo.findOne({ where: { orderId, status: 'paid' } });
+    const link = await this.fundingRepo.findOne({
+      where: { orderId, status: 'paid' },
+    });
     if (!link) return 'from Wallet';
     if (link.purpose === 'sponsor') {
-      return link.sponsorName ? `Sponsored by ${link.sponsorName}` : 'Sponsored';
+      return link.sponsorName
+        ? `Sponsored by ${link.sponsorName}`
+        : 'Sponsored';
     }
     return 'paid by card';
   }

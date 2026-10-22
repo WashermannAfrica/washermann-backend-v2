@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
-import { Order } from '../../database/entities/order.entity';
+import { Order, isLogisticsFlow } from '../../database/entities/order.entity';
 import { Company } from '../../database/entities/company.entity';
 import { OrderEscrow } from '../../database/entities/order-escrow.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
@@ -442,6 +442,7 @@ export class OrdersService {
     search?: string;
     sortBy?: string;
     sortDir?: 'ASC' | 'DESC';
+    flow?: string;
   }) {
     const page  = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -474,6 +475,11 @@ export class OrdersService {
     if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
     if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
     if (query.serviceType) qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
+    if (query.flow) {
+      // 'logistics' selects both logistics leg flows; otherwise match the exact flow.
+      if (query.flow === 'logistics') qb.andWhere("o.flow IN ('logistics_delivery','logistics_collect')");
+      else qb.andWhere('o.flow = :flow', { flow: query.flow });
+    }
     if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
     const [rows, total] = await qb.getManyAndCount();
@@ -949,12 +955,68 @@ export class OrdersService {
     return repTransport;
   }
 
+  /**
+   * Settlement for a completed logistics leg: release escrow, pay the rep the leg
+   * transport, and keep the platform mobility fee. No vendor payout, no garment split.
+   */
+  private async settleLogisticsLeg(order: Order, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
+    const repTransport = order.transportEstimateWp ?? 0;
+    const settled = await this.dataSource.transaction(async (manager) => {
+      const escrow = await this.escrowRepository.findOne({ where: { orderId: order.id } });
+      if (escrow) {
+        escrow.status = 'released';
+        escrow.releasedAt = new Date();
+        await manager.save(escrow);
+      }
+
+      if (order.repId && repTransport > 0) {
+        await this.repsService.creditWallet(
+          order.repId,
+          repTransport,
+          LedgerSource.REP_TRANSPORT,
+          `Logistics transport — ${order.reference}`,
+          { orderId: order.id, reference: order.reference },
+        );
+      }
+
+      order.actualTransportWp = repTransport;
+      order.repTransportWp    = repTransport;
+      order.platformShareWP   = Math.max(0, order.totalWP - repTransport); // = the mobility fee
+      order.status            = OrderStatus.COMPLETED;
+      order.completedAt       = new Date();
+      await manager.save(order);
+
+      await manager.save(manager.create(OrderStatusHistory, {
+        orderId:         order.id,
+        fromStatus:      OrderStatus.DELIVERED,
+        toStatus:        OrderStatus.COMPLETED,
+        triggeredBy,
+        triggeredByRole: role,
+        note:            'Logistics leg completed',
+      }));
+
+      return order;
+    });
+
+    // Generate the logistics receipts (requester invoice + rep + platform).
+    this.receiptsService.generateForOrderSafe(settled.id);
+
+    return settled;
+  }
+
   async completeOrder(orderId: string, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
     const order = await this.findOne(orderId);
 
     if (order.status !== OrderStatus.DELIVERED) {
       throw new BadRequestException('Order must be in delivered status to complete');
     }
+
+    // Logistics legs settle differently: no washing, no vendor payout — the rep is
+    // paid the leg transport and the platform keeps the mobility fee.
+    if (isLogisticsFlow(order.flow)) {
+      return this.settleLogisticsLeg(order, triggeredBy, role);
+    }
+
     if (!order.vendorShareWP || !order.repShareWP || order.platformShareWP == null) {
       throw new BadRequestException('Earnings split not yet calculated — garment count must be logged first');
     }

@@ -228,6 +228,15 @@ export class PlatformConfig {
   @Column({ name: 'transport_distance_provider', type: 'varchar', length: 12, default: 'haversine' })
   transportDistanceProvider: 'haversine' | 'google';
 
+  // ─── Logistics / mobility (rep-only jobs) ──────────────────────────────────────
+  @ApiProperty({ description: 'Flat platform mobility fee (WP) charged per logistics leg on top of transport', example: 0 })
+  @Column({ name: 'logistics_mobility_fee_wp', type: 'int', default: 0 })
+  logisticsMobilityFeeWp: number;
+
+  @ApiProperty({ description: 'Platform mobility fee as a % of the leg transport (added to the flat fee)', example: 0 })
+  @Column({ name: 'logistics_mobility_fee_percent', type: 'decimal', precision: 6, scale: 2, default: 0, transformer: DecimalTransformer })
+  logisticsMobilityFeePercent: number;
+
   @ApiProperty({
     description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
   })

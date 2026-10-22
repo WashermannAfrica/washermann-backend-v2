@@ -4,7 +4,7 @@ import { In, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Rep } from '../../database/entities/rep.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
-import { Order } from '../../database/entities/order.entity';
+import { Order, isLogisticsFlow } from '../../database/entities/order.entity';
 import { AssignmentBroadcast } from '../../database/entities/assignment-broadcast.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
@@ -344,6 +344,25 @@ export class AssignmentService {
   async startVendorAssignment(orderId: string): Promise<void> {
     const order = await this.orderRepository.findOne({ where: { id: orderId } });
     if (!order) return;
+
+    // Logistics legs have no washing vendor to match — the vendor (if any) is fixed
+    // at creation. Once a rep accepts, the leg is ready to run: go straight to SCHEDULED.
+    if (isLogisticsFlow(order.flow)) {
+      const fromStatus = order.status;
+      order.status = OrderStatus.SCHEDULED;
+      await this.orderRepository.save(order);
+      await this.statusHistoryRepository.save(
+        this.statusHistoryRepository.create({
+          orderId: order.id,
+          fromStatus,
+          toStatus: OrderStatus.SCHEDULED,
+          triggeredBy: null,
+          triggeredByRole: 'system',
+          note: 'Logistics leg scheduled — rep assigned',
+        }),
+      );
+      return;
+    }
 
     // Choose-Washerman: the customer already picked the vendor — pin it directly
     // instead of broadcasting. Fall back to a normal broadcast if that vendor is no
