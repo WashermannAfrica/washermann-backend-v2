@@ -33,9 +33,12 @@ export class TopupGuardService {
       throw new UnauthorizedException('Missing X-WM-Topup-Code header');
     }
 
-    const signingSecret  = this.configService.get<string>('topup.signingSecret')  || '';
-    const clientSecret   = this.configService.get<string>('topup.clientAppSecret') || '';
-    const windowSeconds  = this.configService.get<number>('topup.windowSeconds')  ?? 30;
+    const signingSecret =
+      this.configService.get<string>('topup.signingSecret') || '';
+    const clientSecret =
+      this.configService.get<string>('topup.clientAppSecret') || '';
+    const windowSeconds =
+      this.configService.get<number>('topup.windowSeconds') ?? 30;
 
     if (!signingSecret || !clientSecret) {
       // In development without env vars, skip validation but warn loudly
@@ -46,7 +49,9 @@ export class TopupGuardService {
     }
 
     // Re-derive the per-user topupKey (deterministic — never stored)
-    const topupKey = createHmac('sha256', signingSecret).update(userId).digest('hex');
+    const topupKey = createHmac('sha256', signingSecret)
+      .update(userId)
+      .digest('hex');
 
     // Current time window (changes every windowSeconds)
     const currentWindow = Math.floor(Date.now() / (windowSeconds * 1000));
