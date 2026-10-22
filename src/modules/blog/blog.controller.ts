@@ -21,6 +21,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
 import { BlogPostStatus } from '../../database/entities/blog-post.entity';
+import { CurrentUser } from '@common/decorators';
 
 type Req = { user: { sub: string } };
 
@@ -160,7 +161,12 @@ export class BlogAdminController {
     summary:
       'Approve & publish (four-eyes: reviewer must differ from author/submitter). Copies draft → live snapshot.',
   })
-  approve(@Param('id', ParseUUIDPipe) id: string, @Request() req: Req) {
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: Req,
+    // @CurrentUser('roles') roles: Role[],
+  ) {
+    // const isAdmin = roles.includes(Role.ADMIN);
     return this.blogService.approve(id, req.user.sub);
   }
 
@@ -173,8 +179,10 @@ export class BlogAdminController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RequestChangesDto,
     @Request() req: Req,
+    @CurrentUser('roles') roles: Role[],
   ) {
-    return this.blogService.requestChanges(id, req.user.sub, dto.note);
+    const isAdmin = roles.includes(Role.ADMIN);
+    return this.blogService.requestChanges(id, req.user.sub, dto.note, isAdmin);
   }
 
   @Post(':id/archive')

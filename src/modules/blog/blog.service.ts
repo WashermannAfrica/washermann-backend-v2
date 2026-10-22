@@ -158,9 +158,6 @@ export class BlogService {
   // ─── Admin: CRUD on the draft copy ───────────────────────────────────────────
 
   async create(dto: CreateBlogPostDto, adminId: string): Promise<BlogPost> {
-    //todo: create a new role type for blog authors and implement maker-checker workflow for them.
-    // Admin posts always go to published status.
-
     const post = this.postRepository.create({
       slug: await this.uniqueSlug(slugify(dto.title)),
       title: dto.title.trim(),
@@ -171,7 +168,7 @@ export class BlogService {
       seoTitle: dto.seoTitle?.trim() || null,
       seoDescription: dto.seoDescription?.trim() || null,
       readingTimeMins: this.readingTime(dto.bodyHtml ?? ''),
-      status: BlogPostStatus.PUBLISHED, // Admin posts are published immediately
+      status: BlogPostStatus.DRAFT,
       authorUserId: adminId,
       updatedBy: adminId,
       viewCount: 0,
@@ -313,16 +310,25 @@ export class BlogService {
    * post's author and whoever submitted it. Copies the draft into the
    * published snapshot — this is the only way content reaches the public site.
    */
-  async approve(id: string, reviewerId: string): Promise<BlogPost> {
+  //todo: create a new role type for blog authors and implement maker-checker workflow for them.
+  // Admin posts always go to published status.
+  async approve(
+    id: string,
+    reviewerId: string,
+    // isAdmin: boolean,
+  ): Promise<BlogPost> {
     const post = await this.findOne(id);
     if (post.status !== BlogPostStatus.IN_REVIEW) {
       throw new BadRequestException('Only posts in review can be approved');
     }
-    if (reviewerId === post.authorUserId || reviewerId === post.submittedBy) {
-      throw new ForbiddenException(
-        'You cannot approve your own post — a different admin must review it',
-      );
-    }
+    // if (
+    //   (reviewerId === post.authorUserId || reviewerId === post.submittedBy) &&
+    //   !isAdmin
+    // ) {
+    //   throw new ForbiddenException(
+    //     'You cannot approve your own post if not an admin — a different admin must review it',
+    //   );
+    // }
 
     const snapshot: BlogPublishedSnapshot = {
       title: post.title,
@@ -358,6 +364,7 @@ export class BlogService {
     id: string,
     reviewerId: string,
     note: string,
+    isAdmin: boolean,
   ): Promise<BlogPost> {
     const post = await this.findOne(id);
     if (post.status !== BlogPostStatus.IN_REVIEW) {
@@ -365,7 +372,10 @@ export class BlogService {
         'Only posts in review can have changes requested',
       );
     }
-    if (reviewerId === post.authorUserId || reviewerId === post.submittedBy) {
+    if (
+      !isAdmin &&
+      (reviewerId === post.authorUserId || reviewerId === post.submittedBy)
+    ) {
       throw new ForbiddenException(
         'You cannot review your own post — a different admin must review it',
       );
