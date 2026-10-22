@@ -13,7 +13,12 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorDocument } from '../../database/entities/vendor-document.entity';
-import { VendorPricing, GarmentPriceItem, priceItemKey, isPriceItemLive } from '../../database/entities/vendor-pricing.entity';
+import {
+  VendorPricing,
+  GarmentPriceItem,
+  priceItemKey,
+  isPriceItemLive,
+} from '../../database/entities/vendor-pricing.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { VendorLedgerEntry } from '../../database/entities/vendor-ledger-entry.entity';
 import { EarningsDeduction } from '../../database/entities/earnings-deduction.entity';
@@ -22,7 +27,11 @@ import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
-import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
+import {
+  ApprovePricingDto,
+  RejectPricingDto,
+  DecidePricingItemDto,
+} from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { Role } from '../../common/enums/roles.enum';
@@ -93,7 +102,9 @@ export class VendorsService {
     const vendors = await this.vendorRepository
       .createQueryBuilder('v')
       .where('v.area_ids @> :area', { area: JSON.stringify([areaId]) })
-      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
+      .andWhere('v.verification_status = :vs', {
+        vs: VendorVerificationStatus.VERIFIED,
+      })
       .andWhere('v.is_available = true')
       .getMany();
 
@@ -103,13 +114,13 @@ export class VendorsService {
           ? Math.round(haversineKm(lat, lng, v.latitude, v.longitude) * 10) / 10
           : null;
       return {
-        id:           v.id,
+        id: v.id,
         businessName: v.businessName,
-        logoUrl:      v.logoUrl,
-        rating:       Number(v.rating) || 0,
-        ratingCount:  v.ratingCount,
+        logoUrl: v.logoUrl,
+        rating: Number(v.rating) || 0,
+        ratingCount: v.ratingCount,
         distanceKm,
-        located:      distanceKm != null,
+        located: distanceKm != null,
       };
     });
 
@@ -132,7 +143,9 @@ export class VendorsService {
       where: [{ email: dto.email.toLowerCase() }, { phone: dto.phone }],
     });
     if (existing) {
-      throw new ConflictException('A user with this email or phone already exists');
+      throw new ConflictException(
+        'A user with this email or phone already exists',
+      );
     }
 
     await this.areasService.assertAreasExist(dto.areaIds ?? []);
@@ -175,7 +188,9 @@ export class VendorsService {
     // self-signup). Idempotent + fire-and-forget — never fail creation over it.
     this.referralsService
       .issueCode(result.user.id, 'vendor')
-      .catch((err: Error) => this.logger.warn(`Vendor referral code issue skipped: ${err.message}`));
+      .catch((err: Error) =>
+        this.logger.warn(`Vendor referral code issue skipped: ${err.message}`),
+      );
 
     // Generate invite token and send email outside the transaction
     const inviteToken = uuidv4();
@@ -215,7 +230,7 @@ export class VendorsService {
     sortBy?: string;
     sortDir?: 'ASC' | 'DESC';
   }) {
-    const page  = Math.max(1, query.page ?? 1);
+    const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
     // Whitelist sortable columns — never interpolate a raw key into SQL.
@@ -237,13 +252,18 @@ export class VendorsService {
       .leftJoin('vendor_earnings_wallets', 'w', 'w.vendor_id = v.id')
       .addSelect('COALESCE(w.total_earned, 0)', 'earnedwp')
       .addSelect('COALESCE(w.balance, 0)', 'balancewp')
-      .addSelect('(SELECT COUNT(*) FROM orders o WHERE o.vendor_id = v.id)', 'ordercount')
+      .addSelect(
+        '(SELECT COUNT(*) FROM orders o WHERE o.vendor_id = v.id)',
+        'ordercount',
+      )
       .orderBy(sortCol, sortDir)
       .skip((page - 1) * limit)
       .take(limit);
 
     if (query.verificationStatus) {
-      qb.andWhere('v.verificationStatus = :vs', { vs: query.verificationStatus });
+      qb.andWhere('v.verificationStatus = :vs', {
+        vs: query.verificationStatus,
+      });
     }
     if (query.isAvailable != null) {
       qb.andWhere('v.isAvailable = :avail', { avail: query.isAvailable });
@@ -260,10 +280,13 @@ export class VendorsService {
     const data = entities.map((v, i) => ({
       ...v,
       orderCount: Number(raw[i]?.ordercount ?? 0),
-      earnedWp:   Number(raw[i]?.earnedwp ?? 0),
-      balanceWp:  Number(raw[i]?.balancewp ?? 0),
+      earnedWp: Number(raw[i]?.earnedwp ?? 0),
+      balanceWp: Number(raw[i]?.balancewp ?? 0),
     }));
-    return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   // ─── Get one vendor ──────────────────────────────────────────────────────────
@@ -289,19 +312,26 @@ export class VendorsService {
   // ─── Update vendor profile ───────────────────────────────────────────────────
 
   async update(vendorId: string, dto: UpdateVendorDto) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
     if (dto.businessName != null) vendor.businessName = dto.businessName.trim();
-    if (dto.phone        != null) vendor.phone        = dto.phone.trim();
-    if (dto.areaIds      != null) {
+    if (dto.phone != null) vendor.phone = dto.phone.trim();
+    if (dto.areaIds != null) {
       await this.areasService.assertAreasExist(dto.areaIds);
       vendor.areaIds = dto.areaIds;
     }
-    if (dto.isAvailable  != null) {
+    if (dto.isAvailable != null) {
       // Only verified vendors can toggle available
-      if (dto.isAvailable && vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
-        throw new ForbiddenException('Only verified vendors can set themselves as available');
+      if (
+        dto.isAvailable &&
+        vendor.verificationStatus !== VendorVerificationStatus.VERIFIED
+      ) {
+        throw new ForbiddenException(
+          'Only verified vendors can set themselves as available',
+        );
       }
       vendor.isAvailable = dto.isAvailable;
     }
@@ -327,21 +357,32 @@ export class VendorsService {
   // ─── Admin: Verify / reject vendor ──────────────────────────────────────────
 
   async verify(vendorId: string, dto: VerifyVendorDto, adminId: string) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
-    if (dto.decision === VendorVerificationStatus.REJECTED && !dto.rejectionReason) {
-      throw new BadRequestException('rejectionReason is required when rejecting a vendor');
+    if (
+      dto.decision === VendorVerificationStatus.REJECTED &&
+      !dto.rejectionReason
+    ) {
+      throw new BadRequestException(
+        'rejectionReason is required when rejecting a vendor',
+      );
     }
 
     vendor.verificationStatus = dto.decision;
-    vendor.verifiedAt         = dto.decision === VendorVerificationStatus.VERIFIED ? new Date() : null;
-    vendor.verifiedBy         = dto.decision === VendorVerificationStatus.VERIFIED ? adminId : null;
-    vendor.rejectionReason    = dto.rejectionReason ?? null;
+    vendor.verifiedAt =
+      dto.decision === VendorVerificationStatus.VERIFIED ? new Date() : null;
+    vendor.verifiedBy =
+      dto.decision === VendorVerificationStatus.VERIFIED ? adminId : null;
+    vendor.rejectionReason = dto.rejectionReason ?? null;
 
     if (dto.decision === VendorVerificationStatus.VERIFIED) {
       // Grant 'vendor' role on user account
-      const user = await this.userRepository.findOne({ where: { id: vendor.userId } });
+      const user = await this.userRepository.findOne({
+        where: { id: vendor.userId },
+      });
       if (user && !user.roles.includes(Role.VENDOR)) {
         user.roles = [...user.roles, Role.VENDOR];
         await this.userRepository.save(user);
@@ -355,7 +396,9 @@ export class VendorsService {
       // Referral: vendor approval is the vendor-leg unlock trigger (fire-and-forget).
       this.referralsService
         .onRefereeQualified(vendor.userId, 'vendor')
-        .catch((err) => this.logger.error(`Referral unlock (vendor) failed: ${err.message}`));
+        .catch((err) =>
+          this.logger.error(`Referral unlock (vendor) failed: ${err.message}`),
+        );
     } else if (dto.decision === VendorVerificationStatus.REJECTED) {
       // Rejected vendors were previously told nothing at all — always explain why.
       this.notificationsService.notifyVendorRejected({
@@ -374,7 +417,9 @@ export class VendorsService {
     status: VendorVerificationStatus,
     reason?: string,
   ) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
     const previousStatus = vendor.verificationStatus;
     vendor.verificationStatus = status;
@@ -404,7 +449,9 @@ export class VendorsService {
    * and should go back into the review queue.
    */
   async revertToPending(vendorId: string, adminId: string) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
     if (vendor.verificationStatus === VendorVerificationStatus.PENDING_REVIEW) {
@@ -412,10 +459,10 @@ export class VendorsService {
     }
 
     vendor.verificationStatus = VendorVerificationStatus.PENDING_REVIEW;
-    vendor.verifiedAt         = null;
-    vendor.verifiedBy         = null;
-    vendor.rejectionReason    = null;
-    vendor.isAvailable        = false; // can't receive orders while unreviewed
+    vendor.verifiedAt = null;
+    vendor.verifiedBy = null;
+    vendor.rejectionReason = null;
+    vendor.isAvailable = false; // can't receive orders while unreviewed
     const saved = await this.vendorRepository.save(vendor);
 
     // Revoke the vendor role that verify() granted, so an accidental
@@ -426,14 +473,23 @@ export class VendorsService {
     //   await this.userRepository.save(user);
     // }
 
-    this.logger.log(`Vendor ${vendorId} reverted to pending_review by admin ${adminId}`);
+    this.logger.log(
+      `Vendor ${vendorId} reverted to pending_review by admin ${adminId}`,
+    );
     return saved;
   }
 
   // ─── Documents ───────────────────────────────────────────────────────────────
 
-  async addDocument(vendorId: string, docType: string, fileUrl: string, originalName?: string) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+  async addDocument(
+    vendorId: string,
+    docType: string,
+    fileUrl: string,
+    originalName?: string,
+  ) {
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
     const doc = this.documentRepository.create({
@@ -446,7 +502,10 @@ export class VendorsService {
   }
 
   async getDocuments(vendorId: string) {
-    return this.documentRepository.find({ where: { vendorId }, order: { createdAt: 'DESC' } });
+    return this.documentRepository.find({
+      where: { vendorId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   // ─── Pricing ─────────────────────────────────────────────────────────────────
@@ -456,17 +515,22 @@ export class VendorsService {
    * Enforces the cooldown period (VENDOR_PRICING_COOLDOWN_DAYS, default 90).
    */
   async proposePricing(vendorId: string, dto: ProposePricingDto) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
     // Check cooldown
-    const cooldownDays = this.configService.get<number>('VENDOR_PRICING_COOLDOWN_DAYS') ?? 90;
+    const cooldownDays =
+      this.configService.get<number>('VENDOR_PRICING_COOLDOWN_DAYS') ?? 90;
     if (vendor.pricingLastUpdatedAt) {
       const daysSinceLast =
-        (Date.now() - vendor.pricingLastUpdatedAt.getTime()) / (1000 * 60 * 60 * 24);
+        (Date.now() - vendor.pricingLastUpdatedAt.getTime()) /
+        (1000 * 60 * 60 * 24);
       if (daysSinceLast < cooldownDays) {
         const nextAllowed = new Date(
-          vendor.pricingLastUpdatedAt.getTime() + cooldownDays * 24 * 60 * 60 * 1000,
+          vendor.pricingLastUpdatedAt.getTime() +
+            cooldownDays * 24 * 60 * 60 * 1000,
         );
         throw new BadRequestException(
           `You can only update pricing once every ${cooldownDays} days. Next allowed: ${nextAllowed.toISOString().slice(0, 10)}`,
@@ -492,7 +556,11 @@ export class VendorsService {
 
     // Sanitise incoming: vendors cannot set review status, and locked lines are dropped.
     const incoming: GarmentPriceItem[] = (dto.items ?? [])
-      .map((i) => ({ itemId: i.itemId, garmentType: i.garmentType, priceNaira: i.priceNaira }))
+      .map((i) => ({
+        itemId: i.itemId,
+        garmentType: i.garmentType,
+        priceNaira: i.priceNaira,
+      }))
       .filter((i) => !lockedKeys.has(priceItemKey(i)));
 
     // If a draft proposal is still open (not yet reviewed), accumulate into it;
@@ -500,7 +568,9 @@ export class VendorsService {
     const pending = await this.pricingRepository.findOne({
       where: { vendorId, approvedAt: IsNull(), rejectedAt: IsNull() },
     });
-    const existingEditable = (pending?.items ?? []).filter((i) => !lockedKeys.has(priceItemKey(i)));
+    const existingEditable = (pending?.items ?? []).filter(
+      (i) => !lockedKeys.has(priceItemKey(i)),
+    );
     const editable = this.mergePricingItems(existingEditable, incoming);
     const items = [...approvedLocked, ...editable];
 
@@ -520,7 +590,10 @@ export class VendorsService {
   }
 
   /** Merge a new batch of price items into an existing list (incoming wins), keyed by itemId then garmentType. */
-  private mergePricingItems(existing: GarmentPriceItem[], incoming: GarmentPriceItem[]): GarmentPriceItem[] {
+  private mergePricingItems(
+    existing: GarmentPriceItem[],
+    incoming: GarmentPriceItem[],
+  ): GarmentPriceItem[] {
     const keyOf = (i: GarmentPriceItem) => i.itemId ?? `gt:${i.garmentType}`;
     const merged = new Map<string, GarmentPriceItem>();
     for (const item of existing ?? []) merged.set(keyOf(item), item);
@@ -575,7 +648,10 @@ export class VendorsService {
    * (latest active sheet per vendor, excluding the assigned vendor).
    * Returns null when nobody prices it.
    */
-  async averageLivePriceForGarment(garmentType: string, excludeVendorId?: string): Promise<number | null> {
+  async averageLivePriceForGarment(
+    garmentType: string,
+    excludeVendorId?: string,
+  ): Promise<number | null> {
     const sheets = await this.pricingRepository
       .createQueryBuilder('p')
       .where('p.approvedAt IS NOT NULL')
@@ -598,7 +674,10 @@ export class VendorsService {
       }
     }
     if (!prices.length) return null;
-    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
+    return (
+      Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) /
+      100
+    );
   }
 
   /**
@@ -609,7 +688,10 @@ export class VendorsService {
    * vendors who set their own price are paid 100% of it; vendors who didn't are
    * paid this mean.
    */
-  async averageLivePriceForItem(itemId: string, excludeVendorId?: string): Promise<number | null> {
+  async averageLivePriceForItem(
+    itemId: string,
+    excludeVendorId?: string,
+  ): Promise<number | null> {
     const sheets = await this.pricingRepository
       .createQueryBuilder('p')
       .where('p.approvedAt IS NOT NULL')
@@ -632,14 +714,24 @@ export class VendorsService {
       }
     }
     if (!prices.length) return null;
-    return Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100;
+    return (
+      Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) /
+      100
+    );
   }
 
   /** Load a proposal that is still open for review (not fully finalized as rejected). */
-  private async loadReviewableProposal(pricingId: string): Promise<VendorPricing> {
-    const pricing = await this.pricingRepository.findOne({ where: { id: pricingId } });
+  private async loadReviewableProposal(
+    pricingId: string,
+  ): Promise<VendorPricing> {
+    const pricing = await this.pricingRepository.findOne({
+      where: { id: pricingId },
+    });
     if (!pricing) throw new NotFoundException('Pricing proposal not found');
-    if (pricing.rejectedAt) throw new BadRequestException('This pricing proposal has already been fully rejected');
+    if (pricing.rejectedAt)
+      throw new BadRequestException(
+        'This pricing proposal has already been fully rejected',
+      );
     return pricing;
   }
 
@@ -648,15 +740,25 @@ export class VendorsService {
    * recorded but NOT yet live and NO email is sent — nothing reaches the vendor
    * until the admin finalizes the review (one summary email, one price change).
    */
-  async decidePricingItem(pricingId: string, dto: DecidePricingItemDto, _adminId: string) {
+  async decidePricingItem(
+    pricingId: string,
+    dto: DecidePricingItemDto,
+    _adminId: string,
+  ) {
     if (dto.decision === 'rejected' && !dto.reason?.trim()) {
-      throw new BadRequestException('A reason is required when rejecting a price line');
+      throw new BadRequestException(
+        'A reason is required when rejecting a price line',
+      );
     }
     const pricing = await this.loadReviewableProposal(pricingId);
-    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
+    if (pricing.approvedAt)
+      throw new BadRequestException('This review has already been finalized');
 
     const target = pricing.items.find((i) => priceItemKey(i) === dto.itemKey);
-    if (!target) throw new NotFoundException(`No price line matching "${dto.itemKey}" in this proposal`);
+    if (!target)
+      throw new NotFoundException(
+        `No price line matching "${dto.itemKey}" in this proposal`,
+      );
 
     const nowIso = new Date().toISOString();
     pricing.items = pricing.items.map((i) =>
@@ -664,7 +766,8 @@ export class VendorsService {
         ? {
             ...i,
             status: dto.decision,
-            rejectionReason: dto.decision === 'rejected' ? (dto.reason?.trim() ?? null) : null,
+            rejectionReason:
+              dto.decision === 'rejected' ? (dto.reason?.trim() ?? null) : null,
             decidedAt: nowIso,
           }
         : i,
@@ -673,7 +776,11 @@ export class VendorsService {
   }
 
   /** Lock the sheet: approved lines go live, cooldown starts only when the sheet is fully clean. */
-  private async finalizeReview(pricing: VendorPricing, adminId: string, effectiveFrom: Date) {
+  private async finalizeReview(
+    pricing: VendorPricing,
+    adminId: string,
+    effectiveFrom: Date,
+  ) {
     pricing.approvedBy = adminId;
     pricing.approvedAt = new Date();
     pricing.effectiveFrom = effectiveFrom;
@@ -699,9 +806,14 @@ export class VendorsService {
     // vendor still needs to fix + resubmit the rejected lines, which must not be blocked.
     const anyRejected = pricing.items.some((i) => i.status === 'rejected');
     if (!anyRejected) {
-      await this.vendorRepository.update(pricing.vendorId, { pricingLastUpdatedAt: new Date() });
+      await this.vendorRepository.update(pricing.vendorId, {
+        pricingLastUpdatedAt: new Date(),
+      });
     }
-    this.notificationsService.notifyPricingReviewed({ vendorId: pricing.vendorId, items: pricing.items });
+    this.notificationsService.notifyPricingReviewed({
+      vendorId: pricing.vendorId,
+      items: pricing.items,
+    });
     return pricing;
   }
 
@@ -709,14 +821,23 @@ export class VendorsService {
    * Finalize: keep all staged decisions, APPROVE every line the admin did not
    * respond to, then lock the sheet and email the vendor ONE summary.
    */
-  async approvePricing(pricingId: string, dto: ApprovePricingDto, adminId: string) {
+  async approvePricing(
+    pricingId: string,
+    dto: ApprovePricingDto,
+    adminId: string,
+  ) {
     const pricing = await this.loadReviewableProposal(pricingId);
-    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
-    const effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
+    if (pricing.approvedAt)
+      throw new BadRequestException('This review has already been finalized');
+    const effectiveFrom = dto.effectiveFrom
+      ? new Date(dto.effectiveFrom)
+      : new Date();
 
     // Staged rejects stay rejected; everything else (staged-approved + untouched) becomes approved.
     pricing.items = pricing.items.map((i) =>
-      i.status === 'rejected' ? i : { ...i, status: 'approved' as const, rejectionReason: null },
+      i.status === 'rejected'
+        ? i
+        : { ...i, status: 'approved' as const, rejectionReason: null },
     );
     return this.finalizeReview(pricing, adminId, effectiveFrom);
   }
@@ -727,15 +848,24 @@ export class VendorsService {
    * survived as approved the whole proposal is marked rejected so the vendor can
    * submit a fresh one.
    */
-  async rejectPricing(pricingId: string, dto: RejectPricingDto, adminId: string) {
+  async rejectPricing(
+    pricingId: string,
+    dto: RejectPricingDto,
+    adminId: string,
+  ) {
     const pricing = await this.loadReviewableProposal(pricingId);
-    if (pricing.approvedAt) throw new BadRequestException('This review has already been finalized');
+    if (pricing.approvedAt)
+      throw new BadRequestException('This review has already been finalized');
 
     // Staged approves stay approved; everything else (staged-rejected + untouched) becomes rejected.
     pricing.items = pricing.items.map((i) =>
       i.status === 'approved'
         ? i
-        : { ...i, status: 'rejected' as const, rejectionReason: i.rejectionReason ?? dto.reason },
+        : {
+            ...i,
+            status: 'rejected' as const,
+            rejectionReason: i.rejectionReason ?? dto.reason,
+          },
     );
 
     const anyApproved = pricing.items.some((i) => i.status === 'approved');
@@ -747,7 +877,10 @@ export class VendorsService {
       pricing.approvedBy = null;
       pricing.effectiveFrom = null;
       await this.pricingRepository.save(pricing);
-      this.notificationsService.notifyPricingReviewed({ vendorId: pricing.vendorId, items: pricing.items });
+      this.notificationsService.notifyPricingReviewed({
+        vendorId: pricing.vendorId,
+        items: pricing.items,
+      });
       return pricing;
     }
     return this.finalizeReview(pricing, adminId, new Date());
@@ -800,7 +933,10 @@ export class VendorsService {
       skip: (page - 1) * limit,
       take: limit,
     });
-    return { data: entries, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+    return {
+      data: entries,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   /**
@@ -812,11 +948,17 @@ export class VendorsService {
     amount: number,
     source: LedgerSource,
     description: string,
-    meta?: { orderId?: string; nairaSnapshot?: number; reference?: string; countAsEarning?: boolean },
+    meta?: {
+      orderId?: string;
+      nairaSnapshot?: number;
+      reference?: string;
+      countAsEarning?: boolean;
+    },
   ) {
     const wallet = await this.walletRepository.findOne({ where: { vendorId } });
     if (!wallet) throw new NotFoundException('Vendor wallet not found');
-    if (wallet.status === 'frozen') throw new ForbiddenException('Vendor wallet is frozen');
+    if (wallet.status === 'frozen')
+      throw new ForbiddenException('Vendor wallet is frozen');
 
     const balanceBefore = wallet.balance;
     wallet.balance += amount;
@@ -856,8 +998,10 @@ export class VendorsService {
   ) {
     const wallet = await this.walletRepository.findOne({ where: { vendorId } });
     if (!wallet) throw new NotFoundException('Vendor wallet not found');
-    if (wallet.status === 'frozen') throw new ForbiddenException('Vendor wallet is frozen');
-    if (wallet.balance < amount) throw new BadRequestException('Insufficient balance');
+    if (wallet.status === 'frozen')
+      throw new ForbiddenException('Vendor wallet is frozen');
+    if (wallet.balance < amount)
+      throw new BadRequestException('Insufficient balance');
 
     const balanceBefore = wallet.balance;
     wallet.balance -= amount;
@@ -902,26 +1046,43 @@ export class VendorsService {
    */
   async createDeductionNotice(
     vendorId: string,
-    dto: { amountWp: number; reason: string; orderId?: string; disputeId?: string; nairaSnapshot?: number },
+    dto: {
+      amountWp: number;
+      reason: string;
+      orderId?: string;
+      disputeId?: string;
+      nairaSnapshot?: number;
+    },
     adminId: string,
   ) {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
-    if (!(dto.amountWp > 0)) throw new BadRequestException('Deduction amount must be greater than zero');
-    if (!dto.reason?.trim()) throw new BadRequestException('A reason is required');
+    if (!(dto.amountWp > 0))
+      throw new BadRequestException(
+        'Deduction amount must be greater than zero',
+      );
+    if (!dto.reason?.trim())
+      throw new BadRequestException('A reason is required');
 
     const config = await this.platformConfigService.getConfig();
-    const deduction = await this.deductionRepository.save(this.deductionRepository.create({
-      vendorId,
-      orderId: dto.orderId ?? null,
-      disputeId: dto.disputeId ?? null,
-      amountWp: dto.amountWp,
-      nairaSnapshot: dto.nairaSnapshot ?? null,
-      reason: dto.reason.trim().slice(0, 1000),
-      status: 'pending_response',
-      respondBy: this.addBusinessDays(new Date(), config.deductionResponseDays ?? 5),
-      createdBy: adminId,
-    }));
+    const deduction = await this.deductionRepository.save(
+      this.deductionRepository.create({
+        vendorId,
+        orderId: dto.orderId ?? null,
+        disputeId: dto.disputeId ?? null,
+        amountWp: dto.amountWp,
+        nairaSnapshot: dto.nairaSnapshot ?? null,
+        reason: dto.reason.trim().slice(0, 1000),
+        status: 'pending_response',
+        respondBy: this.addBusinessDays(
+          new Date(),
+          config.deductionResponseDays ?? 5,
+        ),
+        createdBy: adminId,
+      }),
+    );
 
     this.notificationsService.notifyVendorDeductionNotice({
       vendorId,
@@ -935,12 +1096,24 @@ export class VendorsService {
   }
 
   /** Vendor responds to a pending deduction (does not stop it — admin reviews). */
-  async respondToDeduction(deductionId: string, vendorUserId: string, response: string) {
-    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+  async respondToDeduction(
+    deductionId: string,
+    vendorUserId: string,
+    response: string,
+  ) {
+    const deduction = await this.deductionRepository.findOne({
+      where: { id: deductionId },
+    });
     if (!deduction) throw new NotFoundException('Deduction not found');
-    const vendor = await this.vendorRepository.findOne({ where: { id: deduction.vendorId } });
-    if (!vendor || vendor.userId !== vendorUserId) throw new ForbiddenException('Not your deduction');
-    if (deduction.status !== 'pending_response') throw new BadRequestException('This deduction can no longer be responded to');
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: deduction.vendorId },
+    });
+    if (!vendor || vendor.userId !== vendorUserId)
+      throw new ForbiddenException('Not your deduction');
+    if (deduction.status !== 'pending_response')
+      throw new BadRequestException(
+        'This deduction can no longer be responded to',
+      );
 
     deduction.vendorResponse = (response ?? '').slice(0, 1000);
     deduction.respondedAt = new Date();
@@ -949,9 +1122,12 @@ export class VendorsService {
 
   /** Admin cancels a pending deduction — the vendor is never charged. */
   async cancelDeduction(deductionId: string, adminId: string, reason?: string) {
-    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+    const deduction = await this.deductionRepository.findOne({
+      where: { id: deductionId },
+    });
     if (!deduction) throw new NotFoundException('Deduction not found');
-    if (deduction.status !== 'pending_response') throw new BadRequestException('Only pending deductions can be cancelled');
+    if (deduction.status !== 'pending_response')
+      throw new BadRequestException('Only pending deductions can be cancelled');
 
     deduction.status = 'cancelled';
     deduction.cancelledAt = new Date();
@@ -964,12 +1140,21 @@ export class VendorsService {
    * response window has passed (unless `force`, e.g. an admin acting on the vendor's
    * own agreement). Also used by the daily cron.
    */
-  async applyDeduction(deductionId: string, actorId: string | null, opts: { force?: boolean } = {}) {
-    const deduction = await this.deductionRepository.findOne({ where: { id: deductionId } });
+  async applyDeduction(
+    deductionId: string,
+    actorId: string | null,
+    opts: { force?: boolean } = {},
+  ) {
+    const deduction = await this.deductionRepository.findOne({
+      where: { id: deductionId },
+    });
     if (!deduction) throw new NotFoundException('Deduction not found');
-    if (deduction.status !== 'pending_response') throw new BadRequestException('Deduction is not pending');
+    if (deduction.status !== 'pending_response')
+      throw new BadRequestException('Deduction is not pending');
     if (!opts.force && deduction.respondBy.getTime() > Date.now()) {
-      throw new BadRequestException('The vendor response window has not yet elapsed');
+      throw new BadRequestException(
+        'The vendor response window has not yet elapsed',
+      );
     }
 
     await this.debitWallet(
@@ -997,7 +1182,10 @@ export class VendorsService {
   /** Cron helper: apply all deductions whose response window has lapsed. */
   async applyDueDeductions(): Promise<number> {
     const due = await this.deductionRepository.find({
-      where: { status: 'pending_response', respondBy: LessThanOrEqual(new Date()) },
+      where: {
+        status: 'pending_response',
+        respondBy: LessThanOrEqual(new Date()),
+      },
     });
     let applied = 0;
     for (const d of due) {
@@ -1015,13 +1203,19 @@ export class VendorsService {
     const where: Record<string, unknown> = {};
     if (filter.vendorId) where.vendorId = filter.vendorId;
     if (filter.status) where.status = filter.status;
-    return this.deductionRepository.find({ where, order: { createdAt: 'DESC' } });
+    return this.deductionRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async listMyDeductions(userId: string) {
     const vendor = await this.vendorRepository.findOne({ where: { userId } });
     if (!vendor) return [];
-    return this.deductionRepository.find({ where: { vendorId: vendor.id }, order: { createdAt: 'DESC' } });
+    return this.deductionRepository.find({
+      where: { vendorId: vendor.id },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1033,7 +1227,12 @@ export class VendorsService {
 }
 
 /** Great-circle distance in km between two lat/lng points. */
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
   const R = 6371;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);

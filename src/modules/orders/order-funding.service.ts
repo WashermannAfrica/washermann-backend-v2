@@ -67,9 +67,12 @@ export class OrderFundingService {
     opts: { purpose?: 'self' | 'sponsor' } = {},
   ) {
     const order = await this.ordersService.findOne(orderId);
-    if (order.customerId !== customerId) throw new BadRequestException('Access denied');
+    if (order.customerId !== customerId)
+      throw new BadRequestException('Access denied');
     if (order.status !== OrderStatus.PENDING_PAYMENT) {
-      throw new BadRequestException('Only a draft order awaiting payment can be funded by link');
+      throw new BadRequestException(
+        'Only a draft order awaiting payment can be funded by link',
+      );
     }
 
     // Reuse an existing active, unexpired link for this order+purpose.
@@ -102,27 +105,31 @@ export class OrderFundingService {
       conversionRateSnapshot: pointsPerUnit,
       conversionRateId: vault.conversionRateId,
       vaultId: vault.id,
-      expiresAt: new Date(Date.now() + OrderFundingService.LINK_TTL_HOURS * 3600_000),
+      expiresAt: new Date(
+        Date.now() + OrderFundingService.LINK_TTL_HOURS * 3600_000,
+      ),
       paidAt: null,
       paidReference: null,
       sponsorName: null,
       sponsorMessage: null,
     });
     await this.linkRepo.save(link);
-    this.logger.log(`Funding link created: order=${orderId} purpose=${purpose} ₦${amountKobo / 100}`);
+    this.logger.log(
+      `Funding link created: order=${orderId} purpose=${purpose} ₦${amountKobo / 100}`,
+    );
     return this.presentLink(link, order);
   }
 
   private presentLink(link: OrderFundingLink, order: Order) {
     return {
-      token:       link.token,
-      shareUrl:    this.shareUrl(link.token),
-      purpose:     link.purpose,
-      status:      link.status,
+      token: link.token,
+      shareUrl: this.shareUrl(link.token),
+      purpose: link.purpose,
+      status: link.status,
       amountNaira: link.amountKobo / 100,
-      washPoints:  link.washPointsTarget,
-      expiresAt:   link.expiresAt,
-      orderRef:    order.reference,
+      washPoints: link.washPointsTarget,
+      expiresAt: link.expiresAt,
+      orderRef: order.reference,
     };
   }
 
@@ -137,36 +144,48 @@ export class OrderFundingService {
 
     // Minimal, non-sensitive summary — this page is public. Only a first name is
     // exposed, never the full name / contact details.
-    const customer = await this.usersService.getUserById(link.customerId).catch(() => null);
-    const fullName = (customer?.data as { fullName?: string } | undefined)?.fullName ?? '';
-    const firstName = fullName.trim().split(/\s+/)[0] || 'a Washermann customer';
+    const customer = await this.usersService
+      .getUserById(link.customerId)
+      .catch(() => null);
+    const fullName =
+      (customer?.data as { fullName?: string } | undefined)?.fullName ?? '';
+    const firstName =
+      fullName.trim().split(/\s+/)[0] || 'a Washermann customer';
 
     return {
-      token:          link.token,
+      token: link.token,
       status,
-      purpose:        link.purpose,
-      amountNaira:    link.amountKobo / 100,
-      washPoints:     link.washPointsTarget,
-      expiresAt:      link.expiresAt,
-      customerName:   firstName,
-      orderRef:       order.reference,
-      itemCount:      Array.isArray(order.itemSelections) ? order.itemSelections.reduce((s, i) => s + (i.qty ?? 0), 0) : null,
-      flow:           order.flow,
+      purpose: link.purpose,
+      amountNaira: link.amountKobo / 100,
+      washPoints: link.washPointsTarget,
+      expiresAt: link.expiresAt,
+      customerName: firstName,
+      orderRef: order.reference,
+      itemCount: Array.isArray(order.itemSelections)
+        ? order.itemSelections.reduce((s, i) => s + (i.qty ?? 0), 0)
+        : null,
+      flow: order.flow,
       scheduledPickupAt: order.scheduledPickupAt,
     };
   }
 
   /** Initiate a Paystack payment for a funding link (public — anyone with the link). */
-  async pay(token: string, dto: { email: string; name?: string; message?: string }) {
+  async pay(
+    token: string,
+    dto: { email: string; name?: string; message?: string },
+  ) {
     const link = await this.linkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Funding link not found');
     const order = await this.orderRepo.findOne({ where: { id: link.orderId } });
     if (!order) throw new NotFoundException('Order not found');
 
     const status = this.effectiveStatus(link, order);
-    if (status === 'paid')      throw new BadRequestException('This order has already been paid');
-    if (status === 'expired')   throw new BadRequestException('This funding link has expired');
-    if (status === 'cancelled') throw new BadRequestException('This funding link is no longer active');
+    if (status === 'paid')
+      throw new BadRequestException('This order has already been paid');
+    if (status === 'expired')
+      throw new BadRequestException('This funding link has expired');
+    if (status === 'cancelled')
+      throw new BadRequestException('This funding link is no longer active');
     if (order.status !== OrderStatus.PENDING_PAYMENT) {
       throw new BadRequestException('This order is no longer awaiting payment');
     }
@@ -178,17 +197,18 @@ export class OrderFundingService {
       await this.linkRepo.save(link);
     }
 
-    const { reference, authorizationUrl, accessCode } = await this.paystackService.initiateOrderFunding({
-      orderId:                link.orderId,
-      customerId:             link.customerId,
-      fundingLinkId:          link.id,
-      amountKobo:             link.amountKobo,
-      conversionRateId:       link.conversionRateId,
-      conversionRateSnapshot: link.conversionRateSnapshot,
-      vaultId:                link.vaultId,
-      payerEmail:             dto.email,
-      sponsorName:            dto.name ?? null,
-    });
+    const { reference, authorizationUrl, accessCode } =
+      await this.paystackService.initiateOrderFunding({
+        orderId: link.orderId,
+        customerId: link.customerId,
+        fundingLinkId: link.id,
+        amountKobo: link.amountKobo,
+        conversionRateId: link.conversionRateId,
+        conversionRateSnapshot: link.conversionRateSnapshot,
+        vaultId: link.vaultId,
+        payerEmail: dto.email,
+        sponsorName: dto.name ?? null,
+      });
 
     return {
       reference,
@@ -212,7 +232,9 @@ export class OrderFundingService {
     await this.ordersService.confirmPayment(orderId, customerId);
 
     if (fundingLinkId) {
-      const link = await this.linkRepo.findOne({ where: { id: fundingLinkId } });
+      const link = await this.linkRepo.findOne({
+        where: { id: fundingLinkId },
+      });
       if (link && link.status === 'active') {
         link.status = 'paid';
         link.paidAt = new Date();
@@ -220,7 +242,9 @@ export class OrderFundingService {
         await this.linkRepo.save(link);
       }
     }
-    this.logger.log(`Order funding settled: order=${orderId} ref=${paystackRef}`);
+    this.logger.log(
+      `Order funding settled: order=${orderId} ref=${paystackRef}`,
+    );
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -229,7 +253,10 @@ export class OrderFundingService {
     return randomBytes(24).toString('base64url');
   }
 
-  private effectiveStatus(link: OrderFundingLink, order: Order): OrderFundingLink['status'] {
+  private effectiveStatus(
+    link: OrderFundingLink,
+    order: Order,
+  ): OrderFundingLink['status'] {
     if (link.status !== 'active') return link.status;
     if (order.status === OrderStatus.PAID) return 'paid';
     if (order.status !== OrderStatus.PENDING_PAYMENT) return 'cancelled';

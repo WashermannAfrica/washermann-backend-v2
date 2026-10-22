@@ -10,7 +10,11 @@ import { In, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import sanitizeHtml from 'sanitize-html';
-import { BlogPost, BlogPostStatus, BlogPublishedSnapshot } from '../../database/entities/blog-post.entity';
+import {
+  BlogPost,
+  BlogPostStatus,
+  BlogPublishedSnapshot,
+} from '../../database/entities/blog-post.entity';
 import { User } from '../../database/entities/user.entity';
 import { slugify } from '../catalogue/catalogue-seed';
 import { CreateBlogPostDto, UpdateBlogPostDto } from './dto/blog.dto';
@@ -19,10 +23,33 @@ import { NotificationsService } from '../notifications/notifications.service';
 /** Tags/attributes the editor is allowed to produce. Everything else is stripped. */
 const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: [
-    'h2', 'h3', 'h4', 'p', 'br', 'hr',
-    'strong', 'em', 'u', 's', 'code', 'pre', 'mark',
-    'blockquote', 'ul', 'ol', 'li', 'a', 'img', 'figure', 'figcaption',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'h2',
+    'h3',
+    'h4',
+    'p',
+    'br',
+    'hr',
+    'strong',
+    'em',
+    'u',
+    's',
+    'code',
+    'pre',
+    'mark',
+    'blockquote',
+    'ul',
+    'ol',
+    'li',
+    'a',
+    'img',
+    'figure',
+    'figcaption',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'th',
+    'td',
   ],
   allowedAttributes: {
     a: ['href', 'target', 'rel'],
@@ -33,7 +60,10 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedSchemes: ['https', 'http', 'mailto'],
   transformTags: {
     // External links open safely in a new tab
-    a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' }),
+    a: sanitizeHtml.simpleTransform('a', {
+      rel: 'noopener noreferrer',
+      target: '_blank',
+    }),
   },
 };
 
@@ -72,7 +102,10 @@ export class BlogService {
   }
 
   private readingTime(html: string): number {
-    const words = this.sanitize(html).replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    const words = this.sanitize(html)
+      .replace(/<[^>]+>/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean).length;
     return Math.max(1, Math.round(words / 200));
   }
 
@@ -86,9 +119,14 @@ export class BlogService {
     }
   }
 
-  private async author(userId: string): Promise<{ name: string; avatarUrl: string | null }> {
+  private async author(
+    userId: string,
+  ): Promise<{ name: string; avatarUrl: string | null }> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-    return { name: user?.fullName ?? 'Washermann Team', avatarUrl: user?.avatarUrl ?? null };
+    return {
+      name: user?.fullName ?? 'Washermann Team',
+      avatarUrl: user?.avatarUrl ?? null,
+    };
   }
 
   /**
@@ -98,13 +136,17 @@ export class BlogService {
    */
   private pingRevalidate(slug: string) {
     const base = this.configService.get<string>('app.landingUrl');
-    const secret = this.configService.get<string>('app.landingRevalidateSecret');
+    const secret = this.configService.get<string>(
+      'app.landingRevalidateSecret',
+    );
     if (!base || !secret) return;
     fetch(`${base.replace(/\/$/, '')}/api/revalidate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ secret, slug }),
-    }).catch((e) => this.logger.warn(`Landing revalidate ping failed: ${e.message}`));
+    }).catch((e) =>
+      this.logger.warn(`Landing revalidate ping failed: ${e.message}`),
+    );
   }
 
   private async findOne(id: string): Promise<BlogPost> {
@@ -116,6 +158,9 @@ export class BlogService {
   // ─── Admin: CRUD on the draft copy ───────────────────────────────────────────
 
   async create(dto: CreateBlogPostDto, adminId: string): Promise<BlogPost> {
+    //todo: create a new role type for blog authors and implement maker-checker workflow for them.
+    // Admin posts always go to published status.
+
     const post = this.postRepository.create({
       slug: await this.uniqueSlug(slugify(dto.title)),
       title: dto.title.trim(),
@@ -126,7 +171,7 @@ export class BlogService {
       seoTitle: dto.seoTitle?.trim() || null,
       seoDescription: dto.seoDescription?.trim() || null,
       readingTimeMins: this.readingTime(dto.bodyHtml ?? ''),
-      status: BlogPostStatus.DRAFT,
+      status: BlogPostStatus.PUBLISHED, // Admin posts are published immediately
       authorUserId: adminId,
       updatedBy: adminId,
       viewCount: 0,
@@ -134,36 +179,53 @@ export class BlogService {
     return this.postRepository.save(post);
   }
 
-  async update(id: string, dto: UpdateBlogPostDto, adminId: string): Promise<BlogPost> {
+  async update(
+    id: string,
+    dto: UpdateBlogPostDto,
+    adminId: string,
+  ): Promise<BlogPost> {
     const post = await this.findOne(id);
     if (post.status === BlogPostStatus.IN_REVIEW) {
-      throw new BadRequestException('Post is in review — approve it or request changes before editing');
+      throw new BadRequestException(
+        'Post is in review — approve it or request changes before editing',
+      );
     }
 
     if (dto.slug !== undefined && dto.slug !== post.slug) {
       if (post.firstPublishedAt) {
-        throw new BadRequestException('Slug is locked after first publish (existing links must keep working)');
+        throw new BadRequestException(
+          'Slug is locked after first publish (existing links must keep working)',
+        );
       }
       post.slug = await this.uniqueSlug(slugify(dto.slug), post.id);
     }
     if (dto.title !== undefined) post.title = dto.title.trim();
     if (dto.excerpt !== undefined) post.excerpt = dto.excerpt.trim();
-    if (dto.coverImageUrl !== undefined) post.coverImageUrl = dto.coverImageUrl || null;
+    if (dto.coverImageUrl !== undefined)
+      post.coverImageUrl = dto.coverImageUrl || null;
     if (dto.bodyHtml !== undefined) {
       post.bodyHtml = this.sanitize(dto.bodyHtml);
       post.readingTimeMins = this.readingTime(dto.bodyHtml);
     }
-    if (dto.tags !== undefined) post.tags = dto.tags.map((t) => slugify(t)).filter(Boolean);
-    if (dto.seoTitle !== undefined) post.seoTitle = dto.seoTitle?.trim() || null;
-    if (dto.seoDescription !== undefined) post.seoDescription = dto.seoDescription?.trim() || null;
+    if (dto.tags !== undefined)
+      post.tags = dto.tags.map((t) => slugify(t)).filter(Boolean);
+    if (dto.seoTitle !== undefined)
+      post.seoTitle = dto.seoTitle?.trim() || null;
+    if (dto.seoDescription !== undefined)
+      post.seoDescription = dto.seoDescription?.trim() || null;
 
     // Editing a clean published post reopens the draft workflow
-    if (post.status === BlogPostStatus.PUBLISHED) post.status = BlogPostStatus.DRAFT;
+    if (post.status === BlogPostStatus.PUBLISHED)
+      post.status = BlogPostStatus.DRAFT;
     post.updatedBy = adminId;
     return this.postRepository.save(post);
   }
 
-  async adminList(query: { status?: BlogPostStatus; page?: number; limit?: number }) {
+  async adminList(query: {
+    status?: BlogPostStatus;
+    page?: number;
+    limit?: number;
+  }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const qb = this.postRepository
@@ -177,11 +239,20 @@ export class BlogService {
     // Attach author identities for the list
     const authorIds = [...new Set(rows.map((r) => r.authorUserId))];
     const users = authorIds.length
-      ? await this.userRepository.find({ where: { id: In(authorIds) }, select: ['id', 'fullName'] })
+      ? await this.userRepository.find({
+          where: { id: In(authorIds) },
+          select: ['id', 'fullName'],
+        })
       : [];
     const nameById = new Map(users.map((u) => [u.id, u.fullName]));
-    const data = rows.map((r) => ({ ...r, authorName: nameById.get(r.authorUserId) ?? 'Unknown' }));
-    return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+    const data = rows.map((r) => ({
+      ...r,
+      authorName: nameById.get(r.authorUserId) ?? 'Unknown',
+    }));
+    return {
+      data,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   async adminGet(id: string) {
@@ -192,7 +263,9 @@ export class BlogService {
   async remove(id: string): Promise<void> {
     const post = await this.findOne(id);
     if (post.firstPublishedAt) {
-      throw new BadRequestException('Published posts cannot be deleted — archive instead');
+      throw new BadRequestException(
+        'Published posts cannot be deleted — archive instead',
+      );
     }
     await this.postRepository.remove(post);
   }
@@ -201,11 +274,23 @@ export class BlogService {
 
   async submit(id: string, adminId: string): Promise<BlogPost> {
     const post = await this.findOne(id);
-    if (post.status !== BlogPostStatus.DRAFT && post.status !== BlogPostStatus.PUBLISHED) {
-      throw new BadRequestException(`Cannot submit a post in status "${post.status}"`);
+    if (
+      post.status !== BlogPostStatus.DRAFT &&
+      post.status !== BlogPostStatus.PUBLISHED
+    ) {
+      throw new BadRequestException(
+        `Cannot submit a post in status "${post.status}"`,
+      );
     }
-    if (!post.title.trim() || !this.sanitize(post.bodyHtml).replace(/<[^>]+>/g, '').trim()) {
-      throw new BadRequestException('Post needs a title and body before review');
+    if (
+      !post.title.trim() ||
+      !this.sanitize(post.bodyHtml)
+        .replace(/<[^>]+>/g, '')
+        .trim()
+    ) {
+      throw new BadRequestException(
+        'Post needs a title and body before review',
+      );
     }
     post.status = BlogPostStatus.IN_REVIEW;
     post.submittedAt = new Date();
@@ -234,7 +319,9 @@ export class BlogService {
       throw new BadRequestException('Only posts in review can be approved');
     }
     if (reviewerId === post.authorUserId || reviewerId === post.submittedBy) {
-      throw new ForbiddenException('You cannot approve your own post — a different admin must review it');
+      throw new ForbiddenException(
+        'You cannot approve your own post — a different admin must review it',
+      );
     }
 
     const snapshot: BlogPublishedSnapshot = {
@@ -267,13 +354,21 @@ export class BlogService {
     return saved;
   }
 
-  async requestChanges(id: string, reviewerId: string, note: string): Promise<BlogPost> {
+  async requestChanges(
+    id: string,
+    reviewerId: string,
+    note: string,
+  ): Promise<BlogPost> {
     const post = await this.findOne(id);
     if (post.status !== BlogPostStatus.IN_REVIEW) {
-      throw new BadRequestException('Only posts in review can have changes requested');
+      throw new BadRequestException(
+        'Only posts in review can have changes requested',
+      );
     }
     if (reviewerId === post.authorUserId || reviewerId === post.submittedBy) {
-      throw new ForbiddenException('You cannot review your own post — a different admin must review it');
+      throw new ForbiddenException(
+        'You cannot review your own post — a different admin must review it',
+      );
     }
     post.status = BlogPostStatus.DRAFT;
     post.reviewedBy = reviewerId;
@@ -302,9 +397,12 @@ export class BlogService {
 
   async unarchive(id: string, adminId: string): Promise<BlogPost> {
     const post = await this.findOne(id);
-    if (post.status !== BlogPostStatus.ARCHIVED) throw new BadRequestException('Post is not archived');
+    if (post.status !== BlogPostStatus.ARCHIVED)
+      throw new BadRequestException('Post is not archived');
     // Back to published if a live snapshot exists, else back to draft
-    post.status = post.publishedSnapshot ? BlogPostStatus.PUBLISHED : BlogPostStatus.DRAFT;
+    post.status = post.publishedSnapshot
+      ? BlogPostStatus.PUBLISHED
+      : BlogPostStatus.DRAFT;
     post.updatedBy = adminId;
     const saved = await this.postRepository.save(post);
     this.pingRevalidate(post.slug);
@@ -325,7 +423,9 @@ export class BlogService {
       .skip((page - 1) * limit)
       .take(limit);
     if (query.tag) {
-      qb.andWhere(`p.published_snapshot->'tags' @> :tag::jsonb`, { tag: JSON.stringify([slugify(query.tag)]) });
+      qb.andWhere(`p.published_snapshot->'tags' @> :tag::jsonb`, {
+        tag: JSON.stringify([slugify(query.tag)]),
+      });
     }
     const [rows, total] = await qb.getManyAndCount();
 
@@ -343,13 +443,20 @@ export class BlogService {
         author: await this.author(row.authorUserId),
       });
     }
-    return { data: cards, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+    return {
+      data: cards,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   /** Full published post by slug. Bumps view count fire-and-forget. */
   async publicGet(slug: string) {
     const post = await this.postRepository.findOne({ where: { slug } });
-    if (!post || !post.publishedSnapshot || post.status === BlogPostStatus.ARCHIVED) {
+    if (
+      !post ||
+      !post.publishedSnapshot ||
+      post.status === BlogPostStatus.ARCHIVED
+    ) {
       throw new NotFoundException('Blog post not found');
     }
     this.postRepository
@@ -406,14 +513,21 @@ export class BlogService {
   // ─── Preview (reviewer sees the DRAFT in the landing skin) ───────────────────
 
   private previewSecret(): string {
-    return this.configService.get<string>('jwt.accessSecret') || 'washermann-preview';
+    return (
+      this.configService.get<string>('jwt.accessSecret') || 'washermann-preview'
+    );
   }
 
   /** Signed, expiring link the admin "Preview" button opens on the landing site. */
   previewToken(postId: string): { token: string; expiresAt: string } {
     const expires = Date.now() + PREVIEW_TOKEN_TTL_MS;
-    const sig = createHmac('sha256', this.previewSecret()).update(`${postId}:${expires}`).digest('hex');
-    return { token: `${expires}.${sig}`, expiresAt: new Date(expires).toISOString() };
+    const sig = createHmac('sha256', this.previewSecret())
+      .update(`${postId}:${expires}`)
+      .digest('hex');
+    return {
+      token: `${expires}.${sig}`,
+      expiresAt: new Date(expires).toISOString(),
+    };
   }
 
   /** Draft copy for the landing preview route — validates the signed token. */
@@ -423,7 +537,9 @@ export class BlogService {
     if (!expires || !sig || Date.now() > expires) {
       throw new ForbiddenException('Preview link is invalid or has expired');
     }
-    const expected = createHmac('sha256', this.previewSecret()).update(`${postId}:${expires}`).digest('hex');
+    const expected = createHmac('sha256', this.previewSecret())
+      .update(`${postId}:${expires}`)
+      .digest('hex');
     const a = Buffer.from(sig, 'hex');
     const b = Buffer.from(expected, 'hex');
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
