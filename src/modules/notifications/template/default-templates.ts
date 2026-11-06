@@ -1,16 +1,20 @@
-import { NotificationChannel, EmailStyle } from '../../../database/entities/notification-template.entity';
+import {
+  NotificationChannel,
+  EmailStyle,
+} from '../../../database/entities/notification-template.entity';
 
 // Washermann brand palette — see also notifications/templates/index.ts
 const DEFAULT_EMAIL_STYLE: EmailStyle = {
-  primaryColor:  '#00281c', // deep green — header background, emphasis
-  accentColor:   '#13c490', // mint-green — buttons, links, highlights
-  bodyBgColor:   '#eef2f0', // soft green-gray page background
-  cardBgColor:   '#ffffff',
-  textColor:     '#2c3a33',
-  logoUrl:       null,
-  logoAlt:       'Washermann',
-  footerText:    '© {{year}} Washermann. All rights reserved.',
-  fontFamily:    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  primaryColor: '#00281c', // deep green — header background, emphasis
+  accentColor: '#13c490', // mint-green — buttons, links, highlights
+  bodyBgColor: '#eef2f0', // soft green-gray page background
+  cardBgColor: '#ffffff',
+  textColor: '#2c3a33',
+  logoUrl: null,
+  logoAlt: 'Washermann',
+  footerText: '© {{year}} Washermann. All rights reserved.',
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 };
 
 /**
@@ -18,7 +22,10 @@ const DEFAULT_EMAIL_STYLE: EmailStyle = {
  * This template is itself a Handlebars template — the final render
  * replaces {{variables}} with real data at send time.
  */
-export const buildEmailHtml = (contentBlock: string, style: EmailStyle = DEFAULT_EMAIL_STYLE) => `
+export const buildEmailHtml = (
+  contentBlock: string,
+  style: EmailStyle = DEFAULT_EMAIL_STYLE,
+) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -71,24 +78,32 @@ export const buildEmailHtml = (contentBlock: string, style: EmailStyle = DEFAULT
 // ─── Default template definitions ─────────────────────────────────────────────
 
 interface DefaultTemplate {
-  key:       string;
-  channel:   NotificationChannel;
-  name:      string;
-  subject?:  string;
-  body:      string;
+  key: string;
+  channel: NotificationChannel;
+  name: string;
+  subject?: string;
+  body: string;
   htmlBody?: string;
   variables: string[];
 }
 
 export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
-
   // ── Order Placed ─────────────────────────────────────────────────────────────
 
   {
-    key: 'order.placed.customer', channel: 'email',
+    key: 'order.placed.customer',
+    channel: 'email',
     name: 'Order Placed — Customer Email',
     subject: 'Order Confirmed: {{orderRef}} 🧺',
-    variables: ['customerName', 'orderRef', 'totalWP', 'nairaEquivalent', 'pickupAddress', 'scheduledPickupAt', 'vendorName'],
+    variables: [
+      'customerName',
+      'orderRef',
+      'totalWP',
+      'nairaEquivalent',
+      'pickupAddress',
+      'scheduledPickupAt',
+      'vendorName',
+    ],
     body: 'Hi {{customerName}}, your order {{orderRef}} has been placed and is waiting for a rep to be assigned.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{customerName}}</strong>,</p>
@@ -105,50 +120,63 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.placed.customer', channel: 'sms',
+    key: 'order.placed.customer',
+    channel: 'sms',
     name: 'Order Placed — Customer SMS',
     variables: ['customerName', 'orderRef', 'totalWP'],
     body: 'Hi {{customerName}}, your Washermann order {{orderRef}} is confirmed ({{totalWP}} WP). A rep will be assigned shortly.',
   },
   {
-    key: 'order.placed.customer', channel: 'push',
+    key: 'order.placed.customer',
+    channel: 'push',
     name: 'Order Placed — Customer Push',
     variables: ['orderRef', 'totalWP'],
     subject: 'Order Confirmed 🧺',
     body: 'Order {{orderRef}} placed for {{totalWP}} WP. A rep will be assigned shortly.',
   },
   {
-    key: 'order.placed.customer', channel: 'in_app',
+    key: 'order.placed.customer',
+    channel: 'in_app',
     name: 'Order Placed — Customer In-App',
     variables: ['orderRef', 'totalWP'],
     subject: 'Order Confirmed',
-    body: 'Your order {{orderRef}} has been placed ({{totalWP}} WP). We\'re finding a rep for you.',
+    body: "Your order {{orderRef}} has been placed ({{totalWP}} WP). We're finding a rep for you.",
   },
   {
-    key: 'order.placed.customer', channel: 'whatsapp',
+    key: 'order.placed.customer',
+    channel: 'whatsapp',
     name: 'Order Placed — Customer WhatsApp',
-    variables: ['customerName', 'orderRef', 'totalWP', 'pickupAddress', 'scheduledPickupAt'],
+    variables: [
+      'customerName',
+      'orderRef',
+      'totalWP',
+      'pickupAddress',
+      'scheduledPickupAt',
+    ],
     body: `🧺 *Order Confirmed*\n\nHi {{customerName}}, your Washermann order is confirmed!\n\n📋 Ref: *{{orderRef}}*\n💰 Total: *{{totalWP}} WP*\n📍 Pickup: {{pickupAddress}}\n⏰ Scheduled: {{scheduledPickupAt}}\n\nWe're assigning a rep to your order now.`,
   },
 
   // ── Rep Assigned ─────────────────────────────────────────────────────────────
 
   {
-    key: 'order.rep_assigned.customer', channel: 'push',
+    key: 'order.rep_assigned.customer',
+    channel: 'push',
     name: 'Rep Assigned — Customer Push',
     variables: ['repName', 'orderRef'],
     subject: 'Rep Assigned 🛵',
     body: '{{repName}} has been assigned to your order {{orderRef}} and will pick up your laundry soon.',
   },
   {
-    key: 'order.rep_assigned.customer', channel: 'in_app',
+    key: 'order.rep_assigned.customer',
+    channel: 'in_app',
     name: 'Rep Assigned — Customer In-App',
     variables: ['repName', 'orderRef'],
     subject: 'Rep Assigned',
-    body: '{{repName}} is your rep for order {{orderRef}}. They\'ll be picking up your laundry.',
+    body: "{{repName}} is your rep for order {{orderRef}}. They'll be picking up your laundry.",
   },
   {
-    key: 'order.rep_assigned.customer', channel: 'whatsapp',
+    key: 'order.rep_assigned.customer',
+    channel: 'whatsapp',
     name: 'Rep Assigned — Customer WhatsApp',
     variables: ['customerName', 'repName', 'orderRef'],
     body: `🛵 *Rep Assigned*\n\nHi {{customerName}}, *{{repName}}* has been assigned to your order *{{orderRef}}* and will pick up your laundry soon.`,
@@ -157,21 +185,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Picked Up ────────────────────────────────────────────────────────────────
 
   {
-    key: 'order.picked_up.customer', channel: 'push',
+    key: 'order.picked_up.customer',
+    channel: 'push',
     name: 'Order Picked Up — Customer Push',
     variables: ['orderRef'],
     subject: 'Laundry Picked Up 📦',
     body: 'Your laundry for order {{orderRef}} has been picked up and is on its way to the vendor.',
   },
   {
-    key: 'order.picked_up.customer', channel: 'in_app',
+    key: 'order.picked_up.customer',
+    channel: 'in_app',
     name: 'Order Picked Up — Customer In-App',
     variables: ['orderRef'],
     subject: 'Laundry Picked Up',
     body: 'Your laundry (order {{orderRef}}) has been collected and is heading to the vendor.',
   },
   {
-    key: 'order.picked_up.customer', channel: 'whatsapp',
+    key: 'order.picked_up.customer',
+    channel: 'whatsapp',
     name: 'Order Picked Up — Customer WhatsApp',
     variables: ['customerName', 'orderRef'],
     body: `📦 *Laundry Picked Up*\n\nHi {{customerName}}, your laundry for order *{{orderRef}}* has been collected and is heading to the vendor. We'll update you when it's done.`,
@@ -180,21 +211,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Rep En Route to Pickup ───────────────────────────────────────────────────
 
   {
-    key: 'order.rep_en_route.customer', channel: 'push',
+    key: 'order.rep_en_route.customer',
+    channel: 'push',
     name: 'Rep On The Way — Customer Push',
     variables: ['orderRef', 'repName'],
     subject: 'Your rep is on the way 🚗',
     body: '{{repName}} is on the way to pick up your laundry for order {{orderRef}}.',
   },
   {
-    key: 'order.rep_en_route.customer', channel: 'in_app',
+    key: 'order.rep_en_route.customer',
+    channel: 'in_app',
     name: 'Rep On The Way — Customer In-App',
     variables: ['orderRef', 'repName'],
     subject: 'Your rep is on the way',
     body: '{{repName}} is heading to your address to collect order {{orderRef}}.',
   },
   {
-    key: 'order.rep_en_route.customer', channel: 'whatsapp',
+    key: 'order.rep_en_route.customer',
+    channel: 'whatsapp',
     name: 'Rep On The Way — Customer WhatsApp',
     variables: ['customerName', 'orderRef', 'repName'],
     body: `🚗 *Your rep is on the way*\n\nHi {{customerName}}, {{repName}} is heading to your address to pick up your laundry for order *{{orderRef}}*. Please have it ready.`,
@@ -203,7 +237,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Delivered ────────────────────────────────────────────────────────────────
 
   {
-    key: 'order.delivered.customer', channel: 'email',
+    key: 'order.delivered.customer',
+    channel: 'email',
     name: 'Order Delivered — Customer Email',
     subject: 'Your laundry is back! — Order {{orderRef}} ✅',
     variables: ['customerName', 'orderRef', 'vendorName', 'repName'],
@@ -224,27 +259,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.delivered.customer', channel: 'sms',
+    key: 'order.delivered.customer',
+    channel: 'sms',
     name: 'Order Delivered — Customer SMS',
     variables: ['customerName', 'orderRef'],
     body: 'Hi {{customerName}}, your laundry order {{orderRef}} has been delivered! Please confirm in the Washermann app.',
   },
   {
-    key: 'order.delivered.customer', channel: 'push',
+    key: 'order.delivered.customer',
+    channel: 'push',
     name: 'Order Delivered — Customer Push',
     variables: ['orderRef'],
     subject: 'Laundry Delivered! 🎉',
     body: 'Your order {{orderRef}} has been delivered. Tap to confirm and rate your experience.',
   },
   {
-    key: 'order.delivered.customer', channel: 'in_app',
+    key: 'order.delivered.customer',
+    channel: 'in_app',
     name: 'Order Delivered — Customer In-App',
     variables: ['orderRef'],
     subject: 'Laundry Delivered!',
     body: 'Your order {{orderRef}} has been delivered. Please confirm delivery to release payment.',
   },
   {
-    key: 'order.delivered.customer', channel: 'whatsapp',
+    key: 'order.delivered.customer',
+    channel: 'whatsapp',
     name: 'Order Delivered — Customer WhatsApp',
     variables: ['customerName', 'orderRef'],
     body: `🎉 *Laundry Delivered!*\n\nHi {{customerName}}, your order *{{orderRef}}* has been delivered!\n\nPlease confirm delivery in the Washermann app. Your payment will be released to the vendor automatically after 24 hours if not confirmed.`,
@@ -253,7 +292,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Order Completed ───────────────────────────────────────────────────────────
 
   {
-    key: 'order.completed.customer', channel: 'email',
+    key: 'order.completed.customer',
+    channel: 'email',
     name: 'Order Completed — Customer Email',
     subject: 'Order {{orderRef}} Complete — Thank you!',
     variables: ['customerName', 'orderRef'],
@@ -266,14 +306,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.completed.customer', channel: 'push',
+    key: 'order.completed.customer',
+    channel: 'push',
     name: 'Order Completed — Customer Push',
     variables: ['orderRef'],
     subject: 'Order Complete ✅',
     body: 'Order {{orderRef}} is complete. Thanks for using Washermann!',
   },
   {
-    key: 'order.completed.customer', channel: 'in_app',
+    key: 'order.completed.customer',
+    channel: 'in_app',
     name: 'Order Completed — Customer In-App',
     variables: ['orderRef'],
     subject: 'Order Complete',
@@ -283,7 +325,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Order Cancelled ───────────────────────────────────────────────────────────
 
   {
-    key: 'order.cancelled.customer', channel: 'email',
+    key: 'order.cancelled.customer',
+    channel: 'email',
     name: 'Order Cancelled — Customer Email',
     subject: 'Order {{orderRef}} Cancelled — Refund Issued',
     variables: ['customerName', 'orderRef', 'totalWP'],
@@ -299,50 +342,100 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.cancelled.customer', channel: 'sms',
+    key: 'order.cancelled.customer',
+    channel: 'sms',
     name: 'Order Cancelled — Customer SMS',
     variables: ['orderRef', 'totalWP'],
     body: 'Your Washermann order {{orderRef}} has been cancelled. {{totalWP}} WP refunded to your wallet.',
   },
   {
-    key: 'order.cancelled.customer', channel: 'push',
+    key: 'order.cancelled.customer',
+    channel: 'push',
     name: 'Order Cancelled — Customer Push',
     variables: ['orderRef', 'totalWP'],
     subject: 'Order Cancelled',
     body: 'Order {{orderRef}} cancelled. {{totalWP}} WP refunded to your wallet.',
   },
   {
-    key: 'order.cancelled.customer', channel: 'in_app',
+    key: 'order.cancelled.customer',
+    channel: 'in_app',
     name: 'Order Cancelled — Customer In-App',
     variables: ['orderRef', 'totalWP'],
     subject: 'Order Cancelled',
     body: 'Order {{orderRef}} cancelled. {{totalWP}} WP has been refunded to your wallet.',
   },
 
+  // ── Assignment Confirmed → Vendor ─────────────────────────────────────────────
+
+  {
+    key: 'assignment.confirmed.vendor',
+    channel: 'sms',
+    name: 'Assignment Confirmed — Vendor SMS',
+    variables: ['vendorName', 'orderRef', 'firstLegCode', 'scheduledPickupAt'],
+    body: 'Hi {{vendorName}}, order {{orderRef}} has been confirmed for your facility. Rep pickup is scheduled for {{scheduledPickupAt}}. Your handover verification code is {{firstLegCode}}. Provide this code when receiving the laundry from the rep.',
+  },
+  {
+    key: 'assignment.confirmed.vendor',
+    channel: 'push',
+    name: 'Assignment Confirmed — Vendor Push',
+    variables: ['orderRef', 'scheduledPickupAt'],
+    subject: 'Order Confirmed ✅',
+    body: 'Order {{orderRef}} has been confirmed for your facility. Rep pickup is scheduled for {{scheduledPickupAt}}. Check the app for handover details.',
+  },
+  {
+    key: 'assignment.confirmed.vendor',
+    channel: 'in_app',
+    name: 'Assignment Confirmed — Vendor In-App',
+    variables: ['orderRef', 'firstLegCode', 'scheduledPickupAt'],
+    subject: 'Order Confirmed',
+    body: 'Order {{orderRef}} is confirmed for your facility. Rep pickup: {{scheduledPickupAt}}. Handover verification code: {{firstLegCode}}. Enter this code when the rep delivers the laundry to you.',
+  },
+  {
+    key: 'assignment.confirmed.vendor',
+    channel: 'whatsapp',
+    name: 'Assignment Confirmed — Vendor WhatsApp',
+    variables: ['vendorName', 'orderRef', 'firstLegCode', 'scheduledPickupAt'],
+    body: `📋 *Order Confirmed!*
+
+Hi {{vendorName}}, order *{{orderRef}}* has been confirmed for your facility.
+
+⏰ Rep Pickup: {{scheduledPickupAt}}
+
+🔐 *Handover Verification Code: {{firstLegCode}}*
+
+Please enter this code when receiving the laundry from the rep to confirm the handover.
+
+Thank you for partnering with Washermann!`,
+  },
+
   // ── Assignment Broadcast → Rep ────────────────────────────────────────────────
 
   {
-    key: 'assignment.broadcast.rep', channel: 'sms',
+    key: 'assignment.broadcast.rep',
+    channel: 'sms',
     name: 'Assignment Broadcast — Rep SMS',
     variables: ['repName', 'orderRef', 'pickupAddress', 'scheduledPickupAt'],
     body: 'Hi {{repName}}, new job alert! Order {{orderRef}} — Pickup: {{pickupAddress}} at {{scheduledPickupAt}}. Open the Washermann app to accept.',
   },
   {
-    key: 'assignment.broadcast.rep', channel: 'push',
+    key: 'assignment.broadcast.rep',
+    channel: 'push',
     name: 'Assignment Broadcast — Rep Push',
     variables: ['orderRef', 'pickupAddress'],
     subject: 'New Job Available 🛵',
     body: 'Order {{orderRef}} — {{pickupAddress}}. Tap to accept before time runs out!',
   },
   {
-    key: 'assignment.broadcast.rep', channel: 'in_app',
+    key: 'assignment.broadcast.rep',
+    channel: 'in_app',
     name: 'Assignment Broadcast — Rep In-App',
     variables: ['orderRef', 'pickupAddress', 'scheduledPickupAt'],
     subject: 'New Job Available',
     body: 'Order {{orderRef}} available — pickup at {{pickupAddress}} on {{scheduledPickupAt}}.',
   },
   {
-    key: 'assignment.broadcast.rep', channel: 'whatsapp',
+    key: 'assignment.broadcast.rep',
+    channel: 'whatsapp',
     name: 'Assignment Broadcast — Rep WhatsApp',
     variables: ['repName', 'orderRef', 'pickupAddress', 'scheduledPickupAt'],
     body: `🛵 *New Job Available!*\n\nHi {{repName}}, a new order is available:\n\n📋 Order: *{{orderRef}}*\n📍 Pickup: {{pickupAddress}}\n⏰ Time: {{scheduledPickupAt}}\n\nOpen the Washermann app to accept — first come first served!`,
@@ -351,31 +444,35 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Assignment Confirmed → Rep ────────────────────────────────────────────────
 
   {
-    key: 'assignment.confirmed.rep', channel: 'push',
+    key: 'assignment.confirmed.rep',
+    channel: 'push',
     name: 'Assignment Confirmed — Rep Push',
     variables: ['orderRef', 'pickupAddress', 'customerName'],
     subject: 'Job Confirmed ✅',
-    body: 'You\'ve been assigned order {{orderRef}}. Pickup from {{pickupAddress}}.',
+    body: "You've been assigned order {{orderRef}}. Pickup from {{pickupAddress}}.",
   },
   {
-    key: 'assignment.confirmed.rep', channel: 'in_app',
+    key: 'assignment.confirmed.rep',
+    channel: 'in_app',
     name: 'Assignment Confirmed — Rep In-App',
     variables: ['orderRef', 'pickupAddress'],
     subject: 'Job Confirmed',
-    body: 'You\'ve accepted order {{orderRef}}. Head to {{pickupAddress}} for pickup.',
+    body: "You've accepted order {{orderRef}}. Head to {{pickupAddress}} for pickup.",
   },
 
   // ── Earning Credited → Rep ────────────────────────────────────────────────────
 
   {
-    key: 'order.earning_credited.rep', channel: 'push',
+    key: 'order.earning_credited.rep',
+    channel: 'push',
     name: 'Earning Credited — Rep Push',
     variables: ['orderRef', 'earnedWP'],
     subject: 'Earnings Credited 💰',
     body: '{{earnedWP}} WP credited for order {{orderRef}}. Keep it up!',
   },
   {
-    key: 'order.earning_credited.rep', channel: 'in_app',
+    key: 'order.earning_credited.rep',
+    channel: 'in_app',
     name: 'Earning Credited — Rep In-App',
     variables: ['orderRef', 'earnedWP'],
     subject: 'Earnings Credited',
@@ -385,7 +482,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Rep Flagged for Review ────────────────────────────────────────────────────
 
   {
-    key: 'rep.flagged_for_review', channel: 'email',
+    key: 'rep.flagged_for_review',
+    channel: 'email',
     name: 'Rep Flagged for Review — Rep Email',
     subject: 'Action Required — Account Review',
     variables: ['repName', 'rating'],
@@ -398,14 +496,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'rep.flagged_for_review', channel: 'push',
+    key: 'rep.flagged_for_review',
+    channel: 'push',
     name: 'Rep Flagged for Review — Push',
     variables: ['rating'],
     subject: 'Account Review Notice',
     body: 'Your rating ({{rating}}/5) is below the threshold. Your account is under review — check the app for details.',
   },
   {
-    key: 'rep.flagged_for_review', channel: 'in_app',
+    key: 'rep.flagged_for_review',
+    channel: 'in_app',
     name: 'Rep Flagged for Review — In-App',
     variables: ['rating'],
     subject: 'Account Under Review',
@@ -415,27 +515,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Assignment Broadcast → Vendor ─────────────────────────────────────────────
 
   {
-    key: 'assignment.broadcast.vendor', channel: 'sms',
+    key: 'assignment.broadcast.vendor',
+    channel: 'sms',
     name: 'Assignment Broadcast — Vendor SMS',
     variables: ['vendorName', 'orderRef', 'scheduledPickupAt'],
     body: 'Hi {{vendorName}}, new order {{orderRef}} incoming — pickup at {{scheduledPickupAt}}. Accept in the Washermann app.',
   },
   {
-    key: 'assignment.broadcast.vendor', channel: 'push',
+    key: 'assignment.broadcast.vendor',
+    channel: 'push',
     name: 'Assignment Broadcast — Vendor Push',
     variables: ['orderRef'],
     subject: 'New Order Incoming 📋',
     body: 'Order {{orderRef}} has been sent to you. Accept in the app now!',
   },
   {
-    key: 'assignment.broadcast.vendor', channel: 'in_app',
+    key: 'assignment.broadcast.vendor',
+    channel: 'in_app',
     name: 'Assignment Broadcast — Vendor In-App',
     variables: ['orderRef', 'scheduledPickupAt'],
     subject: 'New Order Assigned',
     body: 'Order {{orderRef}} has been assigned to you. Rep pickup scheduled for {{scheduledPickupAt}}.',
   },
   {
-    key: 'assignment.broadcast.vendor', channel: 'whatsapp',
+    key: 'assignment.broadcast.vendor',
+    channel: 'whatsapp',
     name: 'Assignment Broadcast — Vendor WhatsApp',
     variables: ['vendorName', 'orderRef', 'scheduledPickupAt'],
     body: `📋 *New Order Assigned!*\n\nHi {{vendorName}}, you have a new order!\n\n📋 Order: *{{orderRef}}*\n⏰ Rep Pickup: {{scheduledPickupAt}}\n\nOpen the Washermann app to accept.`,
@@ -444,21 +548,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor: Rep En Route ──────────────────────────────────────────────────────
 
   {
-    key: 'order.picked_up.vendor', channel: 'push',
+    key: 'order.picked_up.vendor',
+    channel: 'push',
     name: 'Rep En Route — Vendor Push',
     variables: ['orderRef', 'repName'],
     subject: 'Rep Collected Order 🛵',
     body: '{{repName}} has collected order {{orderRef}} from the customer and is heading your way.',
   },
   {
-    key: 'order.picked_up.vendor', channel: 'in_app',
+    key: 'order.picked_up.vendor',
+    channel: 'in_app',
     name: 'Rep En Route — Vendor In-App',
     variables: ['orderRef', 'repName'],
     subject: 'Rep On the Way',
     body: '{{repName}} collected order {{orderRef}} from the customer and is heading to your location.',
   },
   {
-    key: 'order.picked_up.vendor', channel: 'whatsapp',
+    key: 'order.picked_up.vendor',
+    channel: 'whatsapp',
     name: 'Rep En Route — Vendor WhatsApp',
     variables: ['vendorName', 'orderRef', 'repName'],
     body: `🛵 *Rep On the Way*\n\nHi {{vendorName}}, *{{repName}}* has collected order *{{orderRef}}* from the customer and is heading to you. Please prepare to receive the laundry.`,
@@ -467,9 +574,10 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor Earning Credited ───────────────────────────────────────────────────
 
   {
-    key: 'order.earning_credited.vendor', channel: 'email',
+    key: 'order.earning_credited.vendor',
+    channel: 'email',
     name: 'Earning Credited — Vendor Email',
-    subject: 'You\'ve been paid ₦{{nairaEquivalent}} — Order {{orderRef}}',
+    subject: "You've been paid ₦{{nairaEquivalent}} — Order {{orderRef}}",
     variables: ['vendorName', 'orderRef', 'earnedWP', 'nairaEquivalent'],
     body: 'Hi {{vendorName}}, ₦{{nairaEquivalent}} has been credited to your wallet for order {{orderRef}}.',
     htmlBody: buildEmailHtml(`
@@ -483,14 +591,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.earning_credited.vendor', channel: 'push',
+    key: 'order.earning_credited.vendor',
+    channel: 'push',
     name: 'Earning Credited — Vendor Push',
     variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
-    subject: 'You\'ve been paid 💰',
+    subject: "You've been paid 💰",
     body: '₦{{nairaEquivalent}} credited for order {{orderRef}}.',
   },
   {
-    key: 'order.earning_credited.vendor', channel: 'in_app',
+    key: 'order.earning_credited.vendor',
+    channel: 'in_app',
     name: 'Earning Credited — Vendor In-App',
     variables: ['orderRef', 'earnedWP', 'nairaEquivalent'],
     subject: 'Payment Received',
@@ -502,7 +612,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // NOT imply they can trade yet: the account is pending review and KYC.
 
   {
-    key: 'vendor.application_received', channel: 'email',
+    key: 'vendor.application_received',
+    channel: 'email',
     name: 'Application Received — Vendor Email',
     subject: 'We’ve received your Washermann vendor application 📝',
     variables: ['vendorName'],
@@ -525,20 +636,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'vendor.application_received', channel: 'sms',
+    key: 'vendor.application_received',
+    channel: 'sms',
     name: 'Application Received — Vendor SMS',
     variables: ['vendorName'],
-    body: 'Hi {{vendorName}}, we received your Washermann vendor application. Please complete your KYC in the vendor portal. Your account is under review — we\'ll email you once a decision is made.',
+    body: "Hi {{vendorName}}, we received your Washermann vendor application. Please complete your KYC in the vendor portal. Your account is under review — we'll email you once a decision is made.",
   },
   {
-    key: 'vendor.application_received', channel: 'push',
+    key: 'vendor.application_received',
+    channel: 'push',
     name: 'Application Received — Vendor Push',
     variables: ['vendorName'],
     subject: 'Application received ⏳',
     body: 'Your vendor account is under review. Complete your KYC documents to help us verify you.',
   },
   {
-    key: 'vendor.application_received', channel: 'in_app',
+    key: 'vendor.application_received',
+    channel: 'in_app',
     name: 'Application Received — Vendor In-App',
     variables: [],
     subject: 'Application under review',
@@ -548,7 +662,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor Account Rejected ───────────────────────────────────────────────────
 
   {
-    key: 'vendor.account_rejected', channel: 'email',
+    key: 'vendor.account_rejected',
+    channel: 'email',
     name: 'Account Rejected — Vendor Email',
     subject: 'Update on your Washermann vendor application',
     variables: ['vendorName', 'reason'],
@@ -564,20 +679,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'vendor.account_rejected', channel: 'sms',
+    key: 'vendor.account_rejected',
+    channel: 'sms',
     name: 'Account Rejected — Vendor SMS',
     variables: ['vendorName', 'reason'],
     body: 'Hi {{vendorName}}, we could not approve your Washermann vendor account. Reason: {{reason}}. Contact support if you would like this reviewed again.',
   },
   {
-    key: 'vendor.account_rejected', channel: 'push',
+    key: 'vendor.account_rejected',
+    channel: 'push',
     name: 'Account Rejected — Vendor Push',
     variables: [],
     subject: 'Application update',
     body: 'There’s an update on your Washermann vendor application. Open the app to see the details.',
   },
   {
-    key: 'vendor.account_rejected', channel: 'in_app',
+    key: 'vendor.account_rejected',
+    channel: 'in_app',
     name: 'Account Rejected — Vendor In-App',
     variables: ['reason'],
     subject: 'Application not approved',
@@ -587,7 +705,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor Account Suspended / Deactivated ────────────────────────────────────
 
   {
-    key: 'vendor.account_suspended', channel: 'email',
+    key: 'vendor.account_suspended',
+    channel: 'email',
     name: 'Account Suspended — Vendor Email',
     subject: 'Your Washermann vendor account has been deactivated',
     variables: ['vendorName', 'reason'],
@@ -603,20 +722,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'vendor.account_suspended', channel: 'sms',
+    key: 'vendor.account_suspended',
+    channel: 'sms',
     name: 'Account Suspended — Vendor SMS',
     variables: ['vendorName', 'reason'],
     body: 'Hi {{vendorName}}, your Washermann vendor account has been deactivated. Reason: {{reason}}. You will not receive new orders. Contact support to resolve.',
   },
   {
-    key: 'vendor.account_suspended', channel: 'push',
+    key: 'vendor.account_suspended',
+    channel: 'push',
     name: 'Account Suspended — Vendor Push',
     variables: [],
     subject: 'Account deactivated',
     body: 'Your vendor account has been deactivated. Open the app for details.',
   },
   {
-    key: 'vendor.account_suspended', channel: 'in_app',
+    key: 'vendor.account_suspended',
+    channel: 'in_app',
     name: 'Account Suspended — Vendor In-App',
     variables: ['reason'],
     subject: 'Account deactivated',
@@ -626,7 +748,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor Account Verified ───────────────────────────────────────────────────
 
   {
-    key: 'vendor.account_verified', channel: 'email',
+    key: 'vendor.account_verified',
+    channel: 'email',
     name: 'Account Verified — Vendor Email',
     subject: 'Your Washermann vendor account is verified ✅',
     variables: ['vendorName'],
@@ -642,20 +765,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'vendor.account_verified', channel: 'sms',
+    key: 'vendor.account_verified',
+    channel: 'sms',
     name: 'Account Verified — Vendor SMS',
     variables: ['vendorName'],
     body: 'Congratulations {{vendorName}}! Your Washermann vendor account is verified. You can now receive orders.',
   },
   {
-    key: 'vendor.account_verified', channel: 'push',
+    key: 'vendor.account_verified',
+    channel: 'push',
     name: 'Account Verified — Vendor Push',
     variables: ['vendorName'],
     subject: 'Account Verified ✅',
     body: 'Your vendor account is now verified. Turn on availability in the app to start receiving orders!',
   },
   {
-    key: 'vendor.account_verified', channel: 'in_app',
+    key: 'vendor.account_verified',
+    channel: 'in_app',
     name: 'Account Verified — Vendor In-App',
     variables: [],
     subject: 'Account Verified',
@@ -665,7 +791,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor Pricing Approved ───────────────────────────────────────────────────
 
   {
-    key: 'pricing.approved.vendor', channel: 'email',
+    key: 'pricing.approved.vendor',
+    channel: 'email',
     name: 'Pricing Approved — Vendor Email',
     subject: 'Your pricing proposal has been approved',
     variables: ['vendorName'],
@@ -677,14 +804,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'pricing.approved.vendor', channel: 'push',
+    key: 'pricing.approved.vendor',
+    channel: 'push',
     name: 'Pricing Approved — Vendor Push',
     variables: [],
     subject: 'Pricing Approved ✅',
     body: 'Your pricing proposal has been approved. New rates are now live.',
   },
   {
-    key: 'pricing.approved.vendor', channel: 'in_app',
+    key: 'pricing.approved.vendor',
+    channel: 'in_app',
     name: 'Pricing Approved — Vendor In-App',
     variables: [],
     subject: 'Pricing Approved',
@@ -694,10 +823,21 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor: garment list logged on an order ─────────────────────────────────
 
   {
-    key: 'order.garments_logged.vendor', channel: 'email',
+    key: 'order.garments_logged.vendor',
+    channel: 'email',
     name: 'Garments Logged — Vendor Email',
     subject: 'Order {{orderRef}} — {{itemCount}} garments received',
-    variables: ['vendorName', 'orderRef', 'itemsRowsHtml', 'itemsText', 'itemCount', 'earningNaira', 'unpricedCount', 'unpricedNote', 'unpricedNoteHtml'],
+    variables: [
+      'vendorName',
+      'orderRef',
+      'itemsRowsHtml',
+      'itemsText',
+      'itemCount',
+      'earningNaira',
+      'unpricedCount',
+      'unpricedNote',
+      'unpricedNoteHtml',
+    ],
     body: 'Hi {{vendorName}}, the rep has logged the garments for order {{orderRef}}: {{itemsText}}. You will earn ₦{{earningNaira}} on this order.{{unpricedNote}}',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
@@ -712,14 +852,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.garments_logged.vendor', channel: 'push',
+    key: 'order.garments_logged.vendor',
+    channel: 'push',
     name: 'Garments Logged — Vendor Push',
     variables: ['orderRef', 'itemCount', 'earningNaira'],
     subject: 'Order {{orderRef}} — {{itemCount}} garments',
     body: 'Garment list logged. You earn ₦{{earningNaira}} on this order. Tap for the full list.',
   },
   {
-    key: 'order.garments_logged.vendor', channel: 'in_app',
+    key: 'order.garments_logged.vendor',
+    channel: 'in_app',
     name: 'Garments Logged — Vendor In-App',
     variables: ['orderRef', 'itemsText', 'earningNaira', 'unpricedNote'],
     subject: 'Order {{orderRef}} garment list',
@@ -729,9 +871,11 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Garments logged with items the vendor hasn't priced (admin alert) ──────────
 
   {
-    key: 'order.garments_unpriced.admin', channel: 'email',
+    key: 'order.garments_unpriced.admin',
+    channel: 'email',
     name: 'Garments Logged — Unpriced Items (Admin Email)',
-    subject: 'Order {{orderRef}} — {{unpricedCount}} item(s) not priced by {{vendorName}}',
+    subject:
+      'Order {{orderRef}} — {{unpricedCount}} item(s) not priced by {{vendorName}}',
     variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
     body: 'On order {{orderRef}}, {{vendorName}} has no price for: {{unpricedText}}. The system average (mean) was used for the vendor share. Review the catalogue / vendor pricing.',
     htmlBody: buildEmailHtml(`
@@ -745,7 +889,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.garments_unpriced.admin', channel: 'in_app',
+    key: 'order.garments_unpriced.admin',
+    channel: 'in_app',
     name: 'Garments Logged — Unpriced Items (Admin In-App)',
     variables: ['orderRef', 'vendorName', 'unpricedText', 'unpricedCount'],
     subject: 'Order {{orderRef}}: {{unpricedCount}} unpriced item(s)',
@@ -755,10 +900,18 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Pricing Reviewed (per-item approve/reject summary) ──────────────────────────
 
   {
-    key: 'pricing.reviewed.vendor', channel: 'email',
+    key: 'pricing.reviewed.vendor',
+    channel: 'email',
     name: 'Pricing Reviewed — Vendor Email',
-    subject: 'Your pricing has been reviewed — {{approvedCount}} approved, {{rejectedCount}} need changes',
-    variables: ['vendorName', 'approvedCount', 'rejectedCount', 'approvedRowsHtml', 'rejectedRowsHtml'],
+    subject:
+      'Your pricing has been reviewed — {{approvedCount}} approved, {{rejectedCount}} need changes',
+    variables: [
+      'vendorName',
+      'approvedCount',
+      'rejectedCount',
+      'approvedRowsHtml',
+      'rejectedRowsHtml',
+    ],
     body: 'Hi {{vendorName}}, your pricing has been reviewed. Approved: {{approvedText}}. Needs changes: {{rejectedText}}.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
@@ -772,14 +925,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'pricing.reviewed.vendor', channel: 'push',
+    key: 'pricing.reviewed.vendor',
+    channel: 'push',
     name: 'Pricing Reviewed — Vendor Push',
     variables: ['approvedCount', 'rejectedCount'],
     subject: 'Pricing reviewed',
     body: '{{approvedCount}} price(s) approved, {{rejectedCount}} need changes. Tap to view.',
   },
   {
-    key: 'pricing.reviewed.vendor', channel: 'in_app',
+    key: 'pricing.reviewed.vendor',
+    channel: 'in_app',
     name: 'Pricing Reviewed — Vendor In-App',
     variables: ['approvedCount', 'rejectedCount'],
     subject: 'Pricing reviewed',
@@ -789,10 +944,19 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Payout Approved ───────────────────────────────────────────────────────────
 
   {
-    key: 'payout.approved.vendor', channel: 'email',
+    key: 'payout.approved.vendor',
+    channel: 'email',
     name: 'Payout Approved — Vendor Email',
     subject: 'Payout Initiated — ₦{{nairaAmount}}',
-    variables: ['vendorName', 'nairaAmount', 'amountWP', 'accountName', 'bankCode', 'accountNumber', 'payoutId'],
+    variables: [
+      'vendorName',
+      'nairaAmount',
+      'amountWP',
+      'accountName',
+      'bankCode',
+      'accountNumber',
+      'payoutId',
+    ],
     body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} ({{amountWP}} WP) has been approved and the bank transfer has been initiated.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
@@ -809,27 +973,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'payout.approved.vendor', channel: 'sms',
+    key: 'payout.approved.vendor',
+    channel: 'sms',
     name: 'Payout Approved — Vendor SMS',
     variables: ['vendorName', 'nairaAmount', 'accountNumber'],
     body: 'Hi {{vendorName}}, your Washermann payout of ₦{{nairaAmount}} has been approved and sent to account ending {{accountNumber}}.',
   },
   {
-    key: 'payout.approved.vendor', channel: 'push',
+    key: 'payout.approved.vendor',
+    channel: 'push',
     name: 'Payout Approved — Vendor Push',
     variables: ['nairaAmount'],
     subject: 'Payout Initiated 🏦',
     body: '₦{{nairaAmount}} payout approved. Bank transfer in progress.',
   },
   {
-    key: 'payout.approved.vendor', channel: 'in_app',
+    key: 'payout.approved.vendor',
+    channel: 'in_app',
     name: 'Payout Approved — Vendor In-App',
     variables: ['nairaAmount', 'amountWP'],
     subject: 'Payout Approved',
     body: 'Your payout of ₦{{nairaAmount}} ({{amountWP}} WP) has been approved. Bank transfer in progress.',
   },
   {
-    key: 'payout.approved.vendor', channel: 'whatsapp',
+    key: 'payout.approved.vendor',
+    channel: 'whatsapp',
     name: 'Payout Approved — Vendor WhatsApp',
     variables: ['vendorName', 'nairaAmount', 'amountWP', 'accountName'],
     body: `🏦 *Payout Approved!*\n\nHi {{vendorName}}, your payout has been approved!\n\n💰 Amount: *₦{{nairaAmount}}* ({{amountWP}} WP)\n🏦 To: {{accountName}}\n\nThe bank transfer has been initiated. Funds typically arrive within 24 hours.`,
@@ -838,7 +1006,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Payout Failed ─────────────────────────────────────────────────────────────
 
   {
-    key: 'payout.failed.vendor', channel: 'email',
+    key: 'payout.failed.vendor',
+    channel: 'email',
     name: 'Payout Failed — Vendor Email',
     subject: 'Payout Failed — Action Required',
     variables: ['vendorName', 'nairaAmount', 'failureReason', 'payoutId'],
@@ -854,20 +1023,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'payout.failed.vendor', channel: 'sms',
+    key: 'payout.failed.vendor',
+    channel: 'sms',
     name: 'Payout Failed — Vendor SMS',
     variables: ['nairaAmount'],
     body: 'Your Washermann payout of ₦{{nairaAmount}} failed. Your balance has been restored — you can request again.',
   },
   {
-    key: 'payout.failed.vendor', channel: 'push',
+    key: 'payout.failed.vendor',
+    channel: 'push',
     name: 'Payout Failed — Vendor Push',
     variables: ['nairaAmount'],
     subject: 'Payout Failed ❌',
     body: 'Your ₦{{nairaAmount}} payout could not be processed. Tap for details.',
   },
   {
-    key: 'payout.failed.vendor', channel: 'in_app',
+    key: 'payout.failed.vendor',
+    channel: 'in_app',
     name: 'Payout Failed — Vendor In-App',
     variables: ['nairaAmount', 'failureReason'],
     subject: 'Payout Failed',
@@ -877,10 +1049,18 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor: Payout Withheld / Released (investigation window) ──────────────────
 
   {
-    key: 'payout.held.vendor', channel: 'email',
+    key: 'payout.held.vendor',
+    channel: 'email',
     name: 'Payout Withheld — Vendor Email',
     subject: 'Payout on hold pending review — ₦{{nairaAmount}}',
-    variables: ['vendorName', 'nairaAmount', 'amountWP', 'reason', 'autoReleaseAt', 'payoutId'],
+    variables: [
+      'vendorName',
+      'nairaAmount',
+      'amountWP',
+      'reason',
+      'autoReleaseAt',
+      'payoutId',
+    ],
     body: 'Hi {{vendorName}}, your payout of ₦{{nairaAmount}} ({{amountWP}} WP) is temporarily on hold while we review a matter: {{reason}}. If it is not substantiated, the payout is automatically released for processing by {{autoReleaseAt}}. Reference: {{payoutId}}.',
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{vendorName}}</strong>,</p>
@@ -897,27 +1077,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'payout.held.vendor', channel: 'sms',
+    key: 'payout.held.vendor',
+    channel: 'sms',
     name: 'Payout Withheld — Vendor SMS',
     variables: ['nairaAmount', 'autoReleaseAt'],
     body: 'Washermann: your ₦{{nairaAmount}} payout is on hold pending review. It auto-releases by {{autoReleaseAt}} if not substantiated.',
   },
   {
-    key: 'payout.held.vendor', channel: 'push',
+    key: 'payout.held.vendor',
+    channel: 'push',
     name: 'Payout Withheld — Vendor Push',
     subject: 'Payout on hold',
     variables: ['nairaAmount'],
     body: 'Your ₦{{nairaAmount}} payout is on hold pending review. Tap for details.',
   },
   {
-    key: 'payout.held.vendor', channel: 'in_app',
+    key: 'payout.held.vendor',
+    channel: 'in_app',
     name: 'Payout Withheld — Vendor In-App',
     subject: 'Payout on hold',
     variables: ['nairaAmount', 'reason', 'autoReleaseAt'],
     body: 'Your ₦{{nairaAmount}} payout is on hold pending review: {{reason}}. It auto-releases by {{autoReleaseAt}} if not substantiated.',
   },
   {
-    key: 'payout.released.vendor', channel: 'email',
+    key: 'payout.released.vendor',
+    channel: 'email',
     name: 'Payout Released — Vendor Email',
     subject: 'Payout hold lifted — ₦{{nairaAmount}}',
     variables: ['vendorName', 'nairaAmount', 'amountWP', 'payoutId'],
@@ -933,20 +1117,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'payout.released.vendor', channel: 'sms',
+    key: 'payout.released.vendor',
+    channel: 'sms',
     name: 'Payout Released — Vendor SMS',
     variables: ['nairaAmount'],
     body: 'Washermann: the hold on your ₦{{nairaAmount}} payout has been lifted — it is back in the queue for processing.',
   },
   {
-    key: 'payout.released.vendor', channel: 'push',
+    key: 'payout.released.vendor',
+    channel: 'push',
     name: 'Payout Released — Vendor Push',
     subject: 'Payout hold lifted',
     variables: ['nairaAmount'],
     body: 'The hold on your ₦{{nairaAmount}} payout has been lifted. Tap for details.',
   },
   {
-    key: 'payout.released.vendor', channel: 'in_app',
+    key: 'payout.released.vendor',
+    channel: 'in_app',
     name: 'Payout Released — Vendor In-App',
     subject: 'Payout hold lifted',
     variables: ['nairaAmount'],
@@ -956,7 +1143,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Vendor: Earnings deduction (notice + applied) ─────────────────────────────
 
   {
-    key: 'deduction.notice.vendor', channel: 'email',
+    key: 'deduction.notice.vendor',
+    channel: 'email',
     name: 'Deduction Notice — Vendor Email',
     subject: 'Notice of a proposed deduction from your earnings',
     variables: ['vendorName', 'amountWP', 'reason', 'respondBy', 'deductionId'],
@@ -976,27 +1164,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'deduction.notice.vendor', channel: 'sms',
+    key: 'deduction.notice.vendor',
+    channel: 'sms',
     name: 'Deduction Notice — Vendor SMS',
     variables: ['amountWP', 'respondBy'],
     body: 'Washermann: a deduction of {{amountWP}} WP from your earnings is proposed for a claim. Respond by {{respondBy}} before it applies.',
   },
   {
-    key: 'deduction.notice.vendor', channel: 'push',
+    key: 'deduction.notice.vendor',
+    channel: 'push',
     name: 'Deduction Notice — Vendor Push',
     subject: 'Proposed earnings deduction',
     variables: ['amountWP'],
     body: 'A {{amountWP}} WP deduction is proposed on your earnings. Tap to review and respond.',
   },
   {
-    key: 'deduction.notice.vendor', channel: 'in_app',
+    key: 'deduction.notice.vendor',
+    channel: 'in_app',
     name: 'Deduction Notice — Vendor In-App',
     subject: 'Proposed earnings deduction',
     variables: ['amountWP', 'reason', 'respondBy'],
     body: 'A deduction of {{amountWP}} WP is proposed for: {{reason}}. Respond by {{respondBy}} before it applies.',
   },
   {
-    key: 'deduction.applied.vendor', channel: 'email',
+    key: 'deduction.applied.vendor',
+    channel: 'email',
     name: 'Deduction Applied — Vendor Email',
     subject: 'A deduction was applied to your earnings',
     variables: ['vendorName', 'amountWP', 'reason', 'deductionId'],
@@ -1013,20 +1205,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'deduction.applied.vendor', channel: 'sms',
+    key: 'deduction.applied.vendor',
+    channel: 'sms',
     name: 'Deduction Applied — Vendor SMS',
     variables: ['amountWP'],
     body: 'Washermann: a deduction of {{amountWP}} WP has been applied to your earnings for a claim.',
   },
   {
-    key: 'deduction.applied.vendor', channel: 'push',
+    key: 'deduction.applied.vendor',
+    channel: 'push',
     name: 'Deduction Applied — Vendor Push',
     subject: 'Earnings deduction applied',
     variables: ['amountWP'],
     body: 'A {{amountWP}} WP deduction has been applied to your earnings. Tap for details.',
   },
   {
-    key: 'deduction.applied.vendor', channel: 'in_app',
+    key: 'deduction.applied.vendor',
+    channel: 'in_app',
     name: 'Deduction Applied — Vendor In-App',
     subject: 'Earnings deduction applied',
     variables: ['amountWP', 'reason'],
@@ -1036,7 +1231,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Suspension due-process (vendor / rep) ─────────────────────────────────────
 
   {
-    key: 'suspension.notice', channel: 'email',
+    key: 'suspension.notice',
+    channel: 'email',
     name: 'Suspension Notice — Email',
     subject: 'Important: notice regarding your Washermann account',
     variables: ['reason', 'respondBy', 'noticeId'],
@@ -1051,27 +1247,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'suspension.notice', channel: 'sms',
+    key: 'suspension.notice',
+    channel: 'sms',
     name: 'Suspension Notice — SMS',
     variables: ['respondBy'],
     body: 'Washermann: an issue may lead to your account being suspended. Please respond or remedy by {{respondBy}}. Check the app for details.',
   },
   {
-    key: 'suspension.notice', channel: 'push',
+    key: 'suspension.notice',
+    channel: 'push',
     name: 'Suspension Notice — Push',
     subject: 'Account notice',
     variables: [],
     body: 'There is an issue with your account that needs your attention. Tap to respond.',
   },
   {
-    key: 'suspension.notice', channel: 'in_app',
+    key: 'suspension.notice',
+    channel: 'in_app',
     name: 'Suspension Notice — In-App',
     subject: 'Account notice',
     variables: ['reason', 'respondBy'],
     body: 'An issue may lead to suspension: {{reason}}. Respond or remedy by {{respondBy}}.',
   },
   {
-    key: 'suspension.enforced', channel: 'email',
+    key: 'suspension.enforced',
+    channel: 'email',
     name: 'Suspension Enforced — Email',
     subject: 'Your Washermann account has been suspended',
     variables: ['reason', 'noticeId'],
@@ -1085,27 +1285,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'suspension.enforced', channel: 'sms',
+    key: 'suspension.enforced',
+    channel: 'sms',
     name: 'Suspension Enforced — SMS',
     variables: [],
     body: 'Washermann: your account has been suspended. You may request an internal review in the app.',
   },
   {
-    key: 'suspension.enforced', channel: 'push',
+    key: 'suspension.enforced',
+    channel: 'push',
     name: 'Suspension Enforced — Push',
     subject: 'Account suspended',
     variables: [],
     body: 'Your account has been suspended. Tap for details and to request a review.',
   },
   {
-    key: 'suspension.enforced', channel: 'in_app',
+    key: 'suspension.enforced',
+    channel: 'in_app',
     name: 'Suspension Enforced — In-App',
     subject: 'Account suspended',
     variables: ['reason'],
     body: 'Your account has been suspended: {{reason}}. You may request an internal review.',
   },
   {
-    key: 'suspension.reinstated', channel: 'email',
+    key: 'suspension.reinstated',
+    channel: 'email',
     name: 'Suspension Overturned — Email',
     subject: 'Your Washermann account has been reinstated',
     variables: ['noticeId'],
@@ -1116,27 +1320,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'suspension.reinstated', channel: 'sms',
+    key: 'suspension.reinstated',
+    channel: 'sms',
     name: 'Suspension Overturned — SMS',
     variables: [],
     body: 'Washermann: your suspension has been overturned and your account is reinstated.',
   },
   {
-    key: 'suspension.reinstated', channel: 'push',
+    key: 'suspension.reinstated',
+    channel: 'push',
     name: 'Suspension Overturned — Push',
     subject: 'Account reinstated',
     variables: [],
     body: 'Your account has been reinstated. Welcome back!',
   },
   {
-    key: 'suspension.reinstated', channel: 'in_app',
+    key: 'suspension.reinstated',
+    channel: 'in_app',
     name: 'Suspension Overturned — In-App',
     subject: 'Account reinstated',
     variables: [],
     body: 'Following review, your suspension has been overturned and your account is reinstated.',
   },
   {
-    key: 'suspension.upheld', channel: 'email',
+    key: 'suspension.upheld',
+    channel: 'email',
     name: 'Suspension Upheld — Email',
     subject: 'Outcome of your account review',
     variables: ['noticeId'],
@@ -1147,20 +1355,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'suspension.upheld', channel: 'sms',
+    key: 'suspension.upheld',
+    channel: 'sms',
     name: 'Suspension Upheld — SMS',
     variables: [],
     body: 'Washermann: following review, the suspension on your account has been upheld.',
   },
   {
-    key: 'suspension.upheld', channel: 'push',
+    key: 'suspension.upheld',
+    channel: 'push',
     name: 'Suspension Upheld — Push',
     subject: 'Review outcome',
     variables: [],
     body: 'Your account review is complete. Tap for the outcome.',
   },
   {
-    key: 'suspension.upheld', channel: 'in_app',
+    key: 'suspension.upheld',
+    channel: 'in_app',
     name: 'Suspension Upheld — In-App',
     subject: 'Review outcome',
     variables: [],
@@ -1170,9 +1381,11 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Customer: uncollected / abandoned garments ────────────────────────────────
 
   {
-    key: 'order.uncollected.customer', channel: 'email',
+    key: 'order.uncollected.customer',
+    channel: 'email',
     name: 'Uncollected Garments — Customer Email',
-    subject: 'Action needed: your laundry is ready but not yet collected — {{orderRef}}',
+    subject:
+      'Action needed: your laundry is ready but not yet collected — {{orderRef}}',
     variables: ['orderRef'],
     body: 'We tried to deliver your order {{orderRef}} but could not complete it. Please arrange to collect or re-schedule delivery. If garments remain uncollected after repeated notices, they may be treated as abandoned.',
     htmlBody: buildEmailHtml(`
@@ -1181,27 +1394,31 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.uncollected.customer', channel: 'sms',
+    key: 'order.uncollected.customer',
+    channel: 'sms',
     name: 'Uncollected Garments — Customer SMS',
     variables: ['orderRef'],
     body: 'Washermann: we could not deliver order {{orderRef}}. Please arrange collection/redelivery soon to avoid your garments being treated as abandoned.',
   },
   {
-    key: 'order.uncollected.customer', channel: 'push',
+    key: 'order.uncollected.customer',
+    channel: 'push',
     name: 'Uncollected Garments — Customer Push',
     subject: 'Delivery unsuccessful',
     variables: ['orderRef'],
     body: 'We couldn’t deliver {{orderRef}}. Tap to arrange collection or redelivery.',
   },
   {
-    key: 'order.uncollected.customer', channel: 'in_app',
+    key: 'order.uncollected.customer',
+    channel: 'in_app',
     name: 'Uncollected Garments — Customer In-App',
     subject: 'Delivery unsuccessful',
     variables: ['orderRef'],
     body: 'We couldn’t deliver {{orderRef}}. Please arrange collection or redelivery to avoid abandonment.',
   },
   {
-    key: 'order.abandoned.customer', channel: 'email',
+    key: 'order.abandoned.customer',
+    channel: 'email',
     name: 'Abandoned Garments — Customer Email',
     subject: 'Your order {{orderRef}} has been treated as abandoned',
     variables: ['orderRef'],
@@ -1212,20 +1429,23 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'order.abandoned.customer', channel: 'sms',
+    key: 'order.abandoned.customer',
+    channel: 'sms',
     name: 'Abandoned Garments — Customer SMS',
     variables: ['orderRef'],
     body: 'Washermann: order {{orderRef}} remained uncollected after notices and has been treated as abandoned. Contact support if this is in error.',
   },
   {
-    key: 'order.abandoned.customer', channel: 'push',
+    key: 'order.abandoned.customer',
+    channel: 'push',
     name: 'Abandoned Garments — Customer Push',
     subject: 'Order treated as abandoned',
     variables: ['orderRef'],
     body: 'Order {{orderRef}} was uncollected and has been treated as abandoned. Tap for details.',
   },
   {
-    key: 'order.abandoned.customer', channel: 'in_app',
+    key: 'order.abandoned.customer',
+    channel: 'in_app',
     name: 'Abandoned Garments — Customer In-App',
     subject: 'Order treated as abandoned',
     variables: ['orderRef'],
@@ -1235,7 +1455,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Admin: New Payout Request ─────────────────────────────────────────────────
 
   {
-    key: 'payout.new_request.admin', channel: 'email',
+    key: 'payout.new_request.admin',
+    channel: 'email',
     name: 'New Payout Request — Admin Email',
     subject: 'New Payout Request: ₦{{nairaAmount}} from {{vendorName}}',
     variables: ['vendorName', 'nairaAmount', 'amountWP', 'payoutId'],
@@ -1248,14 +1469,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'payout.new_request.admin', channel: 'push',
+    key: 'payout.new_request.admin',
+    channel: 'push',
     name: 'New Payout Request — Admin Push',
     variables: ['vendorName', 'nairaAmount'],
     subject: 'New Payout Request',
     body: '{{vendorName}} requested ₦{{nairaAmount}} payout. Approve in the admin panel.',
   },
   {
-    key: 'payout.new_request.admin', channel: 'in_app',
+    key: 'payout.new_request.admin',
+    channel: 'in_app',
     name: 'New Payout Request — Admin In-App',
     variables: ['vendorName', 'nairaAmount', 'payoutId'],
     subject: 'New Payout Request',
@@ -1265,7 +1488,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Admin: No Reps Available (Escalation) ─────────────────────────────────────
 
   {
-    key: 'assignment.no_reps.admin', channel: 'email',
+    key: 'assignment.no_reps.admin',
+    channel: 'email',
     name: 'No Reps Available — Admin Email',
     subject: 'Action Required: No Reps Available for Order {{orderRef}}',
     variables: ['orderRef', 'areaName'],
@@ -1276,14 +1500,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'assignment.no_reps.admin', channel: 'push',
+    key: 'assignment.no_reps.admin',
+    channel: 'push',
     name: 'No Reps Available — Admin Push',
     variables: ['orderRef'],
     subject: 'Manual Assignment Required',
     body: 'No reps available for order {{orderRef}}. Manual assignment needed.',
   },
   {
-    key: 'assignment.no_reps.admin', channel: 'in_app',
+    key: 'assignment.no_reps.admin',
+    channel: 'in_app',
     name: 'No Reps Available — Admin In-App',
     variables: ['orderRef', 'areaName'],
     subject: 'Manual Assignment Required',
@@ -1293,7 +1519,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── No Vendors Available (admin escalation) ─────────────────────────────────────
 
   {
-    key: 'assignment.no_vendors.admin', channel: 'email',
+    key: 'assignment.no_vendors.admin',
+    channel: 'email',
     name: 'No Vendors Available — Admin Email',
     subject: 'Action Required: No Vendors Available for Order {{orderRef}}',
     variables: ['orderRef', 'areaName'],
@@ -1304,14 +1531,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'assignment.no_vendors.admin', channel: 'push',
+    key: 'assignment.no_vendors.admin',
+    channel: 'push',
     name: 'No Vendors Available — Admin Push',
     variables: ['orderRef'],
     subject: 'Manual Assignment Required',
     body: 'No vendors available for order {{orderRef}}. Manual assignment needed.',
   },
   {
-    key: 'assignment.no_vendors.admin', channel: 'in_app',
+    key: 'assignment.no_vendors.admin',
+    channel: 'in_app',
     name: 'No Vendors Available — Admin In-App',
     variables: ['orderRef', 'areaName'],
     subject: 'Manual Assignment Required',
@@ -1321,7 +1550,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Admin: Vendor Pending Verification ───────────────────────────────────────
 
   {
-    key: 'vendor.pending_verification.admin', channel: 'email',
+    key: 'vendor.pending_verification.admin',
+    channel: 'email',
     name: 'Vendor Pending Verification — Admin Email',
     subject: 'New Vendor Awaiting Verification: {{vendorName}}',
     variables: ['vendorName', 'vendorId'],
@@ -1334,7 +1564,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'vendor.pending_verification.admin', channel: 'in_app',
+    key: 'vendor.pending_verification.admin',
+    channel: 'in_app',
     name: 'Vendor Pending Verification — Admin In-App',
     variables: ['vendorName', 'vendorId'],
     subject: 'New Vendor Pending Review',
@@ -1344,7 +1575,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Blog: maker-checker review ────────────────────────────────────────────────
 
   {
-    key: 'blog.submitted.admin', channel: 'email',
+    key: 'blog.submitted.admin',
+    channel: 'email',
     name: 'Blog Post Submitted — Admin Email',
     subject: 'Blog post awaiting review: "{{postTitle}}"',
     variables: ['postTitle', 'authorName', 'postId'],
@@ -1356,14 +1588,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'blog.submitted.admin', channel: 'in_app',
+    key: 'blog.submitted.admin',
+    channel: 'in_app',
     name: 'Blog Post Submitted — Admin In-App',
     variables: ['postTitle', 'authorName'],
     subject: 'Blog post awaiting review',
     body: '{{authorName}} submitted "{{postTitle}}" — review it in the Blog section.',
   },
   {
-    key: 'blog.approved.author', channel: 'email',
+    key: 'blog.approved.author',
+    channel: 'email',
     name: 'Blog Post Approved — Author Email',
     subject: 'Published: "{{postTitle}}" 🎉',
     variables: ['authorName', 'postTitle', 'postSlug'],
@@ -1376,14 +1610,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'blog.approved.author', channel: 'in_app',
+    key: 'blog.approved.author',
+    channel: 'in_app',
     name: 'Blog Post Approved — Author In-App',
     variables: ['postTitle'],
     subject: 'Post published 🎉',
     body: '"{{postTitle}}" was approved and is now live on the blog.',
   },
   {
-    key: 'blog.changes_requested.author', channel: 'email',
+    key: 'blog.changes_requested.author',
+    channel: 'email',
     name: 'Blog Changes Requested — Author Email',
     subject: 'Changes requested on "{{postTitle}}"',
     variables: ['authorName', 'postTitle', 'reviewNote'],
@@ -1396,7 +1632,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'blog.changes_requested.author', channel: 'in_app',
+    key: 'blog.changes_requested.author',
+    channel: 'in_app',
     name: 'Blog Changes Requested — Author In-App',
     variables: ['postTitle', 'reviewNote'],
     subject: 'Changes requested',
@@ -1406,21 +1643,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Support chat ────────────────────────────────────────────────────────────
 
   {
-    key: 'support.new_message.agent', channel: 'in_app',
+    key: 'support.new_message.agent',
+    channel: 'in_app',
     name: 'Support — New User Message (Agent In-App)',
     variables: ['fromName', 'preview'],
     subject: 'New support message from {{fromName}}',
     body: '{{fromName}}: {{preview}}',
   },
   {
-    key: 'support.reply.user', channel: 'in_app',
+    key: 'support.reply.user',
+    channel: 'in_app',
     name: 'Support — Agent Reply (User In-App)',
     variables: ['preview'],
     subject: 'Washermann Support replied',
     body: '{{preview}}',
   },
   {
-    key: 'support.reply.user', channel: 'push',
+    key: 'support.reply.user',
+    channel: 'push',
     name: 'Support — Agent Reply (User Push)',
     variables: ['preview'],
     subject: 'Washermann Support',
@@ -1430,7 +1670,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Account ─────────────────────────────────────────────────────────────────
 
   {
-    key: 'account.deleted.customer', channel: 'email',
+    key: 'account.deleted.customer',
+    channel: 'email',
     name: 'Account Deleted — Customer (Email)',
     subject: 'Your Washermann account has been deleted',
     variables: ['name'],
@@ -1445,11 +1686,12 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Disputes ────────────────────────────────────────────────────────────────
 
   {
-    key: 'dispute.created.customer', channel: 'email',
+    key: 'dispute.created.customer',
+    channel: 'email',
     name: 'Dispute Raised — Customer (Email)',
-    subject: 'We\'ve received your dispute {{disputeRef}}',
+    subject: "We've received your dispute {{disputeRef}}",
     variables: ['customerName', 'disputeRef', 'orderRef', 'issueType'],
-    body: 'Hi {{customerName}}, we\'ve received your dispute {{disputeRef}} for order {{orderRef}} ({{issueType}}). Our team will review it within 3–5 business days.',
+    body: "Hi {{customerName}}, we've received your dispute {{disputeRef}} for order {{orderRef}} ({{issueType}}). Our team will review it within 3–5 business days.",
     htmlBody: buildEmailHtml(`
       <p>Hi <strong>{{customerName}}</strong>,</p>
       <p>We\'ve received your dispute <strong>{{disputeRef}}</strong> for order <strong>{{orderRef}}</strong> — <em>{{issueType}}</em>.</p>
@@ -1457,21 +1699,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'dispute.created.customer', channel: 'in_app',
+    key: 'dispute.created.customer',
+    channel: 'in_app',
     name: 'Dispute Raised — Customer (In-App)',
     variables: ['disputeRef', 'orderRef'],
     subject: 'Dispute {{disputeRef}} received',
-    body: 'Your dispute {{disputeRef}} for order {{orderRef}} was received. We\'ll review it shortly.',
+    body: "Your dispute {{disputeRef}} for order {{orderRef}} was received. We'll review it shortly.",
   },
   {
-    key: 'dispute.created.customer', channel: 'push',
+    key: 'dispute.created.customer',
+    channel: 'push',
     name: 'Dispute Raised — Customer (Push)',
     variables: ['disputeRef'],
     subject: 'Dispute {{disputeRef}} received',
-    body: 'We\'ve received your dispute and will review it within 3–5 business days.',
+    body: "We've received your dispute and will review it within 3–5 business days.",
   },
   {
-    key: 'dispute.created.admin', channel: 'email',
+    key: 'dispute.created.admin',
+    channel: 'email',
     name: 'Dispute Raised — Staff (Email)',
     subject: 'New dispute {{disputeRef}} — {{issueType}}',
     variables: ['disputeRef', 'orderRef', 'issueType'],
@@ -1483,14 +1728,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'dispute.created.admin', channel: 'in_app',
+    key: 'dispute.created.admin',
+    channel: 'in_app',
     name: 'Dispute Raised — Staff (In-App)',
     variables: ['disputeRef', 'orderRef', 'issueType'],
     subject: 'New dispute {{disputeRef}}',
     body: '{{issueType}} on order {{orderRef}} — review {{disputeRef}}.',
   },
   {
-    key: 'dispute.updated.customer', channel: 'email',
+    key: 'dispute.updated.customer',
+    channel: 'email',
     name: 'Dispute Updated — Customer (Email)',
     subject: 'Update on your dispute {{disputeRef}}',
     variables: ['disputeRef', 'status', 'note'],
@@ -1501,21 +1748,24 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'dispute.updated.customer', channel: 'in_app',
+    key: 'dispute.updated.customer',
+    channel: 'in_app',
     name: 'Dispute Updated — Customer (In-App)',
     variables: ['disputeRef', 'status'],
     subject: 'Dispute {{disputeRef}}: {{status}}',
     body: 'Your dispute {{disputeRef}} is now {{status}}.',
   },
   {
-    key: 'dispute.updated.customer', channel: 'push',
+    key: 'dispute.updated.customer',
+    channel: 'push',
     name: 'Dispute Updated — Customer (Push)',
     variables: ['disputeRef', 'status'],
     subject: 'Dispute {{disputeRef}}',
     body: 'Your dispute is now {{status}}.',
   },
   {
-    key: 'dispute.resolved.customer', channel: 'email',
+    key: 'dispute.resolved.customer',
+    channel: 'email',
     name: 'Dispute Resolved — Customer (Email)',
     subject: 'Your dispute {{disputeRef}} has been resolved',
     variables: ['disputeRef', 'outcome', 'note', 'refundedWP'],
@@ -1527,28 +1777,32 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'dispute.resolved.customer', channel: 'in_app',
+    key: 'dispute.resolved.customer',
+    channel: 'in_app',
     name: 'Dispute Resolved — Customer (In-App)',
     variables: ['disputeRef', 'outcome'],
     subject: 'Dispute {{disputeRef}} resolved',
     body: 'Your dispute {{disputeRef}} was resolved: {{outcome}}.',
   },
   {
-    key: 'dispute.resolved.customer', channel: 'push',
+    key: 'dispute.resolved.customer',
+    channel: 'push',
     name: 'Dispute Resolved — Customer (Push)',
     variables: ['disputeRef', 'outcome'],
     subject: 'Dispute {{disputeRef}} resolved',
     body: 'Resolved: {{outcome}}. Tap for details.',
   },
   {
-    key: 'dispute.rejected.customer', channel: 'in_app',
+    key: 'dispute.rejected.customer',
+    channel: 'in_app',
     name: 'Dispute Closed — Customer (In-App)',
     variables: ['disputeRef', 'note'],
     subject: 'Dispute {{disputeRef}} closed',
     body: 'Your dispute {{disputeRef}} has been reviewed and closed. {{note}}',
   },
   {
-    key: 'dispute.rejected.customer', channel: 'email',
+    key: 'dispute.rejected.customer',
+    channel: 'email',
     name: 'Dispute Closed — Customer (Email)',
     subject: 'Your dispute {{disputeRef}} has been closed',
     variables: ['disputeRef', 'note'],
@@ -1562,9 +1816,10 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   // ── Teams ───────────────────────────────────────────────────────────────────
 
   {
-    key: 'team.member_added', channel: 'email',
+    key: 'team.member_added',
+    channel: 'email',
     name: 'Team — Added as Member (Email)',
-    subject: 'You\'ve been added to {{teamName}}',
+    subject: "You've been added to {{teamName}}",
     variables: ['memberName', 'teamName', 'addedByName'],
     body: 'Hi {{memberName}}, {{addedByName}} added you to the team "{{teamName}}" on Washermann.',
     htmlBody: buildEmailHtml(`
@@ -1574,22 +1829,25 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'team.member_added', channel: 'in_app',
+    key: 'team.member_added',
+    channel: 'in_app',
     name: 'Team — Added as Member (In-App)',
     variables: ['teamName', 'addedByName'],
     subject: 'Added to {{teamName}}',
     body: '{{addedByName}} added you to the team {{teamName}}.',
   },
   {
-    key: 'team.member_added', channel: 'push',
+    key: 'team.member_added',
+    channel: 'push',
     name: 'Team — Added as Member (Push)',
     variables: ['teamName'],
     subject: 'Added to {{teamName}}',
-    body: 'You\'ve been added to the team {{teamName}}.',
+    body: "You've been added to the team {{teamName}}.",
   },
 
   {
-    key: 'team.role_changed', channel: 'email',
+    key: 'team.role_changed',
+    channel: 'email',
     name: 'Team — Role Changed (Email)',
     subject: 'Your role in {{teamName}} is now {{roleLabel}}',
     variables: ['memberName', 'teamName', 'role', 'roleLabel'],
@@ -1600,14 +1858,16 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'team.role_changed', channel: 'in_app',
+    key: 'team.role_changed',
+    channel: 'in_app',
     name: 'Team — Role Changed (In-App)',
     variables: ['teamName', 'roleLabel'],
     subject: 'Role updated in {{teamName}}',
     body: 'You are now {{roleLabel}} of {{teamName}}.',
   },
   {
-    key: 'team.role_changed', channel: 'push',
+    key: 'team.role_changed',
+    channel: 'push',
     name: 'Team — Role Changed (Push)',
     variables: ['teamName', 'roleLabel'],
     subject: 'Role updated',
@@ -1615,9 +1875,10 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   },
 
   {
-    key: 'team.member_removed', channel: 'email',
+    key: 'team.member_removed',
+    channel: 'email',
     name: 'Team — Removed from Team (Email)',
-    subject: 'You\'ve been removed from {{teamName}}',
+    subject: "You've been removed from {{teamName}}",
     variables: ['memberName', 'teamName'],
     body: 'Hi {{memberName}}, you have been removed from the team "{{teamName}}".',
     htmlBody: buildEmailHtml(`
@@ -1626,7 +1887,8 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     `),
   },
   {
-    key: 'team.member_removed', channel: 'in_app',
+    key: 'team.member_removed',
+    channel: 'in_app',
     name: 'Team — Removed from Team (In-App)',
     variables: ['teamName'],
     subject: 'Removed from {{teamName}}',

@@ -32,7 +32,9 @@ const OTP_EXPIRY_MINUTES = 10;
 
 /** Fire-and-forget wrapper — notification failures must never crash business logic */
 function fire(fn: () => Promise<unknown>, logger: Logger, label: string) {
-  fn().catch((err) => logger.warn(`Notification failed [${label}]: ${err?.message ?? err}`));
+  fn().catch((err) =>
+    logger.warn(`Notification failed [${label}]: ${err?.message ?? err}`),
+  );
 }
 
 @Injectable()
@@ -52,13 +54,13 @@ export class NotificationsService {
     @InjectRepository(DeviceToken)
     private deviceTokenRepo: Repository<DeviceToken>,
 
-    private readonly emailService:    EmailService,
-    private readonly smsService:      SmsService,
-    private readonly pushService:     PushService,
+    private readonly emailService: EmailService,
+    private readonly smsService: SmsService,
+    private readonly pushService: PushService,
     private readonly whatsappService: WhatsappService,
-    private readonly inAppService:    InAppService,
+    private readonly inAppService: InAppService,
     private readonly templateService: TemplateService,
-    private readonly configService:   ConfigService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ─── User contact lookup helpers ─────────────────────────────────────────────
@@ -87,10 +89,18 @@ export class NotificationsService {
 
   // ─── Core render + dispatch ───────────────────────────────────────────────────
 
-  private async sendEmail(key: string, to: string, vars: Record<string, string | number>) {
+  private async sendEmail(
+    key: string,
+    to: string,
+    vars: Record<string, string | number>,
+  ) {
     const tpl = await this.templateService.render(key, 'email', vars);
     if (!tpl) return;
-    await this.emailService.send({ to, subject: tpl.subject ?? '', html: tpl.htmlBody ?? tpl.body });
+    await this.emailService.send({
+      to,
+      subject: tpl.subject ?? '',
+      html: tpl.htmlBody ?? tpl.body,
+    });
   }
 
   /**
@@ -101,16 +111,26 @@ export class NotificationsService {
   async sendRateReviewPrompt(trigger: 'scheduled' | 'manual' = 'scheduled') {
     const all = await this.userRepo.find();
     const admins = all.filter(
-      (u) => Array.isArray(u.roles) && (u.roles.includes(Role.ADMIN) || u.roles.includes(Role.FINANCE)),
+      (u) =>
+        Array.isArray(u.roles) &&
+        (u.roles.includes(Role.ADMIN) || u.roles.includes(Role.FINANCE)),
     );
     const title = 'WashPoint rate review due';
     const body =
       'Open the rate console, enter the current economic indicators (USD/NGN, diesel, median vendor cost), run the calculation and approve or hold the advised WashPoint rate.';
     for (const a of admins) {
       try {
-        await this.inAppService.create({ userId: a.id, title, body, type: 'account', metadata: { kind: 'wp_rate_review', trigger } });
+        await this.inAppService.create({
+          userId: a.id,
+          title,
+          body,
+          type: 'account',
+          metadata: { kind: 'wp_rate_review', trigger },
+        });
       } catch (err) {
-        this.logger.warn(`In-app rate prompt failed for ${a.id}: ${(err as Error).message}`);
+        this.logger.warn(
+          `In-app rate prompt failed for ${a.id}: ${(err as Error).message}`,
+        );
       }
       if (a.email) {
         try {
@@ -124,15 +144,23 @@ export class NotificationsService {
               `Every calculation is logged whether approved or not.</p>`,
           });
         } catch (err) {
-          this.logger.warn(`Email rate prompt failed for ${a.email}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Email rate prompt failed for ${a.email}: ${(err as Error).message}`,
+          );
         }
       }
     }
-    this.logger.log(`Rate review prompt (${trigger}) sent to ${admins.length} admin(s)`);
+    this.logger.log(
+      `Rate review prompt (${trigger}) sent to ${admins.length} admin(s)`,
+    );
     return { notified: admins.length };
   }
 
-  private async sendSms(key: string, to: string, vars: Record<string, string | number>) {
+  private async sendSms(
+    key: string,
+    to: string,
+    vars: Record<string, string | number>,
+  ) {
     const tpl = await this.templateService.render(key, 'sms', vars);
     if (!tpl) return;
     await this.smsService.send({ to, message: tpl.body });
@@ -160,29 +188,35 @@ export class NotificationsService {
       data,
     );
     if (stale.length) {
-      await this.deviceTokenRepo.delete({ token: In(stale) }).catch(() => undefined);
+      await this.deviceTokenRepo
+        .delete({ token: In(stale) })
+        .catch(() => undefined);
     }
   }
 
-  private async sendWhatsapp(key: string, to: string, vars: Record<string, string | number>) {
+  private async sendWhatsapp(
+    key: string,
+    to: string,
+    vars: Record<string, string | number>,
+  ) {
     const tpl = await this.templateService.render(key, 'whatsapp', vars);
     if (!tpl) return;
     await this.whatsappService.send({ to, message: tpl.body });
   }
 
   private async sendInApp(
-    key:      string,
-    userId:   string,
-    vars:     Record<string, string | number>,
-    type:     InAppNotificationType,
+    key: string,
+    userId: string,
+    vars: Record<string, string | number>,
+    type: InAppNotificationType,
     metadata?: Record<string, any>,
   ) {
     const tpl = await this.templateService.render(key, 'in_app', vars);
     if (!tpl) return;
     await this.inAppService.create({
       userId,
-      title:    tpl.subject ?? '',
-      body:     tpl.body,
+      title: tpl.subject ?? '',
+      body: tpl.body,
       type,
       metadata: metadata ?? null,
     });
@@ -192,74 +226,172 @@ export class NotificationsService {
   // AUTH — kept from previous version (hardcoded templates, pre-Phase 6)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async sendWelcome(data: { fullName: string; email?: string; phone?: string }) {
+  async sendWelcome(data: {
+    fullName: string;
+    email?: string;
+    phone?: string;
+  }) {
     if (data.email) {
       const template = welcomeTemplate({ fullName: data.fullName });
-      await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+      await this.emailService.send({
+        to: data.email,
+        subject: template.subject,
+        html: template.html,
+      });
     }
   }
 
-  async sendEmailVerificationOtp(data: { fullName: string; email: string; otp: string }) {
+  async sendEmailVerificationOtp(data: {
+    fullName: string;
+    email: string;
+    otp: string;
+  }) {
     const template = emailVerificationOtpTemplate({
-      fullName: data.fullName, otp: data.otp, expiresInMinutes: OTP_EXPIRY_MINUTES,
+      fullName: data.fullName,
+      otp: data.otp,
+      expiresInMinutes: OTP_EXPIRY_MINUTES,
     });
-    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+    await this.emailService.send({
+      to: data.email,
+      subject: template.subject,
+      html: template.html,
+    });
   }
 
   async sendPhoneVerificationOtp(data: { phone: string; otp: string }) {
     await this.smsService.send({
-      to:      data.phone,
+      to: data.phone,
       message: `Your Washermann verification code is: ${data.otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share.`,
     });
   }
 
-  async sendPasswordResetOtp(data: { fullName: string; email?: string; phone?: string; otp: string }) {
+  async sendPasswordResetOtp(data: {
+    fullName: string;
+    email?: string;
+    phone?: string;
+    otp: string;
+  }) {
     if (data.email) {
       const template = passwordResetOtpTemplate({
-        fullName: data.fullName, otp: data.otp, expiresInMinutes: OTP_EXPIRY_MINUTES,
+        fullName: data.fullName,
+        otp: data.otp,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
       });
-      await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+      await this.emailService.send({
+        to: data.email,
+        subject: template.subject,
+        html: template.html,
+      });
     }
     if (data.phone) {
       await this.smsService.send({
-        to:      data.phone,
+        to: data.phone,
         message: `Your Washermann password reset code is: ${data.otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share.`,
       });
     }
   }
 
-  async sendCompanyInvite(data: { companyName: string; ownerEmail: string; inviteToken: string; deepLinkBase: string }) {
+  async sendCompanyInvite(data: {
+    companyName: string;
+    ownerEmail: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
     const inviteLink = `${data.deepLinkBase}/activate?token=${data.inviteToken}`;
-    const template   = companyInviteTemplate({ companyName: data.companyName, inviteLink });
-    await this.emailService.send({ to: data.ownerEmail, subject: template.subject, html: template.html });
+    const template = companyInviteTemplate({
+      companyName: data.companyName,
+      inviteLink,
+    });
+    await this.emailService.send({
+      to: data.ownerEmail,
+      subject: template.subject,
+      html: template.html,
+    });
   }
 
-  async sendEmployeeInvite(data: { fullName: string; email?: string; phone?: string; companyName: string; inviteToken: string; deepLinkBase: string }) {
+  async sendEmployeeInvite(data: {
+    fullName: string;
+    email?: string;
+    phone?: string;
+    companyName: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
     const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
     if (data.email) {
-      const template = employeeInviteTemplate({ fullName: data.fullName, companyName: data.companyName, inviteLink });
-      await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+      const template = employeeInviteTemplate({
+        fullName: data.fullName,
+        companyName: data.companyName,
+        inviteLink,
+      });
+      await this.emailService.send({
+        to: data.email,
+        subject: template.subject,
+        html: template.html,
+      });
     }
     if (data.phone) {
-      await this.smsService.send({ to: data.phone, message: `${data.companyName} has added you to Washermann. Set up your account: ${inviteLink}` });
+      await this.smsService.send({
+        to: data.phone,
+        message: `${data.companyName} has added you to Washermann. Set up your account: ${inviteLink}`,
+      });
     }
   }
 
-  async sendStaffInvite(data: { fullName: string; email: string; role: string; inviteToken: string; deepLinkBase: string }) {
+  async sendStaffInvite(data: {
+    fullName: string;
+    email: string;
+    role: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
     const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
-    const template   = staffInviteTemplate({ fullName: data.fullName, role: data.role, inviteLink });
-    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+    const template = staffInviteTemplate({
+      fullName: data.fullName,
+      role: data.role,
+      inviteLink,
+    });
+    await this.emailService.send({
+      to: data.email,
+      subject: template.subject,
+      html: template.html,
+    });
   }
 
-  async sendSalesRepRejection(data: { fullName: string; email: string; reason?: string | null }) {
-    const template = salesRepRejectionTemplate({ fullName: data.fullName, reason: data.reason });
-    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+  async sendSalesRepRejection(data: {
+    fullName: string;
+    email: string;
+    reason?: string | null;
+  }) {
+    const template = salesRepRejectionTemplate({
+      fullName: data.fullName,
+      reason: data.reason,
+    });
+    await this.emailService.send({
+      to: data.email,
+      subject: template.subject,
+      html: template.html,
+    });
   }
 
-  async sendVendorInvite(data: { fullName: string; email: string; businessName: string; inviteToken: string; deepLinkBase: string }) {
+  async sendVendorInvite(data: {
+    fullName: string;
+    email: string;
+    businessName: string;
+    inviteToken: string;
+    deepLinkBase: string;
+  }) {
     const inviteLink = `${data.deepLinkBase}/invite?token=${data.inviteToken}`;
-    const template   = vendorInviteTemplate({ fullName: data.fullName, businessName: data.businessName, inviteLink });
-    await this.emailService.send({ to: data.email, subject: template.subject, html: template.html });
+    const template = vendorInviteTemplate({
+      fullName: data.fullName,
+      businessName: data.businessName,
+      inviteLink,
+    });
+    await this.emailService.send({
+      to: data.email,
+      subject: template.subject,
+      html: template.html,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -270,36 +402,42 @@ export class NotificationsService {
    * Fire when a customer places an order (OrderStatus.PAID).
    */
   async notifyOrderPlaced(params: {
-    customerId:       string;
-    orderRef:         string;
-    totalWP:          number;
-    nairaEquivalent:  number;
-    pickupAddress:    string;
+    customerId: string;
+    orderRef: string;
+    totalWP: number;
+    nairaEquivalent: number;
+    pickupAddress: string;
     scheduledPickupAt: string;
   }) {
     const user = await this.getUser(params.customerId);
     if (!user) return;
 
     const vars: Record<string, string | number> = {
-      customerName:     user.fullName,
-      orderRef:         params.orderRef,
-      totalWP:          params.totalWP,
-      nairaEquivalent:  params.nairaEquivalent,
-      pickupAddress:    params.pickupAddress,
+      customerName: user.fullName,
+      orderRef: params.orderRef,
+      totalWP: params.totalWP,
+      nairaEquivalent: params.nairaEquivalent,
+      pickupAddress: params.pickupAddress,
       scheduledPickupAt: params.scheduledPickupAt,
     };
     const key = 'order.placed.customer';
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail(key, user.email, vars),
-        user.phone && this.sendSms(key, user.phone, vars),
-        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
-        this.sendInApp(key, user.id, vars, 'order', meta),
-        user.phone && this.sendWhatsapp(key, user.phone, vars),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail(key, user.email, vars),
+          user.phone && this.sendSms(key, user.phone, vars),
+          this.sendPushToUser(key, user.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(key, user.id, vars, 'order', meta),
+          user.phone && this.sendWhatsapp(key, user.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
@@ -307,8 +445,8 @@ export class NotificationsService {
    */
   async notifyRepAssigned(params: {
     customerId: string;
-    repId:      string;
-    orderRef:   string;
+    repId: string;
+    orderRef: string;
   }) {
     const [customer, repInfo] = await Promise.all([
       this.getUser(params.customerId),
@@ -322,16 +460,55 @@ export class NotificationsService {
       repName,
       orderRef: params.orderRef,
     };
-    const key  = 'order.rep_assigned.customer';
+    const key = 'order.rep_assigned.customer';
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      await Promise.all([
-        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
-        this.sendInApp(key, customer.id, vars, 'order', meta),
-        customer.phone && this.sendWhatsapp(key, customer.phone, vars),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          this.sendPushToUser(key, customer.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(key, customer.id, vars, 'order', meta),
+          customer.phone && this.sendWhatsapp(key, customer.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
+  }
+
+  /**
+   * Fire when a vendor is assigned to an order.
+   */
+  async notifyVendorAssigned(params: { vendorId: string; orderRef: string }) {
+    const vendorInfo = await this.getVendorUser(params.vendorId);
+
+    if (!vendorInfo?.user) return;
+
+    const vendor = vendorInfo.user;
+
+    const vars: Record<string, string | number> = {
+      vendorName: vendor.fullName,
+      orderRef: params.orderRef,
+    };
+
+    const key = 'order.vendor_assigned.vendor';
+    const meta = { orderRef: params.orderRef };
+
+    fire(
+      async () => {
+        await Promise.all([
+          this.sendPushToUser(key, vendor.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(key, vendor.id, vars, 'order', meta),
+          vendor.phone && this.sendWhatsapp(key, vendor.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
@@ -339,8 +516,8 @@ export class NotificationsService {
    */
   async notifyOrderRepEnRoute(params: {
     customerId: string;
-    repId:      string;
-    orderRef:   string;
+    repId: string;
+    orderRef: string;
   }) {
     const [customer, repInfo] = await Promise.all([
       this.getUser(params.customerId),
@@ -348,28 +525,49 @@ export class NotificationsService {
     ]);
 
     const repName = repInfo.user?.fullName ?? 'Your rep';
-    const meta    = { orderRef: params.orderRef };
+    const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      const customerVars: Record<string, string | number> = {
-        customerName: customer?.fullName ?? '',
-        orderRef:     params.orderRef,
-        repName,
-      };
+    fire(
+      async () => {
+        const customerVars: Record<string, string | number> = {
+          customerName: customer?.fullName ?? '',
+          orderRef: params.orderRef,
+          repName,
+        };
 
-      await Promise.all([
-        this.sendPushToUser('order.rep_en_route.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
-        customer && this.sendInApp('order.rep_en_route.customer', customer.id, customerVars, 'order', meta),
-        customer?.phone && this.sendWhatsapp('order.rep_en_route.customer', customer.phone, customerVars),
-      ]);
-    }, this.logger, 'order.rep_en_route');
+        await Promise.all([
+          this.sendPushToUser(
+            'order.rep_en_route.customer',
+            customer?.id,
+            customerVars,
+            { orderRef: params.orderRef },
+          ),
+          customer &&
+            this.sendInApp(
+              'order.rep_en_route.customer',
+              customer.id,
+              customerVars,
+              'order',
+              meta,
+            ),
+          customer?.phone &&
+            this.sendWhatsapp(
+              'order.rep_en_route.customer',
+              customer.phone,
+              customerVars,
+            ),
+        ]);
+      },
+      this.logger,
+      'order.rep_en_route',
+    );
   }
 
   async notifyOrderPickedUp(params: {
     customerId: string;
-    vendorId:   string;
-    repId:      string;
-    orderRef:   string;
+    vendorId: string;
+    repId: string;
+    orderRef: string;
   }) {
     const [customer, vendorInfo, repInfo] = await Promise.all([
       this.getUser(params.customerId),
@@ -378,30 +576,68 @@ export class NotificationsService {
     ]);
 
     const repName = repInfo.user?.fullName ?? 'Rep';
-    const meta    = { orderRef: params.orderRef };
+    const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      const customerVars: Record<string, string | number> = {
-        customerName: customer?.fullName ?? '',
-        orderRef:     params.orderRef,
-      };
-      const vendorVars: Record<string, string | number> = {
-        vendorName: vendorInfo.vendor?.businessName ?? '',
-        orderRef:   params.orderRef,
-        repName,
-      };
+    fire(
+      async () => {
+        const customerVars: Record<string, string | number> = {
+          customerName: customer?.fullName ?? '',
+          orderRef: params.orderRef,
+        };
+        const vendorVars: Record<string, string | number> = {
+          vendorName: vendorInfo.vendor?.businessName ?? '',
+          orderRef: params.orderRef,
+          repName,
+        };
 
-      await Promise.all([
-        // Customer
-        this.sendPushToUser('order.picked_up.customer', customer?.id, customerVars, { orderRef: params.orderRef }),
-        customer && this.sendInApp('order.picked_up.customer', customer.id, customerVars, 'order', meta),
-        customer?.phone && this.sendWhatsapp('order.picked_up.customer', customer.phone, customerVars),
-        // Vendor
-        this.sendPushToUser('order.picked_up.vendor', vendorInfo.user?.id, vendorVars, { orderRef: params.orderRef }),
-        vendorInfo.vendor && this.sendInApp('order.picked_up.vendor', vendorInfo.vendor.userId, vendorVars, 'order', meta),
-        vendorInfo.user?.phone && this.sendWhatsapp('order.picked_up.vendor', vendorInfo.user.phone, vendorVars),
-      ]);
-    }, this.logger, 'order.picked_up');
+        await Promise.all([
+          // Customer
+          this.sendPushToUser(
+            'order.picked_up.customer',
+            customer?.id,
+            customerVars,
+            { orderRef: params.orderRef },
+          ),
+          customer &&
+            this.sendInApp(
+              'order.picked_up.customer',
+              customer.id,
+              customerVars,
+              'order',
+              meta,
+            ),
+          customer?.phone &&
+            this.sendWhatsapp(
+              'order.picked_up.customer',
+              customer.phone,
+              customerVars,
+            ),
+          // Vendor
+          this.sendPushToUser(
+            'order.picked_up.vendor',
+            vendorInfo.user?.id,
+            vendorVars,
+            { orderRef: params.orderRef },
+          ),
+          vendorInfo.vendor &&
+            this.sendInApp(
+              'order.picked_up.vendor',
+              vendorInfo.vendor.userId,
+              vendorVars,
+              'order',
+              meta,
+            ),
+          vendorInfo.user?.phone &&
+            this.sendWhatsapp(
+              'order.picked_up.vendor',
+              vendorInfo.user.phone,
+              vendorVars,
+            ),
+        ]);
+      },
+      this.logger,
+      'order.picked_up',
+    );
   }
 
   /**
@@ -409,96 +645,155 @@ export class NotificationsService {
    */
   async notifyOrderDelivered(params: {
     customerId: string;
-    vendorId:   string | null;
-    repId:      string | null;
-    orderRef:   string;
+    vendorId: string | null;
+    repId: string | null;
+    orderRef: string;
   }) {
     const [customer, vendorInfo, repInfo] = await Promise.all([
       this.getUser(params.customerId),
-      params.vendorId ? this.getVendorUser(params.vendorId) : Promise.resolve({ vendor: null, user: null }),
-      params.repId    ? this.getRepUser(params.repId)       : Promise.resolve({ rep:    null, user: null }),
+      params.vendorId
+        ? this.getVendorUser(params.vendorId)
+        : Promise.resolve({ vendor: null, user: null }),
+      params.repId
+        ? this.getRepUser(params.repId)
+        : Promise.resolve({ rep: null, user: null }),
     ]);
     if (!customer) return;
 
     const vars: Record<string, string | number> = {
       customerName: customer.fullName,
-      orderRef:     params.orderRef,
-      vendorName:   vendorInfo.vendor?.businessName ?? '',
-      repName:      repInfo.user?.fullName ?? '',
+      orderRef: params.orderRef,
+      vendorName: vendorInfo.vendor?.businessName ?? '',
+      repName: repInfo.user?.fullName ?? '',
     };
-    const key  = 'order.delivered.customer';
+    const key = 'order.delivered.customer';
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      await Promise.all([
-        customer.email    && this.sendEmail(key, customer.email, vars),
-        customer.phone    && this.sendSms(key, customer.phone, vars),
-        this.sendPushToUser(key, customer.id, vars, { orderRef: params.orderRef }),
-        this.sendInApp(key, customer.id, vars, 'order', meta),
-        customer.phone    && this.sendWhatsapp(key, customer.phone, vars),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          customer.email && this.sendEmail(key, customer.email, vars),
+          customer.phone && this.sendSms(key, customer.phone, vars),
+          this.sendPushToUser(key, customer.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(key, customer.id, vars, 'order', meta),
+          customer.phone && this.sendWhatsapp(key, customer.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
    * Fire when order is completed and escrow released.
    */
   async notifyOrderCompleted(params: {
-    customerId:  string;
-    vendorId:    string | null;
-    repId:       string | null;
-    orderRef:    string;
+    customerId: string;
+    vendorId: string | null;
+    repId: string | null;
+    orderRef: string;
     vendorShareWP: number;
-    repShareWP:    number;
+    repShareWP: number;
     nairaEquivalent: number;
   }) {
     const [customer, vendorInfo, repInfo] = await Promise.all([
       this.getUser(params.customerId),
-      params.vendorId ? this.getVendorUser(params.vendorId) : Promise.resolve({ vendor: null, user: null }),
-      params.repId    ? this.getRepUser(params.repId)       : Promise.resolve({ rep:    null, user: null }),
+      params.vendorId
+        ? this.getVendorUser(params.vendorId)
+        : Promise.resolve({ vendor: null, user: null }),
+      params.repId
+        ? this.getRepUser(params.repId)
+        : Promise.resolve({ rep: null, user: null }),
     ]);
 
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      // Customer
-      if (customer) {
-        const cv: Record<string, string | number> = { customerName: customer.fullName, orderRef: params.orderRef };
-        await Promise.all([
-          customer.email    && this.sendEmail('order.completed.customer', customer.email, cv),
-          this.sendPushToUser('order.completed.customer', customer.id, cv, { orderRef: params.orderRef }),
-          this.sendInApp('order.completed.customer', customer.id, cv, 'order', meta),
-        ]);
-      }
+    fire(
+      async () => {
+        // Customer
+        if (customer) {
+          const cv: Record<string, string | number> = {
+            customerName: customer.fullName,
+            orderRef: params.orderRef,
+          };
+          await Promise.all([
+            customer.email &&
+              this.sendEmail('order.completed.customer', customer.email, cv),
+            this.sendPushToUser('order.completed.customer', customer.id, cv, {
+              orderRef: params.orderRef,
+            }),
+            this.sendInApp(
+              'order.completed.customer',
+              customer.id,
+              cv,
+              'order',
+              meta,
+            ),
+          ]);
+        }
 
-      // Vendor earning credited
-      if (vendorInfo.vendor && params.vendorShareWP > 0) {
-        const vv: Record<string, string | number> = {
-          vendorName:       vendorInfo.vendor.businessName,
-          orderRef:         params.orderRef,
-          earnedWP:         params.vendorShareWP,
-          nairaEquivalent:  Math.round(params.nairaEquivalent),
-        };
-        await Promise.all([
-          vendorInfo.user?.email    && this.sendEmail('order.earning_credited.vendor', vendorInfo.user.email, vv),
-          this.sendPushToUser('order.earning_credited.vendor', vendorInfo.user?.id, vv, { orderRef: params.orderRef }),
-          vendorInfo.vendor && this.sendInApp('order.earning_credited.vendor', vendorInfo.vendor.userId, vv, 'order', meta),
-        ]);
-      }
+        // Vendor earning credited
+        if (vendorInfo.vendor && params.vendorShareWP > 0) {
+          const vv: Record<string, string | number> = {
+            vendorName: vendorInfo.vendor.businessName,
+            orderRef: params.orderRef,
+            earnedWP: params.vendorShareWP,
+            nairaEquivalent: Math.round(params.nairaEquivalent),
+          };
+          await Promise.all([
+            vendorInfo.user?.email &&
+              this.sendEmail(
+                'order.earning_credited.vendor',
+                vendorInfo.user.email,
+                vv,
+              ),
+            this.sendPushToUser(
+              'order.earning_credited.vendor',
+              vendorInfo.user?.id,
+              vv,
+              { orderRef: params.orderRef },
+            ),
+            vendorInfo.vendor &&
+              this.sendInApp(
+                'order.earning_credited.vendor',
+                vendorInfo.vendor.userId,
+                vv,
+                'order',
+                meta,
+              ),
+          ]);
+        }
 
-      // Rep earning credited
-      if (repInfo.rep && params.repShareWP > 0) {
-        const rv: Record<string, string | number> = {
-          repName:  repInfo.user?.fullName ?? '',
-          orderRef: params.orderRef,
-          earnedWP: params.repShareWP,
-        };
-        await Promise.all([
-          this.sendPushToUser('order.earning_credited.rep', repInfo.user?.id, rv, { orderRef: params.orderRef }),
-          repInfo.rep && this.sendInApp('order.earning_credited.rep', repInfo.rep.userId, rv, 'order', meta),
-        ]);
-      }
-    }, this.logger, 'order.completed');
+        // Rep earning credited
+        if (repInfo.rep && params.repShareWP > 0) {
+          const rv: Record<string, string | number> = {
+            repName: repInfo.user?.fullName ?? '',
+            orderRef: params.orderRef,
+            earnedWP: params.repShareWP,
+          };
+          await Promise.all([
+            this.sendPushToUser(
+              'order.earning_credited.rep',
+              repInfo.user?.id,
+              rv,
+              { orderRef: params.orderRef },
+            ),
+            repInfo.rep &&
+              this.sendInApp(
+                'order.earning_credited.rep',
+                repInfo.rep.userId,
+                rv,
+                'order',
+                meta,
+              ),
+          ]);
+        }
+      },
+      this.logger,
+      'order.completed',
+    );
   }
 
   /**
@@ -506,28 +801,34 @@ export class NotificationsService {
    */
   async notifyOrderCancelled(params: {
     customerId: string;
-    orderRef:   string;
-    totalWP:    number;
+    orderRef: string;
+    totalWP: number;
   }) {
     const user = await this.getUser(params.customerId);
     if (!user) return;
 
     const vars: Record<string, string | number> = {
       customerName: user.fullName,
-      orderRef:     params.orderRef,
-      totalWP:      params.totalWP,
+      orderRef: params.orderRef,
+      totalWP: params.totalWP,
     };
-    const key  = 'order.cancelled.customer';
+    const key = 'order.cancelled.customer';
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail(key, user.email, vars),
-        user.phone    && this.sendSms(key, user.phone, vars),
-        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
-        this.sendInApp(key, user.id, vars, 'order', meta),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail(key, user.email, vars),
+          user.phone && this.sendSms(key, user.phone, vars),
+          this.sendPushToUser(key, user.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(key, user.id, vars, 'order', meta),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -538,118 +839,162 @@ export class NotificationsService {
    * Fire for each rep in a broadcast batch.
    */
   async notifyAssignmentBroadcastRep(params: {
-    repId:            string;
-    orderRef:         string;
-    pickupAddress:    string;
+    repId: string;
+    orderRef: string;
+    pickupAddress: string;
     scheduledPickupAt: string;
-    orderId:          string;
+    orderId: string;
   }) {
     const { rep, user } = await this.getRepUser(params.repId);
     if (!user) return;
 
     const vars: Record<string, string | number> = {
-      repName:          user.fullName,
-      orderRef:         params.orderRef,
-      pickupAddress:    params.pickupAddress,
+      repName: user.fullName,
+      orderRef: params.orderRef,
+      pickupAddress: params.pickupAddress,
       scheduledPickupAt: params.scheduledPickupAt,
     };
-    const key  = 'assignment.broadcast.rep';
+    const key = 'assignment.broadcast.rep';
     const meta = { orderRef: params.orderRef, orderId: params.orderId };
 
-    fire(async () => {
-      await Promise.all([
-        user.phone    && this.sendSms(key, user.phone, vars),
-        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
-        rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
-        user.phone && this.sendWhatsapp(key, user.phone, vars),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          user.phone && this.sendSms(key, user.phone, vars),
+          this.sendPushToUser(key, user.id, vars, {
+            orderRef: params.orderRef,
+            orderId: params.orderId,
+          }),
+          rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
+          user.phone && this.sendWhatsapp(key, user.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
    * Fire when a rep accepts an assignment.
    */
   async notifyAssignmentConfirmedRep(params: {
-    repId:         string;
-    orderRef:      string;
+    repId: string;
+    orderRef: string;
     pickupAddress: string;
-    customerName:  string;
-    orderId:       string;
+    customerName: string;
+    orderId: string;
   }) {
     const { rep, user } = await this.getRepUser(params.repId);
     if (!user) return;
 
     const vars: Record<string, string | number> = {
-      repName:       user.fullName,
-      orderRef:      params.orderRef,
+      repName: user.fullName,
+      orderRef: params.orderRef,
       pickupAddress: params.pickupAddress,
-      customerName:  params.customerName,
+      customerName: params.customerName,
     };
-    const key  = 'assignment.confirmed.rep';
+    const key = 'assignment.confirmed.rep';
     const meta = { orderRef: params.orderRef, orderId: params.orderId };
 
-    fire(async () => {
-      await Promise.all([
-        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef }),
-        rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          this.sendPushToUser(key, user.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          rep && this.sendInApp(key, rep.userId, vars, 'assignment', meta),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
    * Fire for each vendor in a broadcast batch.
    */
   async notifyAssignmentBroadcastVendor(params: {
-    vendorId:         string;
-    orderRef:         string;
+    vendorId: string;
+    orderRef: string;
     scheduledPickupAt: string;
-    orderId:          string;
+    orderId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!user || !vendor) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:       vendor.businessName,
-      orderRef:         params.orderRef,
+      vendorName: vendor.businessName,
+      orderRef: params.orderRef,
       scheduledPickupAt: params.scheduledPickupAt,
     };
-    const key  = 'assignment.broadcast.vendor';
+    const key = 'assignment.broadcast.vendor';
     const meta = { orderRef: params.orderRef, orderId: params.orderId };
 
-    fire(async () => {
-      await Promise.all([
-        user.phone    && this.sendSms(key, user.phone, vars),
-        this.sendPushToUser(key, user.id, vars, { orderRef: params.orderRef, orderId: params.orderId }),
-        this.sendInApp(key, vendor.userId, vars, 'assignment', meta),
-        user.phone && this.sendWhatsapp(key, user.phone, vars),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          user.phone && this.sendSms(key, user.phone, vars),
+          this.sendPushToUser(key, user.id, vars, {
+            orderRef: params.orderRef,
+            orderId: params.orderId,
+          }),
+          this.sendInApp(key, vendor.userId, vars, 'assignment', meta),
+          user.phone && this.sendWhatsapp(key, user.phone, vars),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /**
    * Escalation: no reps available → notify admin.
    */
-  async notifyNoRepsAvailableAdmin(params: { orderRef: string; areaName: string; orderId: string }) {
+  async notifyNoRepsAvailableAdmin(params: {
+    orderRef: string;
+    areaName: string;
+    orderId: string;
+  }) {
     const adminEmail = this.adminEmail();
-    const vars: Record<string, string | number> = { orderRef: params.orderRef, areaName: params.areaName };
+    const vars: Record<string, string | number> = {
+      orderRef: params.orderRef,
+      areaName: params.areaName,
+    };
 
-    fire(async () => {
-      await Promise.all([
-        adminEmail && this.sendEmail('assignment.no_reps.admin', adminEmail, vars),
-      ]);
-    }, this.logger, 'assignment.no_reps.admin');
+    fire(
+      async () => {
+        await Promise.all([
+          adminEmail &&
+            this.sendEmail('assignment.no_reps.admin', adminEmail, vars),
+        ]);
+      },
+      this.logger,
+      'assignment.no_reps.admin',
+    );
   }
 
   /** Fire when no vendors can be found for an order in any area — admin must assign manually. */
-  async notifyNoVendorsAvailableAdmin(params: { orderRef: string; areaName: string; orderId: string }) {
+  async notifyNoVendorsAvailableAdmin(params: {
+    orderRef: string;
+    areaName: string;
+    orderId: string;
+  }) {
     const adminEmail = this.adminEmail();
-    const vars: Record<string, string | number> = { orderRef: params.orderRef, areaName: params.areaName };
+    const vars: Record<string, string | number> = {
+      orderRef: params.orderRef,
+      areaName: params.areaName,
+    };
 
-    fire(async () => {
-      await Promise.all([
-        adminEmail && this.sendEmail('assignment.no_vendors.admin', adminEmail, vars),
-      ]);
-    }, this.logger, 'assignment.no_vendors.admin');
+    fire(
+      async () => {
+        await Promise.all([
+          adminEmail &&
+            this.sendEmail('assignment.no_vendors.admin', adminEmail, vars),
+        ]);
+      },
+      this.logger,
+      'assignment.no_vendors.admin',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -665,16 +1010,27 @@ export class NotificationsService {
 
     const vars: Record<string, string | number> = {
       repName: user.fullName,
-      rating:  params.rating.toFixed(1),
+      rating: params.rating.toFixed(1),
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('rep.flagged_for_review', user.email, vars),
-        this.sendPushToUser('rep.flagged_for_review', user.id, vars),
-        rep && this.sendInApp('rep.flagged_for_review', rep.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'rep.flagged_for_review');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('rep.flagged_for_review', user.email, vars),
+          this.sendPushToUser('rep.flagged_for_review', user.id, vars),
+          rep &&
+            this.sendInApp(
+              'rep.flagged_for_review',
+              rep.userId,
+              vars,
+              'account',
+            ),
+        ]);
+      },
+      this.logger,
+      'rep.flagged_for_review',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -689,8 +1045,13 @@ export class NotificationsService {
    * the customer welcome: a new vendor is PENDING_REVIEW and must not be told they
    * can take orders. Looked up by userId because at signup we only have the user.
    */
-  async notifyVendorApplicationReceived(params: { userId: string; fallbackName?: string }) {
-    const vendor = await this.vendorRepo.findOne({ where: { userId: params.userId } });
+  async notifyVendorApplicationReceived(params: {
+    userId: string;
+    fallbackName?: string;
+  }) {
+    const vendor = await this.vendorRepo.findOne({
+      where: { userId: params.userId },
+    });
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     if (!user) return;
 
@@ -698,38 +1059,68 @@ export class NotificationsService {
       vendorName: vendor?.businessName || params.fallbackName || user.fullName,
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('vendor.application_received', user.email, vars),
-        user.phone && this.sendSms('vendor.application_received', user.phone, vars),
-        this.sendPushToUser('vendor.application_received', user.id, vars),
-        this.sendInApp('vendor.application_received', user.id, vars, 'account'),
-      ]);
-    }, this.logger, 'vendor.application_received');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('vendor.application_received', user.email, vars),
+          user.phone &&
+            this.sendSms('vendor.application_received', user.phone, vars),
+          this.sendPushToUser('vendor.application_received', user.id, vars),
+          this.sendInApp(
+            'vendor.application_received',
+            user.id,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'vendor.application_received',
+    );
   }
 
   /** Fire when an admin REJECTS a vendor's verification. */
-  async notifyVendorRejected(params: { vendorId: string; reason?: string | null }) {
+  async notifyVendorRejected(params: {
+    vendorId: string;
+    reason?: string | null;
+  }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
       vendorName: vendor.businessName,
-      reason: params.reason || 'Your application did not meet our onboarding requirements.',
+      reason:
+        params.reason ||
+        'Your application did not meet our onboarding requirements.',
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('vendor.account_rejected', user.email, vars),
-        user.phone && this.sendSms('vendor.account_rejected', user.phone, vars),
-        this.sendPushToUser('vendor.account_rejected', user.id, vars),
-        this.sendInApp('vendor.account_rejected', vendor.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'vendor.account_rejected');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('vendor.account_rejected', user.email, vars),
+          user.phone &&
+            this.sendSms('vendor.account_rejected', user.phone, vars),
+          this.sendPushToUser('vendor.account_rejected', user.id, vars),
+          this.sendInApp(
+            'vendor.account_rejected',
+            vendor.userId,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'vendor.account_rejected',
+    );
   }
 
   /** Fire when a vendor account is suspended / deactivated. */
-  async notifyVendorSuspended(params: { vendorId: string; reason?: string | null }) {
+  async notifyVendorSuspended(params: {
+    vendorId: string;
+    reason?: string | null;
+  }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
@@ -738,47 +1129,82 @@ export class NotificationsService {
       reason: params.reason || 'Please contact support for details.',
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('vendor.account_suspended', user.email, vars),
-        user.phone && this.sendSms('vendor.account_suspended', user.phone, vars),
-        this.sendPushToUser('vendor.account_suspended', user.id, vars),
-        this.sendInApp('vendor.account_suspended', vendor.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'vendor.account_suspended');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('vendor.account_suspended', user.email, vars),
+          user.phone &&
+            this.sendSms('vendor.account_suspended', user.phone, vars),
+          this.sendPushToUser('vendor.account_suspended', user.id, vars),
+          this.sendInApp(
+            'vendor.account_suspended',
+            vendor.userId,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'vendor.account_suspended',
+    );
   }
 
   async notifyVendorVerified(params: { vendorId: string }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
-    const vars: Record<string, string | number> = { vendorName: vendor.businessName };
+    const vars: Record<string, string | number> = {
+      vendorName: vendor.businessName,
+    };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('vendor.account_verified', user.email, vars),
-        user.phone    && this.sendSms('vendor.account_verified', user.phone, vars),
-        this.sendPushToUser('vendor.account_verified', user.id, vars),
-        this.sendInApp('vendor.account_verified', vendor.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'vendor.account_verified');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('vendor.account_verified', user.email, vars),
+          user.phone &&
+            this.sendSms('vendor.account_verified', user.phone, vars),
+          this.sendPushToUser('vendor.account_verified', user.id, vars),
+          this.sendInApp(
+            'vendor.account_verified',
+            vendor.userId,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'vendor.account_verified',
+    );
   }
 
   /**
    * Fire when admin submits vendor for verification (notify admin team).
    */
-  async notifyVendorPendingVerificationAdmin(params: { vendorId: string; vendorName: string }) {
+  async notifyVendorPendingVerificationAdmin(params: {
+    vendorId: string;
+    vendorName: string;
+  }) {
     const adminEmail = this.adminEmail();
     const vars: Record<string, string | number> = {
       vendorName: params.vendorName,
-      vendorId:   params.vendorId,
+      vendorId: params.vendorId,
     };
 
-    fire(async () => {
-      if (adminEmail) {
-        await this.sendEmail('vendor.pending_verification.admin', adminEmail, vars);
-      }
-    }, this.logger, 'vendor.pending_verification.admin');
+    fire(
+      async () => {
+        if (adminEmail) {
+          await this.sendEmail(
+            'vendor.pending_verification.admin',
+            adminEmail,
+            vars,
+          );
+        }
+      },
+      this.logger,
+      'vendor.pending_verification.admin',
+    );
   }
 
   /**
@@ -788,22 +1214,37 @@ export class NotificationsService {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
-    const vars: Record<string, string | number> = { vendorName: vendor.businessName };
+    const vars: Record<string, string | number> = {
+      vendorName: vendor.businessName,
+    };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('pricing.approved.vendor', user.email, vars),
-        this.sendPushToUser('pricing.approved.vendor', user.id, vars),
-        this.sendInApp('pricing.approved.vendor', vendor.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'pricing.approved.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('pricing.approved.vendor', user.email, vars),
+          this.sendPushToUser('pricing.approved.vendor', user.id, vars),
+          this.sendInApp(
+            'pricing.approved.vendor',
+            vendor.userId,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'pricing.approved.vendor',
+    );
   }
 
   /**
    * Fire ONCE when an admin finalizes a pricing review — summarises which lines
    * were approved and which were rejected (with reasons) in a single message.
    */
-  async notifyPricingReviewed(params: { vendorId: string; items: GarmentPriceItem[] }) {
+  async notifyPricingReviewed(params: {
+    vendorId: string;
+    items: GarmentPriceItem[];
+  }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
@@ -817,22 +1258,34 @@ export class NotificationsService {
     const approved = params.items.filter((i) => i.status === 'approved');
     const rejected = params.items.filter((i) => i.status === 'rejected');
 
-    const approvedRowsHtml = approved
-      .map((i) => `<div class="info-row"><span>${label(i)}</span><span>${naira(i.priceNaira)}</span></div>`)
-      .join('') || '<p style="color:#7c8b83;font-size:14px;">None this time.</p>';
-    const rejectedRowsHtml = rejected
-      .map((i) => `<div class="info-row"><span>${label(i)} — <em>${i.rejectionReason ?? 'not approved'}</em></span><span>${naira(i.priceNaira)}</span></div>`)
-      .join('') || '<p style="color:#7c8b83;font-size:14px;">None — everything was approved. 🎉</p>';
+    const approvedRowsHtml =
+      approved
+        .map(
+          (i) =>
+            `<div class="info-row"><span>${label(i)}</span><span>${naira(i.priceNaira)}</span></div>`,
+        )
+        .join('') ||
+      '<p style="color:#7c8b83;font-size:14px;">None this time.</p>';
+    const rejectedRowsHtml =
+      rejected
+        .map(
+          (i) =>
+            `<div class="info-row"><span>${label(i)} — <em>${i.rejectionReason ?? 'not approved'}</em></span><span>${naira(i.priceNaira)}</span></div>`,
+        )
+        .join('') ||
+      '<p style="color:#7c8b83;font-size:14px;">None — everything was approved. 🎉</p>';
 
     const approvedText = approved.length
       ? approved.map((i) => `${label(i)}: ${naira(i.priceNaira)}`).join('; ')
       : 'None this time.';
     const rejectedText = rejected.length
-      ? rejected.map((i) => `${label(i)} (${i.rejectionReason ?? 'not approved'})`).join('; ')
+      ? rejected
+          .map((i) => `${label(i)} (${i.rejectionReason ?? 'not approved'})`)
+          .join('; ')
       : 'None — everything was approved.';
 
     const vars: Record<string, string | number> = {
-      vendorName:    vendor.businessName,
+      vendorName: vendor.businessName,
       approvedCount: approved.length,
       rejectedCount: rejected.length,
       approvedRowsHtml,
@@ -841,13 +1294,23 @@ export class NotificationsService {
       rejectedText,
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('pricing.reviewed.vendor', user.email, vars),
-        this.sendPushToUser('pricing.reviewed.vendor', user.id, vars),
-        this.sendInApp('pricing.reviewed.vendor', vendor.userId, vars, 'account'),
-      ]);
-    }, this.logger, 'pricing.reviewed.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('pricing.reviewed.vendor', user.email, vars),
+          this.sendPushToUser('pricing.reviewed.vendor', user.id, vars),
+          this.sendInApp(
+            'pricing.reviewed.vendor',
+            vendor.userId,
+            vars,
+            'account',
+          ),
+        ]);
+      },
+      this.logger,
+      'pricing.reviewed.vendor',
+    );
   }
 
   /**
@@ -857,19 +1320,22 @@ export class NotificationsService {
    * average; the note prompts them to set their own price).
    */
   async notifyVendorGarmentsLogged(params: {
-    vendorId:      string;
-    orderRef:      string;
+    vendorId: string;
+    orderRef: string;
     /** Every logged line, with whether the vendor had priced it. */
-    entries:       { name: string; count: number; unpriced: boolean }[];
+    entries: { name: string; count: number; unpriced: boolean }[];
     /** Names of the items the vendor had no price for (P50 used). */
     unpricedNames: string[];
-    earningNaira:  number;
+    earningNaira: number;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const pretty = (s: string) =>
-      s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+      s
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim();
     const entries = params.entries.filter((e) => Number(e.count) > 0);
     const itemCount = entries.reduce((sum, e) => sum + Number(e.count), 0);
 
@@ -881,7 +1347,9 @@ export class NotificationsService {
         return `<div class="info-row"><span>${pretty(e.name)}${flag}</span><span>× ${e.count}</span></div>`;
       })
       .join('');
-    const itemsText = entries.map((e) => `${pretty(e.name)} × ${e.count}`).join(', ');
+    const itemsText = entries
+      .map((e) => `${pretty(e.name)} × ${e.count}`)
+      .join(', ');
 
     const unpricedText = params.unpricedNames.map(pretty).join(', ');
     const unpricedNote = params.unpricedNames.length
@@ -892,24 +1360,37 @@ export class NotificationsService {
       : '';
 
     const vars: Record<string, string | number> = {
-      vendorName:       vendor.businessName ?? 'there',
-      orderRef:         params.orderRef,
+      vendorName: vendor.businessName ?? 'there',
+      orderRef: params.orderRef,
       itemsRowsHtml,
       itemsText,
       itemCount,
-      earningNaira:     Math.round(params.earningNaira).toLocaleString(),
-      unpricedCount:    params.unpricedNames.length,
+      earningNaira: Math.round(params.earningNaira).toLocaleString(),
+      unpricedCount: params.unpricedNames.length,
       unpricedNote,
       unpricedNoteHtml,
     };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('order.garments_logged.vendor', user.email, vars),
-        this.sendPushToUser('order.garments_logged.vendor', user.id, vars, { orderRef: params.orderRef }),
-        this.sendInApp('order.garments_logged.vendor', vendor.userId, vars, 'order', { orderRef: params.orderRef }),
-      ]);
-    }, this.logger, 'order.garments_logged.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('order.garments_logged.vendor', user.email, vars),
+          this.sendPushToUser('order.garments_logged.vendor', user.id, vars, {
+            orderRef: params.orderRef,
+          }),
+          this.sendInApp(
+            'order.garments_logged.vendor',
+            vendor.userId,
+            vars,
+            'order',
+            { orderRef: params.orderRef },
+          ),
+        ]);
+      },
+      this.logger,
+      'order.garments_logged.vendor',
+    );
   }
 
   /**
@@ -919,32 +1400,48 @@ export class NotificationsService {
    * every active admin. Fire-and-forget.
    */
   async notifyAdminOrderUnpricedItems(params: {
-    vendorId:      string;
-    orderRef:      string;
+    vendorId: string;
+    orderRef: string;
     unpricedNames: string[];
   }) {
     if (!params.unpricedNames.length) return;
     const { vendor } = await this.getVendorUser(params.vendorId);
     const pretty = (s: string) =>
-      s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+      s
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim();
     const unpricedText = params.unpricedNames.map(pretty).join(', ');
 
     const vars: Record<string, string | number> = {
-      orderRef:      params.orderRef,
-      vendorName:    vendor?.businessName ?? 'the vendor',
+      orderRef: params.orderRef,
+      vendorName: vendor?.businessName ?? 'the vendor',
       unpricedText,
       unpricedCount: params.unpricedNames.length,
     };
     const meta = { orderRef: params.orderRef };
 
-    fire(async () => {
-      const admins = await this.adminUsers();
-      const adminEmail = this.adminEmail();
-      await Promise.all([
-        adminEmail && this.sendEmail('order.garments_unpriced.admin', adminEmail, vars),
-        ...admins.map((a) => this.sendInApp('order.garments_unpriced.admin', a.id, vars, 'order', meta)),
-      ]);
-    }, this.logger, 'order.garments_unpriced.admin');
+    fire(
+      async () => {
+        const admins = await this.adminUsers();
+        const adminEmail = this.adminEmail();
+        await Promise.all([
+          adminEmail &&
+            this.sendEmail('order.garments_unpriced.admin', adminEmail, vars),
+          ...admins.map((a) =>
+            this.sendInApp(
+              'order.garments_unpriced.admin',
+              a.id,
+              vars,
+              'order',
+              meta,
+            ),
+          ),
+        ]);
+      },
+      this.logger,
+      'order.garments_unpriced.admin',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -953,10 +1450,16 @@ export class NotificationsService {
 
   /** Confirm to the (now-anonymised) user that their account was deleted. */
   async notifyAccountDeleted(params: { email: string; name: string }) {
-    const vars: Record<string, string | number> = { name: params.name || 'there' };
-    fire(async () => {
-      await this.sendEmail('account.deleted.customer', params.email, vars);
-    }, this.logger, 'account.deleted');
+    const vars: Record<string, string | number> = {
+      name: params.name || 'there',
+    };
+    fire(
+      async () => {
+        await this.sendEmail('account.deleted.customer', params.email, vars);
+      },
+      this.logger,
+      'account.deleted',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -968,7 +1471,12 @@ export class NotificationsService {
   }
 
   /** Confirm a new dispute to the customer + alert the resolver team. */
-  async notifyDisputeCreated(params: { userId: string; disputeRef: string; orderRef: string; issueType: string }) {
+  async notifyDisputeCreated(params: {
+    userId: string;
+    disputeRef: string;
+    orderRef: string;
+    issueType: string;
+  }) {
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     const vars: Record<string, string | number> = {
       disputeRef: params.disputeRef,
@@ -976,27 +1484,46 @@ export class NotificationsService {
       issueType: this.prettyIssue(params.issueType),
       customerName: user?.fullName ?? 'there',
     };
-    fire(async () => {
-      // Customer confirmation
-      if (user) {
+    fire(
+      async () => {
+        // Customer confirmation
+        if (user) {
+          await Promise.all([
+            user.email &&
+              this.sendEmail('dispute.created.customer', user.email, vars),
+            this.sendInApp('dispute.created.customer', user.id, vars, 'order', {
+              disputeRef: params.disputeRef,
+            }),
+            this.sendPushToUser('dispute.created.customer', user.id, vars, {
+              disputeRef: params.disputeRef,
+            }),
+          ]);
+        }
+        // Resolver / admin alert
+        const staff = await this.disputeStaff();
+        const adminEmail = this.adminEmail();
         await Promise.all([
-          user.email && this.sendEmail('dispute.created.customer', user.email, vars),
-          this.sendInApp('dispute.created.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
-          this.sendPushToUser('dispute.created.customer', user.id, vars, { disputeRef: params.disputeRef }),
+          adminEmail &&
+            this.sendEmail('dispute.created.admin', adminEmail, vars),
+          ...staff.map((s) =>
+            this.sendInApp('dispute.created.admin', s.id, vars, 'order', {
+              disputeRef: params.disputeRef,
+            }),
+          ),
         ]);
-      }
-      // Resolver / admin alert
-      const staff = await this.disputeStaff();
-      const adminEmail = this.adminEmail();
-      await Promise.all([
-        adminEmail && this.sendEmail('dispute.created.admin', adminEmail, vars),
-        ...staff.map((s) => this.sendInApp('dispute.created.admin', s.id, vars, 'order', { disputeRef: params.disputeRef })),
-      ]);
-    }, this.logger, 'dispute.created');
+      },
+      this.logger,
+      'dispute.created',
+    );
   }
 
   /** Tell the customer their dispute moved along the timeline. */
-  async notifyDisputeUpdated(params: { userId: string; disputeRef: string; status: string; note: string | null }) {
+  async notifyDisputeUpdated(params: {
+    userId: string;
+    disputeRef: string;
+    status: string;
+    note: string | null;
+  }) {
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     if (!user) return;
     const vars: Record<string, string | number> = {
@@ -1004,42 +1531,70 @@ export class NotificationsService {
       status: this.prettyIssue(params.status),
       note: params.note ?? '',
     };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('dispute.updated.customer', user.email, vars),
-        this.sendInApp('dispute.updated.customer', user.id, vars, 'order', { disputeRef: params.disputeRef }),
-        this.sendPushToUser('dispute.updated.customer', user.id, vars, { disputeRef: params.disputeRef }),
-      ]);
-    }, this.logger, 'dispute.updated');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('dispute.updated.customer', user.email, vars),
+          this.sendInApp('dispute.updated.customer', user.id, vars, 'order', {
+            disputeRef: params.disputeRef,
+          }),
+          this.sendPushToUser('dispute.updated.customer', user.id, vars, {
+            disputeRef: params.disputeRef,
+          }),
+        ]);
+      },
+      this.logger,
+      'dispute.updated',
+    );
   }
 
   /** Tell the customer their dispute was resolved or rejected. */
   async notifyDisputeResolved(params: {
-    userId: string; disputeRef: string; rejected: boolean; outcome: string | null; note: string | null; refundedWp: number | null;
+    userId: string;
+    disputeRef: string;
+    rejected: boolean;
+    outcome: string | null;
+    note: string | null;
+    refundedWp: number | null;
   }) {
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     if (!user) return;
     const vars: Record<string, string | number> = {
       disputeRef: params.disputeRef,
-      outcome: params.rejected ? 'closed' : this.prettyIssue(params.outcome ?? 'resolved'),
+      outcome: params.rejected
+        ? 'closed'
+        : this.prettyIssue(params.outcome ?? 'resolved'),
       note: params.note ?? '',
       refundedWP: params.refundedWp ?? 0,
     };
-    const key = params.rejected ? 'dispute.rejected.customer' : 'dispute.resolved.customer';
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail(key, user.email, vars),
-        this.sendInApp(key, user.id, vars, 'order', { disputeRef: params.disputeRef }),
-        this.sendPushToUser(key, user.id, vars, { disputeRef: params.disputeRef }),
-      ]);
-    }, this.logger, key);
+    const key = params.rejected
+      ? 'dispute.rejected.customer'
+      : 'dispute.resolved.customer';
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail(key, user.email, vars),
+          this.sendInApp(key, user.id, vars, 'order', {
+            disputeRef: params.disputeRef,
+          }),
+          this.sendPushToUser(key, user.id, vars, {
+            disputeRef: params.disputeRef,
+          }),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   /** Active admins + dispute resolvers — recipients for new-dispute alerts. */
   private async disputeStaff(): Promise<User[]> {
     return this.userRepo
       .createQueryBuilder('user')
-      .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver']::text[]`)
+      .where(
+        `string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver']::text[]`,
+      )
       .andWhere(`user.status = 'active'`)
       .getMany();
   }
@@ -1049,31 +1604,57 @@ export class NotificationsService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** A user sent a support message — nudge the agents (in-app on the dashboard). */
-  async notifySupportNewUserMessage(params: { conversationId: string; fromName: string; preview: string }) {
+  async notifySupportNewUserMessage(params: {
+    conversationId: string;
+    fromName: string;
+    preview: string;
+  }) {
     const vars: Record<string, string | number> = {
       fromName: params.fromName,
       preview: params.preview.slice(0, 140),
     };
     const meta = { conversationId: params.conversationId };
-    fire(async () => {
-      const agents = await this.userRepo
-        .createQueryBuilder('user')
-        .where(`string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver','finance']::text[]`)
-        .andWhere(`user.status = 'active'`)
-        .getMany();
-      await Promise.all(agents.map((a) => this.sendInApp('support.new_message.agent', a.id, vars, 'general', meta)));
-    }, this.logger, 'support.new_message.agent');
+    fire(
+      async () => {
+        const agents = await this.userRepo
+          .createQueryBuilder('user')
+          .where(
+            `string_to_array(user.roles, ',') && ARRAY['admin','dispute_resolver','finance']::text[]`,
+          )
+          .andWhere(`user.status = 'active'`)
+          .getMany();
+        await Promise.all(
+          agents.map((a) =>
+            this.sendInApp(
+              'support.new_message.agent',
+              a.id,
+              vars,
+              'general',
+              meta,
+            ),
+          ),
+        );
+      },
+      this.logger,
+      'support.new_message.agent',
+    );
   }
 
   /** Support replied — push + in-app the user so they come back to the chat. */
   async notifySupportAgentReply(params: { userId: string; preview: string }) {
-    const vars: Record<string, string | number> = { preview: params.preview.slice(0, 140) };
-    fire(async () => {
-      await Promise.all([
-        this.sendInApp('support.reply.user', params.userId, vars, 'general'),
-        this.sendPushToUser('support.reply.user', params.userId, vars),
-      ]);
-    }, this.logger, 'support.reply.user');
+    const vars: Record<string, string | number> = {
+      preview: params.preview.slice(0, 140),
+    };
+    fire(
+      async () => {
+        await Promise.all([
+          this.sendInApp('support.reply.user', params.userId, vars, 'general'),
+          this.sendPushToUser('support.reply.user', params.userId, vars),
+        ]);
+      },
+      this.logger,
+      'support.reply.user',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1081,7 +1662,11 @@ export class NotificationsService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Tell a user they were added to a team. */
-  async notifyTeamMemberAdded(params: { userId: string; teamName: string; addedByName?: string | null }) {
+  async notifyTeamMemberAdded(params: {
+    userId: string;
+    teamName: string;
+    addedByName?: string | null;
+  }) {
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     if (!user) return;
     const vars: Record<string, string | number> = {
@@ -1089,17 +1674,26 @@ export class NotificationsService {
       teamName: params.teamName,
       addedByName: params.addedByName ?? 'A team admin',
     };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('team.member_added', user.email, vars),
-        this.sendInApp('team.member_added', user.id, vars, 'account'),
-        this.sendPushToUser('team.member_added', user.id, vars),
-      ]);
-    }, this.logger, 'team.member_added');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('team.member_added', user.email, vars),
+          this.sendInApp('team.member_added', user.id, vars, 'account'),
+          this.sendPushToUser('team.member_added', user.id, vars),
+        ]);
+      },
+      this.logger,
+      'team.member_added',
+    );
   }
 
   /** Tell a user their role in a team changed (incl. becoming the owner). */
-  async notifyTeamRoleChanged(params: { userId: string; teamName: string; role: string; isOwner: boolean }) {
+  async notifyTeamRoleChanged(params: {
+    userId: string;
+    teamName: string;
+    role: string;
+    isOwner: boolean;
+  }) {
     const user = await this.userRepo.findOne({ where: { id: params.userId } });
     if (!user) return;
     const vars: Record<string, string | number> = {
@@ -1108,13 +1702,17 @@ export class NotificationsService {
       role: params.role,
       roleLabel: params.isOwner ? 'owner' : params.role,
     };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('team.role_changed', user.email, vars),
-        this.sendInApp('team.role_changed', user.id, vars, 'account'),
-        this.sendPushToUser('team.role_changed', user.id, vars),
-      ]);
-    }, this.logger, 'team.role_changed');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('team.role_changed', user.email, vars),
+          this.sendInApp('team.role_changed', user.id, vars, 'account'),
+          this.sendPushToUser('team.role_changed', user.id, vars),
+        ]);
+      },
+      this.logger,
+      'team.role_changed',
+    );
   }
 
   /** Tell a user they were removed from a team. */
@@ -1125,12 +1723,16 @@ export class NotificationsService {
       memberName: user.fullName ?? 'there',
       teamName: params.teamName,
     };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('team.member_removed', user.email, vars),
-        this.sendInApp('team.member_removed', user.id, vars, 'account'),
-      ]);
-    }, this.logger, 'team.member_removed');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('team.member_removed', user.email, vars),
+          this.sendInApp('team.member_removed', user.id, vars, 'account'),
+        ]);
+      },
+      this.logger,
+      'team.member_removed',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1160,14 +1762,23 @@ export class NotificationsService {
     };
     const meta = { postId: params.postId };
 
-    fire(async () => {
-      const admins = (await this.adminUsers()).filter((u) => u.id !== params.excludeUserId);
-      const adminEmail = this.adminEmail();
-      await Promise.all([
-        adminEmail && this.sendEmail('blog.submitted.admin', adminEmail, vars),
-        ...admins.map((a) => this.sendInApp('blog.submitted.admin', a.id, vars, 'general', meta)),
-      ]);
-    }, this.logger, 'blog.submitted.admin');
+    fire(
+      async () => {
+        const admins = (await this.adminUsers()).filter(
+          (u) => u.id !== params.excludeUserId,
+        );
+        const adminEmail = this.adminEmail();
+        await Promise.all([
+          adminEmail &&
+            this.sendEmail('blog.submitted.admin', adminEmail, vars),
+          ...admins.map((a) =>
+            this.sendInApp('blog.submitted.admin', a.id, vars, 'general', meta),
+          ),
+        ]);
+      },
+      this.logger,
+      'blog.submitted.admin',
+    );
   }
 
   /** Fire when a reviewer approves or requests changes — tell the author. */
@@ -1182,7 +1793,9 @@ export class NotificationsService {
     const author = await this.getUser(params.authorUserId);
     if (!author) return;
 
-    const key = params.approved ? 'blog.approved.author' : 'blog.changes_requested.author';
+    const key = params.approved
+      ? 'blog.approved.author'
+      : 'blog.changes_requested.author';
     const vars: Record<string, string | number> = {
       authorName: author.fullName,
       postTitle: params.title,
@@ -1191,12 +1804,16 @@ export class NotificationsService {
     };
     const meta = { postId: params.postId };
 
-    fire(async () => {
-      await Promise.all([
-        author.email && this.sendEmail(key, author.email, vars),
-        this.sendInApp(key, author.id, vars, 'general', meta),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          author.email && this.sendEmail(key, author.email, vars),
+          this.sendInApp(key, author.id, vars, 'general', meta),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1207,218 +1824,307 @@ export class NotificationsService {
    * Fire when a vendor requests a payout (notify admin).
    */
   async notifyNewPayoutRequest(params: {
-    vendorId:   string;
+    vendorId: string;
     vendorName: string;
-    amountWP:   number;
+    amountWP: number;
     nairaAmount: number;
-    payoutId:   string;
+    payoutId: string;
   }) {
     const adminEmail = this.adminEmail();
     const vars: Record<string, string | number> = {
-      vendorName:  params.vendorName,
-      amountWP:    params.amountWP,
+      vendorName: params.vendorName,
+      amountWP: params.amountWP,
       nairaAmount: Math.round(params.nairaAmount),
-      payoutId:    params.payoutId,
+      payoutId: params.payoutId,
     };
 
-    fire(async () => {
-      if (adminEmail) {
-        await this.sendEmail('payout.new_request.admin', adminEmail, vars);
-      }
-    }, this.logger, 'payout.new_request.admin');
+    fire(
+      async () => {
+        if (adminEmail) {
+          await this.sendEmail('payout.new_request.admin', adminEmail, vars);
+        }
+      },
+      this.logger,
+      'payout.new_request.admin',
+    );
   }
 
   /**
    * Fire when admin approves a payout (bank transfer initiated).
    */
   async notifyPayoutApproved(params: {
-    vendorId:      string;
-    nairaAmount:   number;
-    amountWP:      number;
-    accountName:   string;
+    vendorId: string;
+    nairaAmount: number;
+    amountWP: number;
+    accountName: string;
     accountNumber: string;
-    bankCode:      string;
-    payoutId:      string;
+    bankCode: string;
+    payoutId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:    vendor.businessName,
-      nairaAmount:   Math.round(params.nairaAmount),
-      amountWP:      params.amountWP,
-      accountName:   params.accountName,
+      vendorName: vendor.businessName,
+      nairaAmount: Math.round(params.nairaAmount),
+      amountWP: params.amountWP,
+      accountName: params.accountName,
       accountNumber: params.accountNumber,
-      bankCode:      params.bankCode,
-      payoutId:      params.payoutId,
+      bankCode: params.bankCode,
+      payoutId: params.payoutId,
     };
     const meta = { payoutId: params.payoutId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('payout.approved.vendor', user.email, vars),
-        user.phone    && this.sendSms('payout.approved.vendor', user.phone, vars),
-        this.sendPushToUser('payout.approved.vendor', user.id, vars, { payoutId: params.payoutId }),
-        this.sendInApp('payout.approved.vendor', vendor.userId, vars, 'payout', meta),
-        user.phone    && this.sendWhatsapp('payout.approved.vendor', user.phone, vars),
-      ]);
-    }, this.logger, 'payout.approved.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('payout.approved.vendor', user.email, vars),
+          user.phone &&
+            this.sendSms('payout.approved.vendor', user.phone, vars),
+          this.sendPushToUser('payout.approved.vendor', user.id, vars, {
+            payoutId: params.payoutId,
+          }),
+          this.sendInApp(
+            'payout.approved.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+          user.phone &&
+            this.sendWhatsapp('payout.approved.vendor', user.phone, vars),
+        ]);
+      },
+      this.logger,
+      'payout.approved.vendor',
+    );
   }
 
   /**
    * Fire when a payout transfer fails.
    */
   async notifyPayoutFailed(params: {
-    vendorId:      string;
-    nairaAmount:   number;
-    amountWP:      number;
+    vendorId: string;
+    nairaAmount: number;
+    amountWP: number;
     failureReason: string;
-    payoutId:      string;
+    payoutId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:    vendor.businessName,
-      nairaAmount:   Math.round(params.nairaAmount),
-      amountWP:      params.amountWP,
+      vendorName: vendor.businessName,
+      nairaAmount: Math.round(params.nairaAmount),
+      amountWP: params.amountWP,
       failureReason: params.failureReason,
-      payoutId:      params.payoutId,
+      payoutId: params.payoutId,
     };
     const meta = { payoutId: params.payoutId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email    && this.sendEmail('payout.failed.vendor', user.email, vars),
-        user.phone    && this.sendSms('payout.failed.vendor', user.phone, vars),
-        this.sendPushToUser('payout.failed.vendor', user.id, vars, { payoutId: params.payoutId }),
-        this.sendInApp('payout.failed.vendor', vendor.userId, vars, 'payout', meta),
-      ]);
-    }, this.logger, 'payout.failed.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('payout.failed.vendor', user.email, vars),
+          user.phone && this.sendSms('payout.failed.vendor', user.phone, vars),
+          this.sendPushToUser('payout.failed.vendor', user.id, vars, {
+            payoutId: params.payoutId,
+          }),
+          this.sendInApp(
+            'payout.failed.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'payout.failed.vendor',
+    );
   }
 
   /** Fire when a payout is withheld for investigation. */
   async notifyVendorPayoutHeld(params: {
-    vendorId:      string;
-    nairaAmount:   number;
-    amountWP:      number;
-    reason:        string;
+    vendorId: string;
+    nairaAmount: number;
+    amountWP: number;
+    reason: string;
     autoReleaseAt: Date;
-    payoutId:      string;
+    payoutId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:    vendor.businessName,
-      nairaAmount:   Math.round(params.nairaAmount),
-      amountWP:      params.amountWP,
-      reason:        params.reason,
+      vendorName: vendor.businessName,
+      nairaAmount: Math.round(params.nairaAmount),
+      amountWP: params.amountWP,
+      reason: params.reason,
       autoReleaseAt: params.autoReleaseAt.toISOString().slice(0, 10),
-      payoutId:      params.payoutId,
+      payoutId: params.payoutId,
     };
     const meta = { payoutId: params.payoutId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('payout.held.vendor', user.email, vars),
-        user.phone && this.sendSms('payout.held.vendor', user.phone, vars),
-        this.sendPushToUser('payout.held.vendor', user.id, vars, { payoutId: params.payoutId }),
-        this.sendInApp('payout.held.vendor', vendor.userId, vars, 'payout', meta),
-      ]);
-    }, this.logger, 'payout.held.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('payout.held.vendor', user.email, vars),
+          user.phone && this.sendSms('payout.held.vendor', user.phone, vars),
+          this.sendPushToUser('payout.held.vendor', user.id, vars, {
+            payoutId: params.payoutId,
+          }),
+          this.sendInApp(
+            'payout.held.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'payout.held.vendor',
+    );
   }
 
   /** Fire when a withheld payout is released back to pending. */
   async notifyVendorPayoutReleased(params: {
-    vendorId:    string;
+    vendorId: string;
     nairaAmount: number;
-    amountWP:    number;
-    payoutId:    string;
-    auto:        boolean;
+    amountWP: number;
+    payoutId: string;
+    auto: boolean;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:  vendor.businessName,
+      vendorName: vendor.businessName,
       nairaAmount: Math.round(params.nairaAmount),
-      amountWP:    params.amountWP,
-      payoutId:    params.payoutId,
+      amountWP: params.amountWP,
+      payoutId: params.payoutId,
     };
     const meta = { payoutId: params.payoutId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('payout.released.vendor', user.email, vars),
-        user.phone && this.sendSms('payout.released.vendor', user.phone, vars),
-        this.sendPushToUser('payout.released.vendor', user.id, vars, { payoutId: params.payoutId }),
-        this.sendInApp('payout.released.vendor', vendor.userId, vars, 'payout', meta),
-      ]);
-    }, this.logger, 'payout.released.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('payout.released.vendor', user.email, vars),
+          user.phone &&
+            this.sendSms('payout.released.vendor', user.phone, vars),
+          this.sendPushToUser('payout.released.vendor', user.id, vars, {
+            payoutId: params.payoutId,
+          }),
+          this.sendInApp(
+            'payout.released.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'payout.released.vendor',
+    );
   }
 
   /** Fire when a claim deduction is raised against a vendor (with response window). */
   async notifyVendorDeductionNotice(params: {
-    vendorId:    string;
-    amountWp:    number;
-    reason:      string;
-    respondBy:   Date;
+    vendorId: string;
+    amountWp: number;
+    reason: string;
+    respondBy: Date;
     deductionId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:  vendor.businessName,
-      amountWP:    params.amountWp,
-      reason:      params.reason,
-      respondBy:   params.respondBy.toISOString().slice(0, 10),
+      vendorName: vendor.businessName,
+      amountWP: params.amountWp,
+      reason: params.reason,
+      respondBy: params.respondBy.toISOString().slice(0, 10),
       deductionId: params.deductionId,
     };
     const meta = { deductionId: params.deductionId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('deduction.notice.vendor', user.email, vars),
-        user.phone && this.sendSms('deduction.notice.vendor', user.phone, vars),
-        this.sendPushToUser('deduction.notice.vendor', user.id, vars, { deductionId: params.deductionId }),
-        this.sendInApp('deduction.notice.vendor', vendor.userId, vars, 'payout', meta),
-      ]);
-    }, this.logger, 'deduction.notice.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('deduction.notice.vendor', user.email, vars),
+          user.phone &&
+            this.sendSms('deduction.notice.vendor', user.phone, vars),
+          this.sendPushToUser('deduction.notice.vendor', user.id, vars, {
+            deductionId: params.deductionId,
+          }),
+          this.sendInApp(
+            'deduction.notice.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'deduction.notice.vendor',
+    );
   }
 
   /** Fire when a deduction is applied (vendor debited). */
   async notifyVendorDeductionApplied(params: {
-    vendorId:    string;
-    amountWp:    number;
-    reason:      string;
+    vendorId: string;
+    amountWp: number;
+    reason: string;
     deductionId: string;
   }) {
     const { vendor, user } = await this.getVendorUser(params.vendorId);
     if (!vendor || !user) return;
 
     const vars: Record<string, string | number> = {
-      vendorName:  vendor.businessName,
-      amountWP:    params.amountWp,
-      reason:      params.reason,
+      vendorName: vendor.businessName,
+      amountWP: params.amountWp,
+      reason: params.reason,
       deductionId: params.deductionId,
     };
     const meta = { deductionId: params.deductionId };
 
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('deduction.applied.vendor', user.email, vars),
-        user.phone && this.sendSms('deduction.applied.vendor', user.phone, vars),
-        this.sendPushToUser('deduction.applied.vendor', user.id, vars, { deductionId: params.deductionId }),
-        this.sendInApp('deduction.applied.vendor', vendor.userId, vars, 'payout', meta),
-      ]);
-    }, this.logger, 'deduction.applied.vendor');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('deduction.applied.vendor', user.email, vars),
+          user.phone &&
+            this.sendSms('deduction.applied.vendor', user.phone, vars),
+          this.sendPushToUser('deduction.applied.vendor', user.id, vars, {
+            deductionId: params.deductionId,
+          }),
+          this.sendInApp(
+            'deduction.applied.vendor',
+            vendor.userId,
+            vars,
+            'payout',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'deduction.applied.vendor',
+    );
   }
 
   // ─── Suspension due-process (WS4 1.14) — addressed by userId ────────────────────
 
-  async notifySuspensionNotice(userId: string, params: { reason: string; respondBy: Date; noticeId: string }) {
+  async notifySuspensionNotice(
+    userId: string,
+    params: { reason: string; respondBy: Date; noticeId: string },
+  ) {
     const user = await this.getUser(userId);
     if (!user) return;
     const vars: Record<string, string | number> = {
@@ -1427,76 +2133,140 @@ export class NotificationsService {
       noticeId: params.noticeId,
     };
     const meta = { noticeId: params.noticeId };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('suspension.notice', user.email, vars),
-        user.phone && this.sendSms('suspension.notice', user.phone, vars),
-        this.sendPushToUser('suspension.notice', user.id, vars, { noticeId: params.noticeId }),
-        this.sendInApp('suspension.notice', user.id, vars, 'account', meta),
-      ]);
-    }, this.logger, 'suspension.notice');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('suspension.notice', user.email, vars),
+          user.phone && this.sendSms('suspension.notice', user.phone, vars),
+          this.sendPushToUser('suspension.notice', user.id, vars, {
+            noticeId: params.noticeId,
+          }),
+          this.sendInApp('suspension.notice', user.id, vars, 'account', meta),
+        ]);
+      },
+      this.logger,
+      'suspension.notice',
+    );
   }
 
-  async notifySuspensionEnforced(userId: string, params: { reason: string; immediate: boolean; noticeId: string }) {
+  async notifySuspensionEnforced(
+    userId: string,
+    params: { reason: string; immediate: boolean; noticeId: string },
+  ) {
     const user = await this.getUser(userId);
     if (!user) return;
-    const vars: Record<string, string | number> = { reason: params.reason, noticeId: params.noticeId };
+    const vars: Record<string, string | number> = {
+      reason: params.reason,
+      noticeId: params.noticeId,
+    };
     const meta = { noticeId: params.noticeId };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('suspension.enforced', user.email, vars),
-        user.phone && this.sendSms('suspension.enforced', user.phone, vars),
-        this.sendPushToUser('suspension.enforced', user.id, vars, { noticeId: params.noticeId }),
-        this.sendInApp('suspension.enforced', user.id, vars, 'account', meta),
-      ]);
-    }, this.logger, 'suspension.enforced');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail('suspension.enforced', user.email, vars),
+          user.phone && this.sendSms('suspension.enforced', user.phone, vars),
+          this.sendPushToUser('suspension.enforced', user.id, vars, {
+            noticeId: params.noticeId,
+          }),
+          this.sendInApp('suspension.enforced', user.id, vars, 'account', meta),
+        ]);
+      },
+      this.logger,
+      'suspension.enforced',
+    );
   }
 
-  async notifySuspensionReviewDecided(userId: string, params: { decision: 'upheld' | 'overturned'; noticeId: string }) {
+  async notifySuspensionReviewDecided(
+    userId: string,
+    params: { decision: 'upheld' | 'overturned'; noticeId: string },
+  ) {
     const user = await this.getUser(userId);
     if (!user) return;
-    const key = params.decision === 'overturned' ? 'suspension.reinstated' : 'suspension.upheld';
+    const key =
+      params.decision === 'overturned'
+        ? 'suspension.reinstated'
+        : 'suspension.upheld';
     const vars: Record<string, string | number> = { noticeId: params.noticeId };
     const meta = { noticeId: params.noticeId };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail(key, user.email, vars),
-        user.phone && this.sendSms(key, user.phone, vars),
-        this.sendPushToUser(key, user.id, vars, { noticeId: params.noticeId }),
-        this.sendInApp(key, user.id, vars, 'account', meta),
-      ]);
-    }, this.logger, key);
+    fire(
+      async () => {
+        await Promise.all([
+          user.email && this.sendEmail(key, user.email, vars),
+          user.phone && this.sendSms(key, user.phone, vars),
+          this.sendPushToUser(key, user.id, vars, {
+            noticeId: params.noticeId,
+          }),
+          this.sendInApp(key, user.id, vars, 'account', meta),
+        ]);
+      },
+      this.logger,
+      key,
+    );
   }
 
   // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
 
-  async notifyCustomerUncollected(customerId: string, params: { orderRef: string; orderId: string }) {
+  async notifyCustomerUncollected(
+    customerId: string,
+    params: { orderRef: string; orderId: string },
+  ) {
     const user = await this.getUser(customerId);
     if (!user) return;
     const vars: Record<string, string | number> = { orderRef: params.orderRef };
     const meta = { orderId: params.orderId };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('order.uncollected.customer', user.email, vars),
-        user.phone && this.sendSms('order.uncollected.customer', user.phone, vars),
-        this.sendPushToUser('order.uncollected.customer', user.id, vars, { orderId: params.orderId }),
-        this.sendInApp('order.uncollected.customer', user.id, vars, 'order', meta),
-      ]);
-    }, this.logger, 'order.uncollected.customer');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('order.uncollected.customer', user.email, vars),
+          user.phone &&
+            this.sendSms('order.uncollected.customer', user.phone, vars),
+          this.sendPushToUser('order.uncollected.customer', user.id, vars, {
+            orderId: params.orderId,
+          }),
+          this.sendInApp(
+            'order.uncollected.customer',
+            user.id,
+            vars,
+            'order',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'order.uncollected.customer',
+    );
   }
 
-  async notifyCustomerOrderAbandoned(customerId: string, params: { orderRef: string; orderId: string }) {
+  async notifyCustomerOrderAbandoned(
+    customerId: string,
+    params: { orderRef: string; orderId: string },
+  ) {
     const user = await this.getUser(customerId);
     if (!user) return;
     const vars: Record<string, string | number> = { orderRef: params.orderRef };
     const meta = { orderId: params.orderId };
-    fire(async () => {
-      await Promise.all([
-        user.email && this.sendEmail('order.abandoned.customer', user.email, vars),
-        user.phone && this.sendSms('order.abandoned.customer', user.phone, vars),
-        this.sendPushToUser('order.abandoned.customer', user.id, vars, { orderId: params.orderId }),
-        this.sendInApp('order.abandoned.customer', user.id, vars, 'order', meta),
-      ]);
-    }, this.logger, 'order.abandoned.customer');
+    fire(
+      async () => {
+        await Promise.all([
+          user.email &&
+            this.sendEmail('order.abandoned.customer', user.email, vars),
+          user.phone &&
+            this.sendSms('order.abandoned.customer', user.phone, vars),
+          this.sendPushToUser('order.abandoned.customer', user.id, vars, {
+            orderId: params.orderId,
+          }),
+          this.sendInApp(
+            'order.abandoned.customer',
+            user.id,
+            vars,
+            'order',
+            meta,
+          ),
+        ]);
+      },
+      this.logger,
+      'order.abandoned.customer',
+    );
   }
 }

@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CatalogueItem } from '../../database/entities/catalogue-item.entity';
@@ -9,17 +13,17 @@ import { PricingService } from './pricing.service';
 import { ItemPricingService } from './item-pricing.service';
 
 export interface ItemSelection {
-  itemId:    string;
-  qty:       number;
+  itemId: string;
+  qty: number;
   /** Handling flag — the item is to be dry-cleaned (only valid on eligible items). */
   dryClean?: boolean;
 }
 
 export interface QuoteLine {
-  itemId:     string;
-  name:       string;
-  qty:        number;
-  unitNgn:    number;   // item price incl. charges + ironing where applicable
+  itemId: string;
+  name: string;
+  qty: number;
+  unitNgn: number; // item price incl. charges + ironing where applicable
   subtotalNgn: number;
   /**
    * Choose-Washerman only: the chosen vendor's own raw price for this item (₦,
@@ -30,10 +34,10 @@ export interface QuoteLine {
 }
 
 export interface Quote {
-  flow:      'wash_iron' | 'wash_fold' | 'bundle';
-  lines:     QuoteLine[];
-  totalNgn:  number;
-  totalWp:   number;
+  flow: 'wash_iron' | 'wash_fold' | 'bundle';
+  lines: QuoteLine[];
+  totalNgn: number;
+  totalWp: number;
   conversionRateId: string;
   conversionRateSnapshot: number;
   calculatedAt: string;
@@ -64,7 +68,10 @@ export class OrderQuoteService {
    *   floor price when the vendor hasn't priced it. When omitted (automatic
    *   allocation), the cached platform P70 price (`item.priceNgn`) is used.
    */
-  async quoteWashIron(selections: ItemSelection[], vendorId?: string): Promise<Quote> {
+  async quoteWashIron(
+    selections: ItemSelection[],
+    vendorId?: string,
+  ): Promise<Quote> {
     if (!selections?.length) throw new BadRequestException('No items selected');
 
     const [config, rate] = await Promise.all([
@@ -78,7 +85,9 @@ export class OrderQuoteService {
     const byId = new Map(items.map((i) => [i.id, i]));
 
     // Choose-Washerman: resolve the chosen vendor's own item prices once.
-    const vendorPrices = vendorId ? await this.itemPricingService.getVendorItemPrices(vendorId) : null;
+    const vendorPrices = vendorId
+      ? await this.itemPricingService.getVendorItemPrices(vendorId)
+      : null;
 
     const lines: QuoteLine[] = [];
     let totalNgn = 0;
@@ -86,13 +95,18 @@ export class OrderQuoteService {
       const item = byId.get(sel.itemId);
       if (!item) throw new NotFoundException(`Item not found: ${sel.itemId}`);
       if (!item.isActive) {
-        throw new BadRequestException(`Item not available for ordering: ${item.name}`);
+        throw new BadRequestException(
+          `Item not available for ordering: ${item.name}`,
+        );
       }
-      if (!(sel.qty > 0)) throw new BadRequestException(`Invalid quantity for ${item.name}`);
+      if (!(sel.qty > 0))
+        throw new BadRequestException(`Invalid quantity for ${item.name}`);
       // Dry-cleaning is only offered on eligible items (its cost is already in their
       // price — no surcharge). Reject the flag on ineligible items.
       if (sel.dryClean && !item.dryCleanEligible) {
-        throw new BadRequestException(`"${item.name}" is not eligible for dry cleaning`);
+        throw new BadRequestException(
+          `"${item.name}" is not eligible for dry cleaning`,
+        );
       }
 
       // Charged price (before ironing): platform P70 in automatic mode; the chosen
@@ -104,13 +118,20 @@ export class OrderQuoteService {
         const fallback = item.floorPriceNgn ?? null;
         const chosen = vendorBase ?? fallback;
         if (chosen == null || !(chosen > 0)) {
-          throw new BadRequestException(`This washerman hasn't priced "${item.name}" yet`);
+          throw new BadRequestException(
+            `This washerman hasn't priced "${item.name}" yet`,
+          );
         }
         vendorBaseNgn = chosen;
-        chargedNgn = this.itemPricingService.chargeBase(chosen, config.chargeStack);
+        chargedNgn = this.itemPricingService.chargeBase(
+          chosen,
+          config.chargeStack,
+        );
       } else {
         if (!item.isAvailable || item.priceNgn == null) {
-          throw new BadRequestException(`Item not available for ordering: ${item.name}`);
+          throw new BadRequestException(
+            `Item not available for ordering: ${item.name}`,
+          );
         }
         chargedNgn = item.priceNgn;
       }
@@ -118,14 +139,24 @@ export class OrderQuoteService {
       const unitNgn = Math.round(chargedNgn * ironingMult * 100) / 100;
       const subtotalNgn = Math.round(unitNgn * sel.qty * 100) / 100;
       totalNgn += subtotalNgn;
-      lines.push({ itemId: item.id, name: item.name, qty: sel.qty, unitNgn, subtotalNgn, vendorBaseNgn });
+      lines.push({
+        itemId: item.id,
+        name: item.name,
+        qty: sel.qty,
+        unitNgn,
+        subtotalNgn,
+        vendorBaseNgn,
+      });
     }
 
     totalNgn = Math.round(totalNgn * 100) / 100;
     return {
-      flow: 'wash_iron', lines, totalNgn,
+      flow: 'wash_iron',
+      lines,
+      totalNgn,
       totalWp: Math.round(totalNgn * rate.pointsPerUnit),
-      conversionRateId: rate.id, conversionRateSnapshot: rate.pointsPerUnit,
+      conversionRateId: rate.id,
+      conversionRateSnapshot: rate.pointsPerUnit,
       calculatedAt: new Date().toISOString(),
     };
   }
@@ -136,14 +167,24 @@ export class OrderQuoteService {
       this.pricingService.getActiveConversionRate(),
     ]);
     if (!bag) throw new NotFoundException('Bag not found');
-    if (!bag.isActive || bag.priceNgn == null) throw new BadRequestException('Bag not available for ordering');
+    if (!bag.isActive || bag.priceNgn == null)
+      throw new BadRequestException('Bag not available for ordering');
 
     return {
       flow: 'wash_fold',
-      lines: [{ itemId: bag.id, name: bag.name, qty: 1, unitNgn: bag.priceNgn, subtotalNgn: bag.priceNgn }],
+      lines: [
+        {
+          itemId: bag.id,
+          name: bag.name,
+          qty: 1,
+          unitNgn: bag.priceNgn,
+          subtotalNgn: bag.priceNgn,
+        },
+      ],
       totalNgn: bag.priceNgn,
       totalWp: bag.priceWp ?? Math.round(bag.priceNgn * rate.pointsPerUnit),
-      conversionRateId: rate.id, conversionRateSnapshot: rate.pointsPerUnit,
+      conversionRateId: rate.id,
+      conversionRateSnapshot: rate.pointsPerUnit,
       calculatedAt: new Date().toISOString(),
     };
   }
@@ -162,10 +203,21 @@ export class OrderQuoteService {
     }
     return {
       flow: 'bundle',
-      lines: [{ itemId: bundle.id, name: bundle.name, qty: 1, unitNgn: bundle.effectivePriceNgn, subtotalNgn: bundle.effectivePriceNgn }],
+      lines: [
+        {
+          itemId: bundle.id,
+          name: bundle.name,
+          qty: 1,
+          unitNgn: bundle.effectivePriceNgn,
+          subtotalNgn: bundle.effectivePriceNgn,
+        },
+      ],
       totalNgn: bundle.effectivePriceNgn,
-      totalWp: bundle.effectivePriceWp ?? Math.round(bundle.effectivePriceNgn * rate.pointsPerUnit),
-      conversionRateId: rate.id, conversionRateSnapshot: rate.pointsPerUnit,
+      totalWp:
+        bundle.effectivePriceWp ??
+        Math.round(bundle.effectivePriceNgn * rate.pointsPerUnit),
+      conversionRateId: rate.id,
+      conversionRateSnapshot: rate.pointsPerUnit,
       calculatedAt: new Date().toISOString(),
     };
   }

@@ -10,7 +10,10 @@ const average = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 /** Nearest-rank percentile (p in 0–100). */
 const percentile = (xs: number[], p: number) => {
   const sorted = [...xs].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
+  );
   return sorted[idx];
 };
 
@@ -35,40 +38,74 @@ export class TransportService {
 
   private feeFromOneWayKm(
     oneWayKm: number,
-    cfg: { transportBaseFareWp: number; transportPerKmWp: number; transportMinWp: number; transportMaxWp: number },
+    cfg: {
+      transportBaseFareWp: number;
+      transportPerKmWp: number;
+      transportMinWp: number;
+      transportMaxWp: number;
+    },
   ): number {
     const roundTripKm = oneWayKm * 2; // customer → vendor and back
-    const raw = Number(cfg.transportBaseFareWp) + Number(cfg.transportPerKmWp) * roundTripKm;
+    const raw =
+      Number(cfg.transportBaseFareWp) +
+      Number(cfg.transportPerKmWp) * roundTripKm;
     return this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp);
   }
 
   /** Checkout estimate: the chosen statistic over distances to the area's located vendors. */
-  async estimateForArea(pickup: Coord, areaId: string): Promise<{ transportWp: number; distanceKm: number; vendorCount: number }> {
+  async estimateForArea(
+    pickup: Coord,
+    areaId: string,
+  ): Promise<{ transportWp: number; distanceKm: number; vendorCount: number }> {
     const cfg = await this.platformConfig.getConfig();
     const vendors = await this.vendors
       .createQueryBuilder('v')
       .where('v.area_ids @> :area', { area: JSON.stringify([areaId]) })
       .andWhere('v.latitude IS NOT NULL')
       .andWhere('v.longitude IS NOT NULL')
-      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
+      .andWhere('v.verification_status = :vs', {
+        vs: VendorVerificationStatus.VERIFIED,
+      })
       .getMany();
 
     if (vendors.length === 0) {
-      throw new BadRequestException('No located vendors in this area yet — transport cannot be priced');
+      throw new BadRequestException(
+        'No located vendors in this area yet — transport cannot be priced',
+      );
     }
 
     const dists: number[] = [];
     for (const v of vendors) {
-      dists.push(await this.distance.distanceKm(pickup, { lat: v.latitude!, lng: v.longitude! }, cfg.transportDistanceProvider));
+      dists.push(
+        await this.distance.distanceKm(
+          pickup,
+          { lat: v.latitude!, lng: v.longitude! },
+          cfg.transportDistanceProvider,
+        ),
+      );
     }
-    const km = cfg.transportEstimateBasis === 'p75' ? percentile(dists, 75) : average(dists);
-    return { transportWp: this.feeFromOneWayKm(km, cfg), distanceKm: km, vendorCount: vendors.length };
+    const km =
+      cfg.transportEstimateBasis === 'p75'
+        ? percentile(dists, 75)
+        : average(dists);
+    return {
+      transportWp: this.feeFromOneWayKm(km, cfg),
+      distanceKm: km,
+      vendorCount: vendors.length,
+    };
   }
 
   /** Actual transport for the assigned vendor. */
-  async actualForVendor(pickup: Coord, vendor: Coord): Promise<{ transportWp: number; distanceKm: number }> {
+  async actualForVendor(
+    pickup: Coord,
+    vendor: Coord,
+  ): Promise<{ transportWp: number; distanceKm: number }> {
     const cfg = await this.platformConfig.getConfig();
-    const km = await this.distance.distanceKm(pickup, vendor, cfg.transportDistanceProvider);
+    const km = await this.distance.distanceKm(
+      pickup,
+      vendor,
+      cfg.transportDistanceProvider,
+    );
     return { transportWp: this.feeFromOneWayKm(km, cfg), distanceKm: km };
   }
 
@@ -81,10 +118,21 @@ export class TransportService {
    * One-way transport fee for a single logistics leg (A→B), plus its distance.
    * Unlike a wash order (round trip), a leg is a single directional trip.
    */
-  async legFee(a: Coord, b: Coord): Promise<{ transportWp: number; distanceKm: number }> {
+  async legFee(
+    a: Coord,
+    b: Coord,
+  ): Promise<{ transportWp: number; distanceKm: number }> {
     const cfg = await this.platformConfig.getConfig();
-    const km = await this.distance.distanceKm(a, b, cfg.transportDistanceProvider);
-    const raw = Number(cfg.transportBaseFareWp) + Number(cfg.transportPerKmWp) * km;
-    return { transportWp: this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp), distanceKm: km };
+    const km = await this.distance.distanceKm(
+      a,
+      b,
+      cfg.transportDistanceProvider,
+    );
+    const raw =
+      Number(cfg.transportBaseFareWp) + Number(cfg.transportPerKmWp) * km;
+    return {
+      transportWp: this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp),
+      distanceKm: km,
+    };
   }
 }

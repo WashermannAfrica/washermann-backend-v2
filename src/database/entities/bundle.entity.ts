@@ -1,7 +1,10 @@
 import { Column, Entity } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from './base.entity';
-import { DecimalTransformer, BigIntTransformer } from '../../common/transformers/column.transformers';
+import {
+  DecimalTransformer,
+  BigIntTransformer,
+} from '../../common/transformers/column.transformers';
 
 export type BundlePromoType = 'percentage' | 'fixed';
 
@@ -38,19 +41,37 @@ export class Bundle extends BaseEntity {
 
   // ─── Derived base price (P70 × median qty) ────────────────────────────────────
   @ApiProperty({ nullable: true })
-  @Column({ name: 'price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  @Column({
+    name: 'price_ngn',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: DecimalTransformer,
+  })
   priceNgn: number | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'price_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @Column({
+    name: 'price_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   priceWp: number | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'price_computed_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'price_computed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   priceComputedAt: Date | null;
 
   // ─── Promo override ───────────────────────────────────────────────────────────
-  @ApiProperty({ description: 'Whether an admin promo overrides the derived price' })
+  @ApiProperty({
+    description: 'Whether an admin promo overrides the derived price',
+  })
   @Column({ name: 'is_promo', type: 'boolean', default: false })
   isPromo: boolean;
 
@@ -58,24 +79,56 @@ export class Bundle extends BaseEntity {
   @Column({ name: 'promo_type', type: 'varchar', length: 20, nullable: true })
   promoType: BundlePromoType | null;
 
-  @ApiProperty({ nullable: true, description: 'Percent discount (e.g. 10) or fixed price (₦) per promoType' })
-  @Column({ name: 'promo_value', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  @ApiProperty({
+    nullable: true,
+    description: 'Percent discount (e.g. 10) or fixed price (₦) per promoType',
+  })
+  @Column({
+    name: 'promo_value',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: DecimalTransformer,
+  })
   promoValue: number | null;
 
   // ─── Effective price (after promo) — what the customer pays ───────────────────
   @ApiProperty({ nullable: true })
-  @Column({ name: 'effective_price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  @Column({
+    name: 'effective_price_ngn',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: DecimalTransformer,
+  })
   effectivePriceNgn: number | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'effective_price_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @Column({
+    name: 'effective_price_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   effectivePriceWp: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Optional expiry — bundle not orderable after this' })
-  @Column({ name: 'expires_at', type: 'timestamp with time zone', nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description: 'Optional expiry — bundle not orderable after this',
+  })
+  @Column({
+    name: 'expires_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   expiresAt: Date | null;
 
-  @ApiProperty({ nullable: true, description: 'Audience targeting blob (null = all users)' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Audience targeting blob (null = all users)',
+  })
   @Column({ type: 'jsonb', nullable: true })
   audience: Record<string, any> | null;
 

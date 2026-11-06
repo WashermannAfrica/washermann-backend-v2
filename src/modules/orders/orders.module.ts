@@ -28,12 +28,22 @@ import { TransportModule } from '../transport/transport.module';
 import { CatalogueModule } from '../catalogue/catalogue.module';
 import { GiftCardsModule } from '../gift-cards/gift-cards.module';
 import { ReceiptsModule } from '../receipts/receipts.module';
+import { User } from '@database/entities/user.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Order, OrderEscrow, OrderFundingLink, OrderStatusHistory, RatingEvent,
-      Rep, Vendor, Wallet, LedgerEntry, ConversionRate,
+      Order,
+      OrderEscrow,
+      OrderFundingLink,
+      OrderStatusHistory,
+      RatingEvent,
+      Rep,
+      User,
+      Vendor,
+      Wallet,
+      LedgerEntry,
+      ConversionRate,
     ]),
     PricingModule,
     VendorsModule,

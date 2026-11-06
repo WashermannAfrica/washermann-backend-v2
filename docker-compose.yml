@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: washermann-api
     ports:
-      - '3000:3000'
+      - '3009:3009'
     env_file:
       - .env
     environment:

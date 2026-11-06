@@ -43,6 +43,8 @@ import { CatalogueService } from '../catalogue/catalogue.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { ReceiptsService } from '../receipts/receipts.service';
 import type { GarmentLogLine } from '../../database/entities/order.entity';
+import { randomInt } from 'crypto';
+import { User } from '@database/entities/user.entity';
 
 /**
  * The order state machine. `transition()` only allows a move that appears here
@@ -52,31 +54,52 @@ import type { GarmentLogLine } from '../../database/entities/order.entity';
  * SCHEDULED → PICKED_UP since there's no en-route endpoint yet.
  */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  [OrderStatus.PENDING_PAYMENT]:     [OrderStatus.PAID, OrderStatus.CANCELLED],
-  [OrderStatus.PAID]:                [OrderStatus.BROADCASTING_REP, OrderStatus.CANCELLED],
-  [OrderStatus.BROADCASTING_REP]:    [OrderStatus.REP_ASSIGNED, OrderStatus.CANCELLED],
-  [OrderStatus.REP_ASSIGNED]:        [OrderStatus.BROADCASTING_VENDOR, OrderStatus.CANCELLED],
-  [OrderStatus.BROADCASTING_VENDOR]: [OrderStatus.VENDOR_ASSIGNED, OrderStatus.CANCELLED],
-  [OrderStatus.VENDOR_ASSIGNED]:     [OrderStatus.SCHEDULED, OrderStatus.CANCELLED],
-  [OrderStatus.SCHEDULED]:           [OrderStatus.REP_EN_ROUTE_PICKUP, OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
+  [OrderStatus.PENDING_PAYMENT]: [OrderStatus.PAID, OrderStatus.CANCELLED],
+  [OrderStatus.PAID]: [OrderStatus.BROADCASTING_REP, OrderStatus.CANCELLED],
+  [OrderStatus.BROADCASTING_REP]: [
+    OrderStatus.REP_ASSIGNED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.REP_ASSIGNED]: [
+    OrderStatus.BROADCASTING_VENDOR,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.BROADCASTING_VENDOR]: [
+    OrderStatus.VENDOR_ASSIGNED,
+    OrderStatus.CANCELLED,
+  ],
+  [OrderStatus.VENDOR_ASSIGNED]: [OrderStatus.SCHEDULED, OrderStatus.CANCELLED],
+  [OrderStatus.SCHEDULED]: [
+    OrderStatus.REP_EN_ROUTE_PICKUP,
+    OrderStatus.PICKED_UP,
+    OrderStatus.CANCELLED,
+  ],
   [OrderStatus.REP_EN_ROUTE_PICKUP]: [OrderStatus.PICKED_UP],
-  [OrderStatus.PICKED_UP]:           [OrderStatus.WITH_VENDOR],
-  [OrderStatus.WITH_VENDOR]:         [OrderStatus.IN_PROGRESS],
-  [OrderStatus.IN_PROGRESS]:         [OrderStatus.READY_FOR_DELIVERY],
-  [OrderStatus.READY_FOR_DELIVERY]:  [OrderStatus.REP_COLLECTED],
-  [OrderStatus.REP_COLLECTED]:       [OrderStatus.OUT_FOR_DELIVERY],
-  [OrderStatus.OUT_FOR_DELIVERY]:    [OrderStatus.DELIVERED, OrderStatus.DELIVERY_FAILED],
-  [OrderStatus.DELIVERY_FAILED]:     [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.ABANDONED],
-  [OrderStatus.DELIVERED]:           [OrderStatus.COMPLETED],
-  [OrderStatus.ABANDONED]:           [],
-  [OrderStatus.COMPLETED]:           [],
-  [OrderStatus.DISPUTED]:            [],
-  [OrderStatus.CANCELLED]:           [],
+  [OrderStatus.PICKED_UP]: [OrderStatus.WITH_VENDOR],
+  [OrderStatus.WITH_VENDOR]: [OrderStatus.IN_PROGRESS],
+  [OrderStatus.IN_PROGRESS]: [OrderStatus.READY_FOR_DELIVERY],
+  [OrderStatus.READY_FOR_DELIVERY]: [OrderStatus.REP_COLLECTED],
+  [OrderStatus.REP_COLLECTED]: [OrderStatus.OUT_FOR_DELIVERY],
+  [OrderStatus.OUT_FOR_DELIVERY]: [
+    OrderStatus.DELIVERED,
+    OrderStatus.DELIVERY_FAILED,
+  ],
+  [OrderStatus.DELIVERY_FAILED]: [
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERED,
+    OrderStatus.ABANDONED,
+  ],
+  [OrderStatus.DELIVERED]: [OrderStatus.COMPLETED],
+  [OrderStatus.ABANDONED]: [],
+  [OrderStatus.COMPLETED]: [],
+  [OrderStatus.DISPUTED]: [],
+  [OrderStatus.CANCELLED]: [],
 };
 
 /** Statuses from which a customer may still cancel (derived from the machine). */
-export const CANCELLABLE_STATUSES: OrderStatus[] = (Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[])
-  .filter((s) => ALLOWED_TRANSITIONS[s].includes(OrderStatus.CANCELLED));
+export const CANCELLABLE_STATUSES: OrderStatus[] = (
+  Object.keys(ALLOWED_TRANSITIONS) as OrderStatus[]
+).filter((s) => ALLOWED_TRANSITIONS[s].includes(OrderStatus.CANCELLED));
 
 @Injectable()
 export class OrdersService {
@@ -97,6 +120,9 @@ export class OrdersService {
 
     @InjectRepository(Rep)
     private repRepository: Repository<Rep>,
+
+    @InjectRepository(User)
+    private customerRepository: Repository<User>,
 
     @InjectRepository(Vendor)
     private vendorRepository: Repository<Vendor>,
@@ -133,19 +159,31 @@ export class OrdersService {
   // ─── Place order ─────────────────────────────────────────────────────────────
 
   /** Resolve the authoritative quote for the order's flow, validating its required fields. */
-  private async quoteForFlow(dto: PlaceOrderDto, chosenVendorId?: string): Promise<Quote> {
+  private async quoteForFlow(
+    dto: PlaceOrderDto,
+    chosenVendorId?: string,
+  ): Promise<Quote> {
     if (dto.flow === 'wash_iron') {
       if (!dto.selections?.length) {
-        throw new BadRequestException('selections are required for a wash_iron order');
+        throw new BadRequestException(
+          'selections are required for a wash_iron order',
+        );
       }
       // Choose-Washerman prices wash_iron items from the chosen vendor's own rates.
-      return this.orderQuoteService.quoteWashIron(dto.selections, chosenVendorId);
+      return this.orderQuoteService.quoteWashIron(
+        dto.selections,
+        chosenVendorId,
+      );
     }
     if (dto.flow === 'wash_fold') {
-      if (!dto.bagId) throw new BadRequestException('bagId is required for a wash_fold order');
+      if (!dto.bagId)
+        throw new BadRequestException(
+          'bagId is required for a wash_fold order',
+        );
       return this.orderQuoteService.quoteBag(dto.bagId);
     }
-    if (!dto.bundleId) throw new BadRequestException('bundleId is required for a bundle order');
+    if (!dto.bundleId)
+      throw new BadRequestException('bundleId is required for a bundle order');
     return this.orderQuoteService.quoteBundle(dto.bundleId);
   }
 
@@ -161,13 +199,21 @@ export class OrdersService {
   private decomposeCharges(
     totalWp: number,
     flow: PlaceOrderDto['flow'],
-    config: { chargeStack?: { key: string; kind: string; value: number }[]; ironingPercent?: number },
+    config: {
+      chargeStack?: { key: string; kind: string; value: number }[];
+      ironingPercent?: number;
+    },
   ): { baseWP: number; commissionWP: number; vatWP: number } {
     const stack = config.chargeStack ?? [];
-    const sumPct = stack.filter((c) => c.kind === 'percent').reduce((s, c) => s + Number(c.value), 0);
-    const commissionPct = Number(stack.find((c) => c.key === 'wash_rep_commission')?.value ?? 0);
+    const sumPct = stack
+      .filter((c) => c.kind === 'percent')
+      .reduce((s, c) => s + Number(c.value), 0);
+    const commissionPct = Number(
+      stack.find((c) => c.key === 'wash_rep_commission')?.value ?? 0,
+    );
     const vatPct = Number(stack.find((c) => c.key === 'vat')?.value ?? 0);
-    const I = flow === 'wash_iron' ? Number(config.ironingPercent ?? 0) / 100 : 0;
+    const I =
+      flow === 'wash_iron' ? Number(config.ironingPercent ?? 0) / 100 : 0;
     const S = sumPct / 100;
     const baseWP = Math.round(totalWp / ((1 + S) * (1 + I)));
     return {
@@ -192,7 +238,11 @@ export class OrdersService {
     const resolution = await this.areasService.resolveAreaForPoint(
       dto.pickupLatitude,
       dto.pickupLongitude,
-      { userId: customerId, addressText: dto.pickupAddress, source: 'order_placed' },
+      {
+        userId: customerId,
+        addressText: dto.pickupAddress,
+        source: 'order_placed',
+      },
     );
     if (resolution) {
       areaId = resolution.area.id;
@@ -210,17 +260,31 @@ export class OrdersService {
     }
 
     // 0b. Choose-Washerman — validate the chosen vendor serves this area and is verified.
-    const allocationMode: 'automatic' | 'choose' = dto.allocationMode ?? 'automatic';
+    const allocationMode: 'automatic' | 'choose' =
+      dto.allocationMode ?? 'automatic';
     let chosenVendor: Vendor | null = null;
     if (allocationMode === 'choose') {
-      if (!dto.vendorId) throw new BadRequestException('vendorId is required when choosing a washerman');
-      chosenVendor = await this.vendorRepository.findOne({ where: { id: dto.vendorId } });
-      if (!chosenVendor) throw new BadRequestException('Chosen washerman not found');
-      if (chosenVendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
+      if (!dto.vendorId)
+        throw new BadRequestException(
+          'vendorId is required when choosing a washerman',
+        );
+      chosenVendor = await this.vendorRepository.findOne({
+        where: { id: dto.vendorId },
+      });
+      if (!chosenVendor)
+        throw new BadRequestException('Chosen washerman not found');
+      if (
+        chosenVendor.verificationStatus !== VendorVerificationStatus.VERIFIED
+      ) {
         throw new BadRequestException('Chosen washerman is not available');
       }
-      if (!Array.isArray(chosenVendor.areaIds) || !chosenVendor.areaIds.includes(areaId)) {
-        throw new BadRequestException('Chosen washerman does not serve this area');
+      if (
+        !Array.isArray(chosenVendor.areaIds) ||
+        !chosenVendor.areaIds.includes(areaId)
+      ) {
+        throw new BadRequestException(
+          'Chosen washerman does not serve this area',
+        );
       }
     }
 
@@ -231,7 +295,9 @@ export class OrdersService {
 
     // Distance-based transport estimate — coordinates are mandatory (no flat fallback).
     if (dto.pickupLatitude == null || dto.pickupLongitude == null) {
-      throw new BadRequestException('Pickup coordinates are required to price transport');
+      throw new BadRequestException(
+        'Pickup coordinates are required to price transport',
+      );
     }
     const pickupCoord = { lat: dto.pickupLatitude, lng: dto.pickupLongitude };
     // Choose mode with a located vendor → charge the exact round-trip to that vendor;
@@ -244,30 +310,33 @@ export class OrdersService {
           })
         : await this.transportService.estimateForArea(pickupCoord, areaId);
     const transportWp = transportEst.transportWp;
-    const transportNgn = quote.conversionRateSnapshot > 0
-      ? Math.round(transportWp / quote.conversionRateSnapshot)
-      : 0;
+    const transportNgn =
+      quote.conversionRateSnapshot > 0
+        ? Math.round(transportWp / quote.conversionRateSnapshot)
+        : 0;
 
     // Shape the quote into the pricing snapshot the rest of the method consumes.
     const pricing = {
       lineItems: quote.lines.map((l) => ({
-        label:       l.name,
-        category:    (dto.flow === 'wash_fold' ? 'bag' : 'special_item') as 'bag' | 'special_item',
+        label: l.name,
+        category: (dto.flow === 'wash_fold' ? 'bag' : 'special_item') as
+          | 'bag'
+          | 'special_item',
         unitPriceWP: Math.round(l.unitNgn * quote.conversionRateSnapshot),
-        qty:         l.qty,
-        subtotalWP:  Math.round(l.subtotalNgn * quote.conversionRateSnapshot),
+        qty: l.qty,
+        subtotalWP: Math.round(l.subtotalNgn * quote.conversionRateSnapshot),
       })),
-      subtotalWP:             quote.totalWp,
-      serviceChargeWP:        0,
-      vatWP:                  0,
-      transportWP:            transportWp,
-      totalWP:                quote.totalWp + transportWp,
-      nairaEquivalent:        quote.totalNgn + transportNgn,
-      conversionRateId:       quote.conversionRateId,
+      subtotalWP: quote.totalWp,
+      serviceChargeWP: 0,
+      vatWP: 0,
+      transportWP: transportWp,
+      totalWP: quote.totalWp + transportWp,
+      nairaEquivalent: quote.totalNgn + transportNgn,
+      conversionRateId: quote.conversionRateId,
       conversionRateSnapshot: quote.conversionRateSnapshot,
-      calculatedAt:           quote.calculatedAt,
+      calculatedAt: quote.calculatedAt,
       // Charge decomposition, frozen for escrow reconciliation at completion.
-      charges:                this.decomposeCharges(quote.totalWp, dto.flow, cfg),
+      charges: this.decomposeCharges(quote.totalWp, dto.flow, cfg),
     };
 
     // 2. Generate order reference
@@ -277,56 +346,60 @@ export class OrdersService {
     // happens until the customer confirms payment — see confirmPayment().
     const result = await this.dataSource.transaction(async (manager) => {
       const order = manager.create(Order, {
-        reference:               ref,
+        reference: ref,
         customerId,
-        companyId:               dto.companyId ?? null,
-        repId:                   null,
-        vendorId:                null,
+        companyId: dto.companyId ?? null,
+        repId: null,
+        vendorId: null,
         allocationMode,
-        chosenVendorId:          chosenVendor?.id ?? null,
+        chosenVendorId: chosenVendor?.id ?? null,
         areaId,
         areaLocationId,
         coverageMatched,
-        flow:                    dto.flow,
-        bagId:                   dto.flow === 'wash_fold' ? dto.bagId ?? null : null,
-        itemSelections:          dto.flow === 'wash_iron' ? (dto.selections ?? null) : null,
-        bundleId:                dto.flow === 'bundle' ? dto.bundleId ?? null : null,
-        serviceType:             dto.flow === 'bundle' ? 'wash_fold' : dto.flow,
-        bagSize:                 null,
-        specialItems:            [],
-        ironingCount:            0,
-        pickupAddress:           dto.pickupAddress,
-        pickupLatitude:          dto.pickupLatitude ?? null,
-        pickupLongitude:         dto.pickupLongitude ?? null,
-        scheduledPickupAt:       new Date(dto.scheduledPickupAt),
+        flow: dto.flow,
+        bagId: dto.flow === 'wash_fold' ? (dto.bagId ?? null) : null,
+        itemSelections:
+          dto.flow === 'wash_iron' ? (dto.selections ?? null) : null,
+        bundleId: dto.flow === 'bundle' ? (dto.bundleId ?? null) : null,
+        serviceType: dto.flow === 'bundle' ? 'wash_fold' : dto.flow,
+        bagSize: null,
+        specialItems: [],
+        ironingCount: 0,
+        pickupAddress: dto.pickupAddress,
+        pickupLatitude: dto.pickupLatitude ?? null,
+        pickupLongitude: dto.pickupLongitude ?? null,
+        scheduledPickupAt: new Date(dto.scheduledPickupAt),
         // SLA: deliver within the configured turnaround from the scheduled pickup.
-        deliveryDeadline:        new Date(new Date(dto.scheduledPickupAt).getTime() + cfg.orderTurnaroundHours * 3600_000),
-        specialInstructions:     dto.specialInstructions ?? null,
-        pricingSnapshot:         pricing as any,
-        totalWP:                 pricing.totalWP,
+        deliveryDeadline: new Date(
+          new Date(dto.scheduledPickupAt).getTime() +
+            cfg.orderTurnaroundHours * 3600_000,
+        ),
+        specialInstructions: dto.specialInstructions ?? null,
+        pricingSnapshot: pricing as any,
+        totalWP: pricing.totalWP,
         nairaEquivalentSnapshot: pricing.nairaEquivalent,
-        conversionRateSnapshot:  pricing.conversionRateSnapshot,
-        conversionRateId:        pricing.conversionRateId,
-        vendorShareWP:           null,
+        conversionRateSnapshot: pricing.conversionRateSnapshot,
+        conversionRateId: pricing.conversionRateId,
+        vendorShareWP: null,
         vendorShareNairaSnapshot: null,
-        repShareWP:              null,
-        platformShareWP:         null,
-        transportEstimateWp:     transportWp,
-        garmentLog:              null,
-        status:                  OrderStatus.PENDING_PAYMENT,
-        autoCompleteAt:          null,
+        repShareWP: null,
+        platformShareWP: null,
+        transportEstimateWp: transportWp,
+        garmentLog: null,
+        status: OrderStatus.PENDING_PAYMENT,
+        autoCompleteAt: null,
       });
       await manager.save(order);
 
       // Status history: draft created, awaiting payment.
       await manager.save(
         manager.create(OrderStatusHistory, {
-          orderId:         order.id,
-          fromStatus:      null,
-          toStatus:        OrderStatus.PENDING_PAYMENT,
-          triggeredBy:     customerId,
+          orderId: order.id,
+          fromStatus: null,
+          toStatus: OrderStatus.PENDING_PAYMENT,
+          triggeredBy: customerId,
           triggeredByRole: 'customer',
-          note:            'Order created — awaiting payment',
+          note: 'Order created — awaiting payment',
         }),
       );
 
@@ -341,9 +414,14 @@ export class OrdersService {
    * card to top up the wallet first, then debits the wallet, places escrow, marks the
    * order PAID and starts the rep broadcast. Idempotent: a PAID order returns as-is.
    */
-  async confirmPayment(orderId: string, customerId: string, opts: { giftCardCode?: string } = {}) {
+  async confirmPayment(
+    orderId: string,
+    customerId: string,
+    opts: { giftCardCode?: string } = {},
+  ) {
     const order = await this.findOne(orderId);
-    if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
+    if (order.customerId !== customerId)
+      throw new ForbiddenException('Access denied');
     if (order.status === OrderStatus.PAID) return { order, alreadyPaid: true };
     if (order.status !== OrderStatus.PENDING_PAYMENT) {
       throw new BadRequestException('This order is no longer awaiting payment');
@@ -351,10 +429,15 @@ export class OrdersService {
 
     // Optional gift-card augmentation — credits the wallet before we charge it.
     if (opts.giftCardCode) {
-      await this.giftCardsService.redeemGiftCard(opts.giftCardCode.trim(), customerId);
+      await this.giftCardsService.redeemGiftCard(
+        opts.giftCardCode.trim(),
+        customerId,
+      );
     }
 
-    const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+    const wallet = await this.walletRepository.findOne({
+      where: { userId: customerId },
+    });
     if (!wallet) throw new NotFoundException('User wallet not found');
     if (wallet.balance < order.totalWP) {
       throw new BadRequestException(
@@ -364,66 +447,86 @@ export class OrdersService {
 
     await this.dataSource.transaction(async (manager) => {
       // Debit wallet — proportionally reduce fiatBalanceKobo (WACB method).
-      const balanceBefore  = wallet.balance;
-      const fiatBefore     = wallet.fiatBalanceKobo ?? 0;
-      const fiatDeductKobo = balanceBefore > 0 ? Math.round((order.totalWP / balanceBefore) * fiatBefore) : 0;
-      wallet.balance        -= order.totalWP;
+      const balanceBefore = wallet.balance;
+      const fiatBefore = wallet.fiatBalanceKobo ?? 0;
+      const fiatDeductKobo =
+        balanceBefore > 0
+          ? Math.round((order.totalWP / balanceBefore) * fiatBefore)
+          : 0;
+      wallet.balance -= order.totalWP;
       wallet.fiatBalanceKobo = Math.max(0, fiatBefore - fiatDeductKobo);
       await manager.save(wallet);
 
-      await manager.save(manager.create(LedgerEntry, {
-        walletId:               wallet.id,
-        userId:                 customerId,
-        type:                   'debit',
-        amount:                 order.totalWP,
-        balanceBefore,
-        balanceAfter:           wallet.balance,
-        source:                 LedgerSource.ORDER_DEBIT,
-        conversionRateId:       order.conversionRateId,
-        conversionRateSnapshot: order.conversionRateSnapshot,
-        reference:              order.reference,
-        description:            `Order payment: ${order.reference}`,
-        metadata:               null,
-        vaultId:                null,
-        fiatAmountKobo:         null,
-        fiatCurrency:           null,
-      }));
+      await manager.save(
+        manager.create(LedgerEntry, {
+          walletId: wallet.id,
+          userId: customerId,
+          type: 'debit',
+          amount: order.totalWP,
+          balanceBefore,
+          balanceAfter: wallet.balance,
+          source: LedgerSource.ORDER_DEBIT,
+          conversionRateId: order.conversionRateId,
+          conversionRateSnapshot: order.conversionRateSnapshot,
+          reference: order.reference,
+          description: `Order payment: ${order.reference}`,
+          metadata: null,
+          vaultId: null,
+          fiatAmountKobo: null,
+          fiatCurrency: null,
+        }),
+      );
 
       // Escrow the funds.
-      await manager.save(manager.create(OrderEscrow, {
-        orderId:          order.id,
-        wpAmount:         order.totalWP,
-        nairaEquivalent:  order.nairaEquivalentSnapshot,
-        conversionRateId: order.conversionRateId,
-        status:           'held',
-      }));
+      await manager.save(
+        manager.create(OrderEscrow, {
+          orderId: order.id,
+          wpAmount: order.totalWP,
+          nairaEquivalent: order.nairaEquivalentSnapshot,
+          conversionRateId: order.conversionRateId,
+          status: 'held',
+        }),
+      );
 
       order.status = OrderStatus.PAID;
+      // Generate first-leg collection verification code.
+      order.firstLegCode = this.generateVerificationCode();
       await manager.save(order);
 
-      await manager.save(manager.create(OrderStatusHistory, {
-        orderId:         order.id,
-        fromStatus:      OrderStatus.PENDING_PAYMENT,
-        toStatus:        OrderStatus.PAID,
-        triggeredBy:     customerId,
-        triggeredByRole: 'customer',
-        note:            'Payment confirmed',
-      }));
+      await manager.save(
+        manager.create(OrderStatusHistory, {
+          orderId: order.id,
+          fromStatus: OrderStatus.PENDING_PAYMENT,
+          toStatus: OrderStatus.PAID,
+          triggeredBy: customerId,
+          triggeredByRole: 'customer',
+          note: 'Payment confirmed',
+        }),
+      );
     });
 
     this.notificationsService.notifyOrderPlaced({
       customerId,
-      orderRef:          order.reference,
-      totalWP:           order.totalWP,
-      nairaEquivalent:   order.nairaEquivalentSnapshot ?? 0,
-      pickupAddress:     order.pickupAddress,
-      scheduledPickupAt: order.scheduledPickupAt ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }) : '',
+      orderRef: order.reference,
+      totalWP: order.totalWP,
+      nairaEquivalent: order.nairaEquivalentSnapshot ?? 0,
+      pickupAddress: order.pickupAddress,
+      scheduledPickupAt: order.scheduledPickupAt
+        ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })
+        : '',
     });
 
     // Auto-start the rep broadcast the moment payment lands (fire-and-forget).
     this.assignmentService
       .startRepAssignment(order.id)
-      .catch((err) => this.logger.warn(`Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`));
+      .catch((err) =>
+        this.logger.warn(
+          `Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`,
+        ),
+      );
 
     return { order, alreadyPaid: false };
   }
@@ -444,7 +547,7 @@ export class OrdersService {
     sortDir?: 'ASC' | 'DESC';
     flow?: string;
   }) {
-    const page  = Math.max(1, query.page ?? 1);
+    const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
     // Whitelist sortable columns — never interpolate a raw sort key into SQL.
@@ -462,34 +565,47 @@ export class OrdersService {
       .createQueryBuilder('o')
       // Enrich rows with the customer/company/area names the admin list shows,
       // instead of leaving the UI with raw UUIDs.
-      .leftJoin('o.customer', 'cust').addSelect(['cust.id', 'cust.fullName', 'cust.email'])
-      .leftJoin('o.area', 'ar').addSelect(['ar.id', 'ar.name'])
+      .leftJoin('o.customer', 'cust')
+      .addSelect(['cust.id', 'cust.fullName', 'cust.email'])
+      .leftJoin('o.area', 'ar')
+      .addSelect(['ar.id', 'ar.name'])
       .leftJoinAndMapOne('o.company', Company, 'co', 'co.id = o.company_id')
       .orderBy(sortCol, sortDir)
       .skip((page - 1) * limit)
       .take(limit);
 
-    if (query.customerId) qb.andWhere('o.customerId = :c', { c: query.customerId });
-    if (query.repId)      qb.andWhere('o.repId = :r', { r: query.repId });
-    if (query.vendorId)   qb.andWhere('o.vendorId = :v', { v: query.vendorId });
-    if (query.status)     qb.andWhere('o.status = :s', { s: query.status });
-    if (query.areaId)     qb.andWhere('o.areaId = :a', { a: query.areaId });
-    if (query.serviceType) qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
+    if (query.customerId)
+      qb.andWhere('o.customerId = :c', { c: query.customerId });
+    if (query.repId) qb.andWhere('o.repId = :r', { r: query.repId });
+    if (query.vendorId) qb.andWhere('o.vendorId = :v', { v: query.vendorId });
+    if (query.status) qb.andWhere('o.status = :s', { s: query.status });
+    if (query.areaId) qb.andWhere('o.areaId = :a', { a: query.areaId });
+    if (query.serviceType)
+      qb.andWhere('o.serviceType = :svc', { svc: query.serviceType });
     if (query.flow) {
       // 'logistics' selects both logistics leg flows; otherwise match the exact flow.
-      if (query.flow === 'logistics') qb.andWhere("o.flow IN ('logistics_delivery','logistics_collect')");
+      if (query.flow === 'logistics')
+        qb.andWhere("o.flow IN ('logistics_delivery','logistics_collect')");
       else qb.andWhere('o.flow = :flow', { flow: query.flow });
     }
-    if (query.search)     qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
+    if (query.search)
+      qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
 
     const [rows, total] = await qb.getManyAndCount();
     const data = rows.map((o) => this.decorate(o));
-    return { data, meta: { total, page, limit, pages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
   }
 
   /** Flatten the joined customer/company/area onto the order for the UI. */
   private decorate(o: Order) {
-    const anyO = o as Order & { customer?: { fullName?: string; email?: string }; company?: { name?: string }; area?: { name?: string } };
+    const anyO = o as Order & {
+      customer?: { fullName?: string; email?: string };
+      company?: { name?: string };
+      area?: { name?: string };
+    };
     return {
       ...o,
       customerName: anyO.customer?.fullName ?? null,
@@ -511,8 +627,10 @@ export class OrdersService {
   async getDetail(id: string) {
     const order = await this.orderRepository
       .createQueryBuilder('o')
-      .leftJoin('o.customer', 'cust').addSelect(['cust.id', 'cust.fullName', 'cust.email', 'cust.phone'])
-      .leftJoin('o.area', 'ar').addSelect(['ar.id', 'ar.name'])
+      .leftJoin('o.customer', 'cust')
+      .addSelect(['cust.id', 'cust.fullName', 'cust.email', 'cust.phone'])
+      .leftJoin('o.area', 'ar')
+      .addSelect(['ar.id', 'ar.name'])
       .leftJoinAndMapOne('o.company', Company, 'co', 'co.id = o.company_id')
       .where('o.id = :id', { id })
       .getOne();
@@ -521,7 +639,9 @@ export class OrdersService {
   }
 
   async findByReference(ref: string) {
-    const order = await this.orderRepository.findOne({ where: { reference: ref } });
+    const order = await this.orderRepository.findOne({
+      where: { reference: ref },
+    });
     if (!order) throw new NotFoundException('Order not found');
     return order;
   }
@@ -556,13 +676,16 @@ export class OrdersService {
 
       // Scoring signal: was this delivery on time vs the order SLA?
       if (order.repId) {
-        const onTime = !order.deliveryDeadline || new Date() <= order.deliveryDeadline;
+        const onTime =
+          !order.deliveryDeadline || new Date() <= order.deliveryDeadline;
         await this.repRepository
           .createQueryBuilder()
           .update(Rep)
           .set({
             totalDeliveries: () => '"total_deliveries" + 1',
-            ...(onTime ? { onTimeDeliveries: () => '"on_time_deliveries" + 1' } : {}),
+            ...(onTime
+              ? { onTimeDeliveries: () => '"on_time_deliveries" + 1' }
+              : {}),
           })
           .where('id = :id', { id: order.repId })
           .execute();
@@ -598,39 +721,84 @@ export class OrdersService {
     if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
       this.notificationsService.notifyOrderRepEnRoute({
         customerId: order.customerId,
-        repId:      order.repId!,
-        orderRef:   order.reference,
+        repId: order.repId!,
+        orderRef: order.reference,
       });
     }
     if (toStatus === OrderStatus.PICKED_UP) {
       this.notificationsService.notifyOrderPickedUp({
         customerId: order.customerId,
-        vendorId:   order.vendorId!,
-        repId:      order.repId!,
-        orderRef:   order.reference,
+        vendorId: order.vendorId!,
+        repId: order.repId!,
+        orderRef: order.reference,
       });
     }
     if (toStatus === OrderStatus.DELIVERED) {
       this.notificationsService.notifyOrderDelivered({
         customerId: order.customerId,
-        vendorId:   order.vendorId,
-        repId:      order.repId,
-        orderRef:   order.reference,
+        vendorId: order.vendorId,
+        repId: order.repId,
+        orderRef: order.reference,
       });
     }
 
     return order;
   }
 
+  async customerConfirmPickup(
+    orderId: string,
+    customerUserId: string,
+    code: string,
+  ) {
+    const order = await this.findOne(orderId);
+
+    await this.assertCustomerOwnsOrder(order, customerUserId);
+
+    if (order.status !== OrderStatus.REP_EN_ROUTE_PICKUP) {
+      throw new BadRequestException(
+        'Order is not currently awaiting pickup confirmation',
+      );
+    }
+
+    if (order.firstLegCode !== code.toUpperCase()) {
+      throw new BadRequestException('Invalid pickup verification code');
+    }
+
+    return this.transition(
+      orderId,
+      OrderStatus.PICKED_UP,
+      customerUserId,
+      'customer',
+    );
+  }
+
   // ─── Rep-driven status transitions (ownership-checked) ───────────────────────
 
   /** Only the rep assigned to this order may act on it. */
-  private async assertRepAssigned(order: Order, repUserId: string): Promise<void> {
+  private async assertRepAssigned(
+    order: Order,
+    repUserId: string,
+  ): Promise<void> {
     if (order.repId) {
-      const rep = await this.repRepository.findOne({ where: { id: order.repId } });
+      const rep = await this.repRepository.findOne({
+        where: { id: order.repId },
+      });
       if (!rep || rep.userId !== repUserId) {
         throw new ForbiddenException('You are not assigned to this order');
       }
+    }
+  }
+
+  private async assertCustomerOwnsOrder(
+    order: Order,
+    customerUserId: string,
+  ): Promise<void> {
+    const customer = await this.customerRepository.findOne({
+      where: { id: order.customerId },
+    });
+
+    if (!customer || customer.id !== customerUserId) {
+      throw new ForbiddenException('You do not own this order');
     }
   }
 
@@ -639,16 +807,47 @@ export class OrdersService {
    * then defers to the state-machine guard in transition() (which rejects any
    * illegal move with a clean 400).
    */
-  async repTransition(orderId: string, toStatus: OrderStatus, repUserId: string) {
+  async repTransition(
+    orderId: string,
+    toStatus: OrderStatus,
+    repUserId: string,
+    code?: string,
+  ) {
     const order = await this.findOne(orderId);
     await this.assertRepAssigned(order, repUserId);
-    return this.transition(orderId, toStatus, repUserId, 'rep');
+    // Verify second-leg code when rep delivers the order to the customer.
+    if (toStatus === OrderStatus.DELIVERED) {
+      if (!code || order.secondLegCode !== code.toUpperCase()) {
+        throw new BadRequestException('Invalid delivery verification code');
+      }
+    }
+
+    const updatedOrder = this.transition(orderId, toStatus, repUserId, 'rep');
+
+    // Return first-leg code when rep is en route for customer pickup.
+    if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
+      return {
+        order: updatedOrder,
+        firstLegCode: order.firstLegCode,
+      };
+    }
+
+    return updatedOrder;
   }
 
   /** Only the vendor assigned to this order may act on it. */
-  private async assertVendorAssigned(order: Order, vendorUserId: string): Promise<void> {
+  private async assertVendorAssigned(
+    order: Order,
+    vendorUserId: string,
+  ): Promise<void> {
+    if (!order.vendorId) {
+      throw new ForbiddenException('No vendor is assigned to this order');
+    }
+
     if (order.vendorId) {
-      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+      const vendor = await this.vendorRepository.findOne({
+        where: { id: order.vendorId },
+      });
       if (!vendor || vendor.userId !== vendorUserId) {
         throw new ForbiddenException('You are not assigned to this order');
       }
@@ -659,22 +858,61 @@ export class OrdersService {
    * A vendor-initiated status change. Verifies the caller is the assigned
    * vendor, then defers to the state-machine guard in transition().
    */
-  async vendorTransition(orderId: string, toStatus: OrderStatus, vendorUserId: string) {
+  async vendorTransition(
+    orderId: string,
+    toStatus: OrderStatus,
+    vendorUserId: string,
+    code?: string,
+  ) {
     const order = await this.findOne(orderId);
     await this.assertVendorAssigned(order, vendorUserId);
+
+    // Generate the second-leg verification code when the vendor marks the order ready for delivery.
+    if (
+      toStatus === OrderStatus.READY_FOR_DELIVERY &&
+      order.status !== OrderStatus.READY_FOR_DELIVERY
+    ) {
+      order.secondLegCode = this.generateVerificationCode();
+      await this.orderRepository.save(order);
+    }
+
+    // Verify the second-leg code when the vendor confirms rep collection.
+    if (toStatus === OrderStatus.REP_COLLECTED) {
+      if (!code || order.secondLegCode !== code.toUpperCase()) {
+        throw new BadRequestException(
+          'Invalid rep collection verification code',
+        );
+      }
+    }
+
     return this.transition(orderId, toStatus, vendorUserId, 'vendor');
   }
 
   // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
 
   /** Rep records a failed delivery attempt → DELIVERY_FAILED + first uncollected notice. */
-  async recordFailedDelivery(orderId: string, repUserId: string, note?: string) {
+  async recordFailedDelivery(
+    orderId: string,
+    repUserId: string,
+    note?: string,
+  ) {
     const order = await this.findOne(orderId);
     await this.assertRepAssigned(order, repUserId);
-    if (order.status !== OrderStatus.OUT_FOR_DELIVERY && order.status !== OrderStatus.DELIVERY_FAILED) {
-      throw new BadRequestException('Delivery can only be marked failed while out for delivery');
+    if (
+      order.status !== OrderStatus.OUT_FOR_DELIVERY &&
+      order.status !== OrderStatus.DELIVERY_FAILED
+    ) {
+      throw new BadRequestException(
+        'Delivery can only be marked failed while out for delivery',
+      );
     }
-    await this.transition(orderId, OrderStatus.DELIVERY_FAILED, repUserId, 'rep', note ?? 'Delivery attempt failed — customer unavailable');
+    await this.transition(
+      orderId,
+      OrderStatus.DELIVERY_FAILED,
+      repUserId,
+      'rep',
+      note ?? 'Delivery attempt failed — customer unavailable',
+    );
 
     const fresh = await this.findOne(orderId);
     fresh.deliveryAttempts += 1;
@@ -686,7 +924,10 @@ export class OrdersService {
     fresh.lastUncollectedNoticeAt = now;
     await this.orderRepository.save(fresh);
 
-    this.notificationsService.notifyCustomerUncollected(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+    this.notificationsService.notifyCustomerUncollected(fresh.customerId, {
+      orderRef: fresh.reference,
+      orderId: fresh.id,
+    });
     return fresh;
   }
 
@@ -700,7 +941,9 @@ export class OrdersService {
   async settleAbandonment(orderId: string, triggeredBy: string | null) {
     const order = await this.findOne(orderId);
     if (order.status !== OrderStatus.DELIVERY_FAILED) {
-      throw new BadRequestException('Only a failed-delivery order can be abandoned');
+      throw new BadRequestException(
+        'Only a failed-delivery order can be abandoned',
+      );
     }
 
     // Release escrow (service rendered).
@@ -718,7 +961,11 @@ export class OrdersService {
         order.vendorShareWP!,
         LedgerSource.VENDOR_EARNING,
         `Order abandoned — service rendered: ${order.reference}`,
-        { orderId, nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined, reference: order.reference },
+        {
+          orderId,
+          nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined,
+          reference: order.reference,
+        },
       );
     }
     if (order.repId && (order.repShareWP ?? 0) > 0) {
@@ -732,12 +979,21 @@ export class OrdersService {
     }
 
     // Mark ABANDONED (records history) and flag disposal pending.
-    await this.transition(orderId, OrderStatus.ABANDONED, triggeredBy, 'system',
-      'Garments uncollected after notices — abandoned; escrow settled to vendor/rep (service rendered)');
+    await this.transition(
+      orderId,
+      OrderStatus.ABANDONED,
+      triggeredBy,
+      'system',
+      'Garments uncollected after notices — abandoned; escrow settled to vendor/rep (service rendered)',
+    );
     const fresh = await this.findOne(orderId);
     // Credit rep transport (logistics) on top of their service share.
     const repTransport = await this.computeAndCreditRepTransport(fresh);
-    fresh.platformShareWP = fresh.totalWP - (fresh.vendorShareWP ?? 0) - (fresh.repShareWP ?? 0) - repTransport;
+    fresh.platformShareWP =
+      fresh.totalWP -
+      (fresh.vendorShareWP ?? 0) -
+      (fresh.repShareWP ?? 0) -
+      repTransport;
     fresh.disposalMethod = 'pending';
     await this.orderRepository.save(fresh);
     return fresh;
@@ -756,7 +1012,9 @@ export class OrdersService {
     const now = Date.now();
     const DAY = 86_400_000;
 
-    const failed = await this.orderRepository.find({ where: { status: OrderStatus.DELIVERY_FAILED } });
+    const failed = await this.orderRepository.find({
+      where: { status: OrderStatus.DELIVERY_FAILED },
+    });
     let notices = 0;
     let abandoned = 0;
 
@@ -770,12 +1028,21 @@ export class OrdersService {
         o.uncollectedNoticeCount += 1;
         o.lastUncollectedNoticeAt = new Date();
         await this.orderRepository.save(o);
-        this.notificationsService.notifyCustomerUncollected(o.customerId, { orderRef: o.reference, orderId: o.id });
+        this.notificationsService.notifyCustomerUncollected(o.customerId, {
+          orderRef: o.reference,
+          orderId: o.id,
+        });
         notices++;
-      } else if (o.uncollectedNoticeCount >= 2 && daysSinceFirst >= abandonmentDays) {
+      } else if (
+        o.uncollectedNoticeCount >= 2 &&
+        daysSinceFirst >= abandonmentDays
+      ) {
         try {
           const fresh = await this.settleAbandonment(o.id, null);
-          this.notificationsService.notifyCustomerOrderAbandoned(fresh.customerId, { orderRef: fresh.reference, orderId: fresh.id });
+          this.notificationsService.notifyCustomerOrderAbandoned(
+            fresh.customerId,
+            { orderRef: fresh.reference, orderId: fresh.id },
+          );
           abandoned++;
         } catch {
           // leave for the next sweep / manual handling
@@ -786,10 +1053,17 @@ export class OrdersService {
   }
 
   /** Admin records the disposal outcome of an abandoned order's garments. */
-  async recordDisposal(orderId: string, adminId: string, method: string, note?: string) {
+  async recordDisposal(
+    orderId: string,
+    adminId: string,
+    method: string,
+    note?: string,
+  ) {
     const order = await this.findOne(orderId);
     if (order.status !== OrderStatus.ABANDONED) {
-      throw new BadRequestException('Only abandoned orders can record a disposal outcome');
+      throw new BadRequestException(
+        'Only abandoned orders can record a disposal outcome',
+      );
     }
     order.disposalMethod = method;
     order.disposalNote = (note ?? '').slice(0, 1000) || null;
@@ -799,49 +1073,62 @@ export class OrdersService {
 
   // ─── Rep logs garment count at pickup ────────────────────────────────────────
 
-  async logGarmentCount(orderId: string, repUserId: string, dto: LogGarmentCountDto) {
+  async logGarmentCount(
+    orderId: string,
+    repUserId: string,
+    dto: LogGarmentCountDto,
+  ) {
     const order = await this.findOne(orderId);
 
     // Verify the rep is assigned to this order
     if (order.repId) {
-      const rep = await this.repRepository.findOne({ where: { id: order.repId } });
+      const rep = await this.repRepository.findOne({
+        where: { id: order.repId },
+      });
       if (!rep || rep.userId !== repUserId) {
         throw new ForbiddenException('You are not assigned to this order');
       }
     }
 
-    if (order.status !== OrderStatus.PICKED_UP && order.status !== OrderStatus.WITH_VENDOR) {
-      throw new BadRequestException('Garment count can only be logged at pickup');
+    if (
+      order.status !== OrderStatus.PICKED_UP &&
+      order.status !== OrderStatus.WITH_VENDOR
+    ) {
+      throw new BadRequestException(
+        'Garment count can only be logged at pickup',
+      );
     }
 
     // Resolve the log into structured, priced lines. Each line is priced against
     // the ORDER'S vendor: their own approved price if they have one for the item,
     // otherwise the system average, floored at the item's admin base price, with
     // the gap recorded.
-    const { lines, totalNaira, totalWP, unpriced } = await this.resolveAndPriceGarmentLog(
-      order.vendorId!,
-      dto,
-    );
+    const { lines, totalNaira, totalWP, unpriced } =
+      await this.resolveAndPriceGarmentLog(order.vendorId!, dto);
 
     const config = await this.platformConfigService.getConfig();
 
-    const vendorShareWP            = totalWP;
+    const vendorShareWP = totalWP;
     const vendorShareNairaSnapshot = totalNaira;
     // Rep share = the wash-rep commission baked into the price (the charge funds the
     // rep). Falls back to the legacy flat repSharePercent for pre-catalogue orders.
-    const snapCharges     = (order.pricingSnapshot as any).charges;
-    const repShareWP      = snapCharges?.commissionWP != null
-      ? snapCharges.commissionWP
-      : Math.floor(order.totalWP * (config.repSharePercent / 100));
-    const transportWP     = (order.pricingSnapshot as any).transportWP ?? 0;
-    const platformShareWP = order.totalWP - vendorShareWP - repShareWP - transportWP;
+    const snapCharges = (order.pricingSnapshot as any).charges;
+    const repShareWP =
+      snapCharges?.commissionWP != null
+        ? snapCharges.commissionWP
+        : Math.floor(order.totalWP * (config.repSharePercent / 100));
+    const transportWP = (order.pricingSnapshot as any).transportWP ?? 0;
+    const platformShareWP =
+      order.totalWP - vendorShareWP - repShareWP - transportWP;
 
-    order.garmentLog               = { lines };
-    order.vendorShareWP            = vendorShareWP;
+    order.garmentLog = { lines };
+    order.vendorShareWP = vendorShareWP;
     order.vendorShareNairaSnapshot = vendorShareNairaSnapshot;
-    order.repShareWP               = repShareWP;
-    order.platformShareWP          = Math.max(0, platformShareWP);
-    order.unpricedGarmentTypes     = unpriced.length ? unpriced.map((u) => u.name) : null;
+    order.repShareWP = repShareWP;
+    order.platformShareWP = Math.max(0, platformShareWP);
+    order.unpricedGarmentTypes = unpriced.length
+      ? unpriced.map((u) => u.name)
+      : null;
 
     await this.orderRepository.save(order);
 
@@ -854,12 +1141,12 @@ export class OrdersService {
       : `Garments logged (${itemCount} item${itemCount === 1 ? '' : 's'}).`;
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
-        orderId:         order.id,
-        fromStatus:      order.status,
-        toStatus:        order.status,
-        triggeredBy:     repUserId,
+        orderId: order.id,
+        fromStatus: order.status,
+        toStatus: order.status,
+        triggeredBy: repUserId,
         triggeredByRole: 'rep',
-        note:            historyNote.slice(0, 1000),
+        note: historyNote.slice(0, 1000),
       }),
     );
 
@@ -867,16 +1154,20 @@ export class OrdersService {
     // when the vendor was missing a price for something). Fire-and-forget.
     if (order.vendorId) {
       this.notificationsService.notifyVendorGarmentsLogged({
-        vendorId:      order.vendorId,
-        orderRef:      order.reference,
-        entries:       lines.map((l) => ({ name: l.name, count: l.count, unpriced: !l.pricedByVendor })),
+        vendorId: order.vendorId,
+        orderRef: order.reference,
+        entries: lines.map((l) => ({
+          name: l.name,
+          count: l.count,
+          unpriced: !l.pricedByVendor,
+        })),
         unpricedNames,
-        earningNaira:  vendorShareNairaSnapshot,
+        earningNaira: vendorShareNairaSnapshot,
       });
       if (unpriced.length) {
         this.notificationsService.notifyAdminOrderUnpricedItems({
-          vendorId:      order.vendorId,
-          orderRef:      order.reference,
+          vendorId: order.vendorId,
+          orderRef: order.reference,
           unpricedNames,
         });
       }
@@ -892,18 +1183,26 @@ export class OrdersService {
     };
   }
 
-  // ─── Rep marks the order handed to the vendor ────────────────────────────────
+  // ─── Rep marks the order handed to the vendor ───────────────────────────────
 
-  async markWithVendor(orderId: string, repUserId: string) {
+  async markWithVendor(orderId: string, repUserId: string, code: string) {
     const order = await this.findOne(orderId);
     await this.assertRepAssigned(order, repUserId);
 
     // The earnings split (from the garment log) must exist first — garments are
     // logged, then the batch is handed to the vendor.
-    if (!order.vendorShareWP || !order.repShareWP || order.platformShareWP == null) {
+    if (
+      !order.vendorShareWP ||
+      !order.repShareWP ||
+      order.platformShareWP == null
+    ) {
       throw new BadRequestException(
         'Log the garment count before marking the order as with the vendor.',
       );
+    }
+
+    if (order.firstLegCode !== code.toUpperCase()) {
+      throw new BadRequestException('Invalid pickup verification code');
     }
 
     // The state-machine guard allows this only from PICKED_UP → WITH_VENDOR.
@@ -928,8 +1227,14 @@ export class OrdersService {
     }
 
     let actual = estimate; // fallback when vendor coords are missing
-    if (order.vendorId && order.pickupLatitude != null && order.pickupLongitude != null) {
-      const vendor = await this.vendorRepository.findOne({ where: { id: order.vendorId } });
+    if (
+      order.vendorId &&
+      order.pickupLatitude != null &&
+      order.pickupLongitude != null
+    ) {
+      const vendor = await this.vendorRepository.findOne({
+        where: { id: order.vendorId },
+      });
       if (vendor?.latitude != null && vendor?.longitude != null) {
         const res = await this.transportService.actualForVendor(
           { lat: order.pickupLatitude, lng: order.pickupLongitude },
@@ -959,10 +1264,16 @@ export class OrdersService {
    * Settlement for a completed logistics leg: release escrow, pay the rep the leg
    * transport, and keep the platform mobility fee. No vendor payout, no garment split.
    */
-  private async settleLogisticsLeg(order: Order, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
+  private async settleLogisticsLeg(
+    order: Order,
+    triggeredBy: string | null,
+    role: 'customer' | 'system' | 'admin',
+  ) {
     const repTransport = order.transportEstimateWp ?? 0;
     const settled = await this.dataSource.transaction(async (manager) => {
-      const escrow = await this.escrowRepository.findOne({ where: { orderId: order.id } });
+      const escrow = await this.escrowRepository.findOne({
+        where: { orderId: order.id },
+      });
       if (escrow) {
         escrow.status = 'released';
         escrow.releasedAt = new Date();
@@ -980,20 +1291,22 @@ export class OrdersService {
       }
 
       order.actualTransportWp = repTransport;
-      order.repTransportWp    = repTransport;
-      order.platformShareWP   = Math.max(0, order.totalWP - repTransport); // = the mobility fee
-      order.status            = OrderStatus.COMPLETED;
-      order.completedAt       = new Date();
+      order.repTransportWp = repTransport;
+      order.platformShareWP = Math.max(0, order.totalWP - repTransport); // = the mobility fee
+      order.status = OrderStatus.COMPLETED;
+      order.completedAt = new Date();
       await manager.save(order);
 
-      await manager.save(manager.create(OrderStatusHistory, {
-        orderId:         order.id,
-        fromStatus:      OrderStatus.DELIVERED,
-        toStatus:        OrderStatus.COMPLETED,
-        triggeredBy,
-        triggeredByRole: role,
-        note:            'Logistics leg completed',
-      }));
+      await manager.save(
+        manager.create(OrderStatusHistory, {
+          orderId: order.id,
+          fromStatus: OrderStatus.DELIVERED,
+          toStatus: OrderStatus.COMPLETED,
+          triggeredBy,
+          triggeredByRole: role,
+          note: 'Logistics leg completed',
+        }),
+      );
 
       return order;
     });
@@ -1004,11 +1317,17 @@ export class OrdersService {
     return settled;
   }
 
-  async completeOrder(orderId: string, triggeredBy: string | null, role: 'customer' | 'system' | 'admin') {
+  async completeOrder(
+    orderId: string,
+    triggeredBy: string | null,
+    role: 'customer' | 'system' | 'admin',
+  ) {
     const order = await this.findOne(orderId);
 
     if (order.status !== OrderStatus.DELIVERED) {
-      throw new BadRequestException('Order must be in delivered status to complete');
+      throw new BadRequestException(
+        'Order must be in delivered status to complete',
+      );
     }
 
     // Logistics legs settle differently: no washing, no vendor payout — the rep is
@@ -1017,15 +1336,23 @@ export class OrdersService {
       return this.settleLogisticsLeg(order, triggeredBy, role);
     }
 
-    if (!order.vendorShareWP || !order.repShareWP || order.platformShareWP == null) {
-      throw new BadRequestException('Earnings split not yet calculated — garment count must be logged first');
+    if (
+      !order.vendorShareWP ||
+      !order.repShareWP ||
+      order.platformShareWP == null
+    ) {
+      throw new BadRequestException(
+        'Earnings split not yet calculated — garment count must be logged first',
+      );
     }
 
     const completed = await this.dataSource.transaction(async (manager) => {
       // Release escrow
-      const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+      const escrow = await this.escrowRepository.findOne({
+        where: { orderId },
+      });
       if (escrow) {
-        escrow.status     = 'released';
+        escrow.status = 'released';
         escrow.releasedAt = new Date();
         await manager.save(escrow);
       }
@@ -1037,7 +1364,11 @@ export class OrdersService {
           order.vendorShareWP!,
           LedgerSource.VENDOR_EARNING,
           `Order completion: ${order.reference}`,
-          { orderId, nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined, reference: order.reference },
+          {
+            orderId,
+            nairaSnapshot: order.vendorShareNairaSnapshot ?? undefined,
+            reference: order.reference,
+          },
         );
       }
 
@@ -1054,10 +1385,14 @@ export class OrdersService {
 
       // Credit rep transport (logistics) on top of their service share, and record it.
       const repTransport = await this.computeAndCreditRepTransport(order);
-      order.platformShareWP = order.totalWP - (order.vendorShareWP ?? 0) - (order.repShareWP ?? 0) - repTransport;
+      order.platformShareWP =
+        order.totalWP -
+        (order.vendorShareWP ?? 0) -
+        (order.repShareWP ?? 0) -
+        repTransport;
 
       // Mark completed
-      order.status      = OrderStatus.COMPLETED;
+      order.status = OrderStatus.COMPLETED;
       order.completedAt = new Date();
       await manager.save(order);
 
@@ -1065,28 +1400,36 @@ export class OrdersService {
         manager.create(OrderStatusHistory, {
           orderId,
           fromStatus: OrderStatus.DELIVERED,
-          toStatus:   OrderStatus.COMPLETED,
+          toStatus: OrderStatus.COMPLETED,
           triggeredBy,
           triggeredByRole: role,
-          note: role === 'system' ? 'Auto-completed after 24h' : 'Customer confirmed delivery',
+          note:
+            role === 'system'
+              ? 'Auto-completed after 24h'
+              : 'Customer confirmed delivery',
         }),
       );
 
       // Fire completion notifications (fire-and-forget)
       this.notificationsService.notifyOrderCompleted({
-        customerId:      order.customerId,
-        vendorId:        order.vendorId,
-        repId:           order.repId,
-        orderRef:        order.reference,
-        vendorShareWP:   order.vendorShareWP ?? 0,
-        repShareWP:      order.repShareWP ?? 0,
+        customerId: order.customerId,
+        vendorId: order.vendorId,
+        repId: order.repId,
+        orderRef: order.reference,
+        vendorShareWP: order.vendorShareWP ?? 0,
+        repShareWP: order.repShareWP ?? 0,
         nairaEquivalent: order.vendorShareNairaSnapshot ?? 0,
       });
 
       // Referral: a completed order is the customer-leg unlock trigger (fire-and-forget).
       this.referralsService
-        .onRefereeQualified(order.customerId, 'customer', { wp: order.totalWP, ngn: order.nairaEquivalentSnapshot ?? 0 })
-        .catch((err) => this.logger.error(`Referral unlock (order) failed: ${err.message}`));
+        .onRefereeQualified(order.customerId, 'customer', {
+          wp: order.totalWP,
+          ngn: order.nairaEquivalentSnapshot ?? 0,
+        })
+        .catch((err) =>
+          this.logger.error(`Referral unlock (order) failed: ${err.message}`),
+        );
 
       return order;
     });
@@ -1111,25 +1454,31 @@ export class OrdersService {
     const cutoff = new Date(Date.now() - hours * 3600_000);
 
     const stale = await this.orderRepository.find({
-      where: { status: OrderStatus.PENDING_PAYMENT, createdAt: LessThan(cutoff) },
+      where: {
+        status: OrderStatus.PENDING_PAYMENT,
+        createdAt: LessThan(cutoff),
+      },
     });
     if (stale.length === 0) return 0;
 
     for (const order of stale) {
       await this.dataSource.transaction(async (manager) => {
-        order.status             = OrderStatus.CANCELLED;
-        order.cancelledAt        = new Date();
-        order.cancellationReason = 'Draft expired — payment not confirmed in time';
+        order.status = OrderStatus.CANCELLED;
+        order.cancelledAt = new Date();
+        order.cancellationReason =
+          'Draft expired — payment not confirmed in time';
         await manager.save(order);
 
-        await manager.save(manager.create(OrderStatusHistory, {
-          orderId:         order.id,
-          fromStatus:      OrderStatus.PENDING_PAYMENT,
-          toStatus:        OrderStatus.CANCELLED,
-          triggeredBy:     null,
-          triggeredByRole: 'system',
-          note:            'Draft expired — payment not confirmed in time',
-        }));
+        await manager.save(
+          manager.create(OrderStatusHistory, {
+            orderId: order.id,
+            fromStatus: OrderStatus.PENDING_PAYMENT,
+            toStatus: OrderStatus.CANCELLED,
+            triggeredBy: null,
+            triggeredByRole: 'system',
+            note: 'Draft expired — payment not confirmed in time',
+          }),
+        );
       });
     }
     return stale.length;
@@ -1137,15 +1486,12 @@ export class OrdersService {
 
   // ─── Cancel order ─────────────────────────────────────────────────────────────
 
-  async cancelOrder(
-    orderId: string,
-    customerId: string,
-    reason: string,
-  ) {
+  async cancelOrder(orderId: string, customerId: string, reason: string) {
     const order = await this.findOne(orderId);
 
     // Only customer's own orders
-    if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
+    if (order.customerId !== customerId)
+      throw new ForbiddenException('Access denied');
 
     // Cannot cancel once the rep has collected the clothes (derived from the state machine).
     if (!CANCELLABLE_STATUSES.includes(order.status)) {
@@ -1159,35 +1505,39 @@ export class OrdersService {
     return this.dataSource.transaction(async (manager) => {
       if (wasPaid) {
         // Refund user wallet
-        const wallet = await this.walletRepository.findOne({ where: { userId: customerId } });
+        const wallet = await this.walletRepository.findOne({
+          where: { userId: customerId },
+        });
         if (wallet) {
-          const balanceBefore  = wallet.balance;
-          wallet.balance      += order.totalWP;
+          const balanceBefore = wallet.balance;
+          wallet.balance += order.totalWP;
           await manager.save(wallet);
 
           await manager.save(
             manager.create(LedgerEntry, {
-              walletId:               wallet.id,
-              userId:                 customerId,
-              type:                   'credit',
-              amount:                 order.totalWP,
+              walletId: wallet.id,
+              userId: customerId,
+              type: 'credit',
+              amount: order.totalWP,
               balanceBefore,
-              balanceAfter:           wallet.balance,
-              source:                 LedgerSource.CANCELLATION_REFUND,
-              conversionRateId:       null,
+              balanceAfter: wallet.balance,
+              source: LedgerSource.CANCELLATION_REFUND,
+              conversionRateId: null,
               conversionRateSnapshot: null,
-              reference:              order.reference,
-              description:            `Refund for cancelled order: ${order.reference}`,
-              metadata:               null,
-              vaultId:                null,
-              fiatAmountKobo:         null,
-              fiatCurrency:           null,
+              reference: order.reference,
+              description: `Refund for cancelled order: ${order.reference}`,
+              metadata: null,
+              vaultId: null,
+              fiatAmountKobo: null,
+              fiatCurrency: null,
             }),
           );
         }
 
         // Release escrow
-        const escrow = await this.escrowRepository.findOne({ where: { orderId } });
+        const escrow = await this.escrowRepository.findOne({
+          where: { orderId },
+        });
         if (escrow) {
           escrow.status = 'refunded';
           escrow.releasedAt = new Date();
@@ -1196,8 +1546,8 @@ export class OrdersService {
       }
 
       // Mark cancelled
-      order.status             = OrderStatus.CANCELLED;
-      order.cancelledAt        = new Date();
+      order.status = OrderStatus.CANCELLED;
+      order.cancelledAt = new Date();
       order.cancellationReason = reason;
       await manager.save(order);
 
@@ -1214,7 +1564,7 @@ export class OrdersService {
         manager.create(OrderStatusHistory, {
           orderId,
           fromStatus: order.status,
-          toStatus:   OrderStatus.CANCELLED,
+          toStatus: OrderStatus.CANCELLED,
           triggeredBy: customerId,
           triggeredByRole: 'customer',
           note: reason,
@@ -1224,8 +1574,8 @@ export class OrdersService {
       // Fire cancellation notification (fire-and-forget)
       this.notificationsService.notifyOrderCancelled({
         customerId: customerId,
-        orderRef:   order.reference,
-        totalWP:    order.totalWP,
+        orderRef: order.reference,
+        totalWP: order.totalWP,
       });
 
       return order;
@@ -1237,20 +1587,27 @@ export class OrdersService {
   async rateOrder(orderId: string, customerId: string, dto: RateOrderDto) {
     const order = await this.findOne(orderId);
 
-    if (order.customerId !== customerId) throw new ForbiddenException('Access denied');
-    if (order.status !== OrderStatus.DELIVERED && order.status !== OrderStatus.COMPLETED) {
-      throw new BadRequestException('Can only rate delivered or completed orders');
+    if (order.customerId !== customerId)
+      throw new ForbiddenException('Access denied');
+    if (
+      order.status !== OrderStatus.DELIVERED &&
+      order.status !== OrderStatus.COMPLETED
+    ) {
+      throw new BadRequestException(
+        'Can only rate delivered or completed orders',
+      );
     }
-    if (order.ratedAt) throw new BadRequestException('This order has already been rated');
+    if (order.ratedAt)
+      throw new BadRequestException('This order has already been rated');
 
     const event = this.ratingEventRepository.create({
       orderId,
       customerId,
-      repId:      order.repId,
-      vendorId:   order.vendorId,
-      repScore:   dto.repScore ?? null,
+      repId: order.repId,
+      vendorId: order.vendorId,
+      repScore: dto.repScore ?? null,
       vendorScore: dto.vendorScore ?? null,
-      comment:    dto.comment ?? null,
+      comment: dto.comment ?? null,
     });
     await this.ratingEventRepository.save(event);
 
@@ -1301,12 +1658,15 @@ export class OrdersService {
     unpriced: { itemId: string | null; name: string }[];
   }> {
     const activePricing = await this.vendorsService.getActivePricing(vendorId);
-    const rate          = await this.pricingService.getActiveConversionRate();
+    const rate = await this.pricingService.getActiveConversionRate();
     // Drift Option 2: mint at the rate LOCKED on the vendor's active sheet at
     // approval (falls back to the live rate for pre-lock legacy sheets).
-    const pointsPerUnit = activePricing?.pointsPerUnitSnapshot ?? rate.pointsPerUnit;
+    const pointsPerUnit =
+      activePricing?.pointsPerUnitSnapshot ?? rate.pointsPerUnit;
 
-    const liveItems = (activePricing?.items ?? []).filter((i) => isPriceItemLive(i));
+    const liveItems = (activePricing?.items ?? []).filter((i) =>
+      isPriceItemLive(i),
+    );
 
     // ── Preferred: item-based log (validate ids against the catalogue) ──────────
     if (dto.items?.length) {
@@ -1315,12 +1675,15 @@ export class OrdersService {
       const byId = new Map(catalogueItems.map((c) => [c.id, c]));
       const missing = [...new Set(ids)].filter((id) => !byId.has(id));
       if (missing.length) {
-        throw new BadRequestException(`Unknown catalogue item id(s): ${missing.join(', ')}`);
+        throw new BadRequestException(
+          `Unknown catalogue item id(s): ${missing.join(', ')}`,
+        );
       }
 
       const vendorPriceByItem = new Map<string, number>();
       for (const item of liveItems) {
-        if (item.itemId && item.priceNaira > 0) vendorPriceByItem.set(item.itemId, item.priceNaira);
+        if (item.itemId && item.priceNaira > 0)
+          vendorPriceByItem.set(item.itemId, item.priceNaira);
       }
 
       const lines: GarmentLogLine[] = [];
@@ -1333,24 +1696,41 @@ export class OrdersService {
         if (!pricedByVendor) {
           // Vendor hasn't priced it → pay the system arithmetic mean, floored at the
           // item's admin base price so a completed order never earns ₦0. Flag the gap.
-          const mean = await this.vendorsService.averageLivePriceForItem(entry.itemId, vendorId);
+          const mean = await this.vendorsService.averageLivePriceForItem(
+            entry.itemId,
+            vendorId,
+          );
           const floor = cat.floorPriceNgn ?? 0;
           unit = Math.max(mean ?? 0, floor);
           unpriced.push({ itemId: entry.itemId, name: cat.name });
         }
         totalNaira += (unit ?? 0) * entry.count;
-        lines.push({ itemId: entry.itemId, name: cat.name, count: entry.count, unitPriceNaira: unit ?? 0, pricedByVendor });
+        lines.push({
+          itemId: entry.itemId,
+          name: cat.name,
+          count: entry.count,
+          unitPriceNaira: unit ?? 0,
+          pricedByVendor,
+        });
       }
-      return { lines, totalNaira, totalWP: Math.round(totalNaira * pointsPerUnit), unpriced };
+      return {
+        lines,
+        totalNaira,
+        totalWP: Math.round(totalNaira * pointsPerUnit),
+        unpriced,
+      };
     }
 
     // ── Legacy: free-text { garmentType: count } map ────────────────────────────
-    const typeEntries = Object.entries(dto.garmentLog ?? {}).filter(([, c]) => Number(c) > 0);
+    const typeEntries = Object.entries(dto.garmentLog ?? {}).filter(
+      ([, c]) => Number(c) > 0,
+    );
     if (!typeEntries.length) {
       throw new BadRequestException('Log at least one garment item.');
     }
     const vendorPriceByType = new Map<string, number>();
-    for (const item of liveItems) vendorPriceByType.set(item.garmentType, item.priceNaira);
+    for (const item of liveItems)
+      vendorPriceByType.set(item.garmentType, item.priceNaira);
 
     const lines: GarmentLogLine[] = [];
     const unpriced: { itemId: string | null; name: string }[] = [];
@@ -1360,13 +1740,28 @@ export class OrdersService {
       let unit = vendorPriceByType.get(type);
       const pricedByVendor = unit != null && unit > 0;
       if (!pricedByVendor) {
-        unit = (await this.vendorsService.averageLivePriceForGarment(type, vendorId)) ?? 0;
+        unit =
+          (await this.vendorsService.averageLivePriceForGarment(
+            type,
+            vendorId,
+          )) ?? 0;
         unpriced.push({ itemId: null, name: type });
       }
       totalNaira += (unit ?? 0) * count;
-      lines.push({ itemId: null, name: type, count, unitPriceNaira: unit ?? 0, pricedByVendor });
+      lines.push({
+        itemId: null,
+        name: type,
+        count,
+        unitPriceNaira: unit ?? 0,
+        pricedByVendor,
+      });
     }
-    return { lines, totalNaira, totalWP: Math.round(totalNaira * pointsPerUnit), unpriced };
+    return {
+      lines,
+      totalNaira,
+      totalWP: Math.round(totalNaira * pointsPerUnit),
+      unpriced,
+    };
   }
 
   // ─── Rating recalculation ─────────────────────────────────────────────────────
@@ -1385,7 +1780,7 @@ export class OrdersService {
     const rep = await this.repRepository.findOne({ where: { id: repId } });
     if (!rep) return;
 
-    rep.rating      = parseFloat(result.avg ?? '0');
+    rep.rating = parseFloat(result.avg ?? '0');
     rep.ratingCount = (rep.ratingCount ?? 0) + 1;
 
     // Check if below threshold — only notify on the false→true transition.
@@ -1393,13 +1788,16 @@ export class OrdersService {
     const wasFlagged = rep.flaggedForReview;
     if (rep.rating < config.lowRatingThreshold && rep.rating > 0) {
       rep.flaggedForReview = true;
-      rep.flaggedAt        = new Date();
+      rep.flaggedAt = new Date();
     }
 
     await this.repRepository.save(rep);
 
     if (!wasFlagged && rep.flaggedForReview) {
-      this.notificationsService.notifyRepFlaggedForReview({ repId: rep.id, rating: rep.rating });
+      this.notificationsService.notifyRepFlaggedForReview({
+        repId: rep.id,
+        rating: rep.rating,
+      });
     }
   }
 
@@ -1414,10 +1812,12 @@ export class OrdersService {
       .andWhere('r.vendorScore IS NOT NULL')
       .getRawOne();
 
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) return;
 
-    vendor.rating      = parseFloat(result.avg ?? '0');
+    vendor.rating = parseFloat(result.avg ?? '0');
     vendor.ratingCount = (vendor.ratingCount ?? 0) + 1;
     await this.vendorRepository.save(vendor);
   }
@@ -1425,10 +1825,19 @@ export class OrdersService {
   // ─── Reference generator ──────────────────────────────────────────────────────
 
   private async generateReference(): Promise<string> {
-    const date    = new Date();
+    const date = new Date();
     const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-    const count   = await this.orderRepository.count();
-    const seq     = String(count + 1).padStart(6, '0');
+    const count = await this.orderRepository.count();
+    const seq = String(count + 1).padStart(6, '0');
     return `WM-ORD-${dateStr}-${seq}`;
+  }
+
+  private generateVerificationCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const length = 4;
+
+    return Array.from({ length }, () => chars[randomInt(chars.length)]).join(
+      '',
+    );
   }
 }
