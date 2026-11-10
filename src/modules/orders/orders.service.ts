@@ -546,6 +546,8 @@ export class OrdersService {
     sortBy?: string;
     sortDir?: 'ASC' | 'DESC';
     flow?: string;
+    from?: string;
+    to?: string;
   }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -590,6 +592,9 @@ export class OrdersService {
     }
     if (query.search)
       qb.andWhere('o.reference ILIKE :q', { q: `%${query.search}%` });
+    // Date-range filter on createdAt (YYYY-MM-DD). `to` is inclusive of the whole day.
+    if (query.from) qb.andWhere('o.createdAt >= :from', { from: `${query.from}T00:00:00.000Z` });
+    if (query.to) qb.andWhere('o.createdAt <= :to', { to: `${query.to}T23:59:59.999Z` });
 
     const [rows, total] = await qb.getManyAndCount();
     const data = rows.map((o) => this.decorate(o));

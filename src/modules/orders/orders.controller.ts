@@ -151,6 +151,8 @@ export class OrdersController {
     @Query('search') search?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: 'ASC' | 'DESC',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.ordersService.findAll({
       page,
@@ -165,6 +167,8 @@ export class OrdersController {
       search,
       sortBy,
       sortDir,
+      from,
+      to,
     });
   }
 
