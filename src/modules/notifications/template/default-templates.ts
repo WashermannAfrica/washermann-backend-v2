@@ -460,6 +460,25 @@ Thank you for partnering with Washermann!`,
     body: "You've accepted order {{orderRef}}. Head to {{pickupAddress}} for pickup.",
   },
 
+  // ── Vendor Assigned → Vendor ──────────────────────────────────────────────────
+
+  {
+    key: 'order.vendor_assigned.vendor',
+    channel: 'push',
+    name: 'Vendor Assigned — Vendor Push',
+    variables: ['vendorName', 'orderRef'],
+    subject: 'New Order Assigned 🧺',
+    body: 'Hi {{vendorName}}, order {{orderRef}} has been assigned to your facility.',
+  },
+  {
+    key: 'order.vendor_assigned.vendor',
+    channel: 'in_app',
+    name: 'Vendor Assigned — Vendor In-App',
+    variables: ['vendorName', 'orderRef'],
+    subject: 'New Order Assigned',
+    body: 'Order {{orderRef}} has been assigned to your facility. Check the app for pickup details.',
+  },
+
   // ── Earning Credited → Rep ────────────────────────────────────────────────────
 
   {

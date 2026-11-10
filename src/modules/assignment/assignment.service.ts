@@ -748,6 +748,22 @@ export class AssignmentService {
       }),
     );
 
+    // Admin assignment skips the broadcast, so without these the rep (and the
+    // customer) would get no notification at all. Fire-and-forget like the
+    // broadcast path — a notification failure must not fail the assignment.
+    this.notificationsService.notifyAssignmentConfirmedRep({
+      repId,
+      orderRef: order.reference,
+      pickupAddress: order.pickupAddress,
+      customerName: '',
+      orderId,
+    });
+    this.notificationsService.notifyRepAssigned({
+      customerId: order.customerId,
+      repId,
+      orderRef: order.reference,
+    });
+
     return order;
   }
 
@@ -811,6 +827,14 @@ export class AssignmentService {
       null,
       'system',
     );
+
+    // Admin assignment skips the vendor broadcast — notify the assigned vendor
+    // directly (fire-and-forget; a notification failure must not fail the assignment).
+    this.notificationsService.notifyVendorAssigned({
+      vendorId,
+      orderRef: order.reference,
+    });
+
     return order;
   }
 
