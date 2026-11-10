@@ -605,6 +605,8 @@ export class OrdersService {
       customer?: { fullName?: string; email?: string };
       company?: { name?: string };
       area?: { name?: string };
+      vendor?: { businessName?: string | null; user?: { fullName?: string; phone?: string } };
+      rep?: { user?: { fullName?: string; phone?: string } };
     };
     return {
       ...o,
@@ -612,6 +614,10 @@ export class OrdersService {
       customerEmail: anyO.customer?.email ?? null,
       companyName: anyO.company?.name ?? null,
       areaName: anyO.area?.name ?? null,
+      vendorName: anyO.vendor?.businessName ?? anyO.vendor?.user?.fullName ?? null,
+      vendorPhone: anyO.vendor?.user?.phone ?? null,
+      repName: anyO.rep?.user?.fullName ?? null,
+      repPhone: anyO.rep?.user?.phone ?? null,
     };
   }
 
@@ -631,6 +637,16 @@ export class OrdersService {
       .addSelect(['cust.id', 'cust.fullName', 'cust.email', 'cust.phone'])
       .leftJoin('o.area', 'ar')
       .addSelect(['ar.id', 'ar.name'])
+      // Assigned vendor + rep (with their user for name/phone) so Finance/admin
+      // can see who is attached to the order, not just raw ids.
+      .leftJoin('o.vendor', 'vend')
+      .addSelect(['vend.id', 'vend.businessName'])
+      .leftJoin('vend.user', 'vendUser')
+      .addSelect(['vendUser.id', 'vendUser.fullName', 'vendUser.phone'])
+      .leftJoin('o.rep', 'rep')
+      .addSelect(['rep.id'])
+      .leftJoin('rep.user', 'repUser')
+      .addSelect(['repUser.id', 'repUser.fullName', 'repUser.phone'])
       .leftJoinAndMapOne('o.company', Company, 'co', 'co.id = o.company_id')
       .where('o.id = :id', { id })
       .getOne();
