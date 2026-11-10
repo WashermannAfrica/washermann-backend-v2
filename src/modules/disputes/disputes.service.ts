@@ -83,7 +83,7 @@ export class DisputesService {
 
   // ─── Admin/resolver: all disputes ───────────────────────────────────────────────
 
-  async adminList(query: { status?: string; group?: string; search?: string; page?: number; limit?: number }) {
+  async adminList(query: { status?: string; group?: string; search?: string; page?: number; limit?: number; from?: string; to?: string }) {
     const res = await this.runQuery(query);
     const counts = await this.counts({});
     return { ...res, counts };
@@ -166,7 +166,7 @@ export class DisputesService {
   // ─── Helpers ────────────────────────────────────────────────────────────────────
 
   private async runQuery(query: {
-    raisedByUserId?: string; status?: string; group?: string; search?: string; page?: number; limit?: number;
+    raisedByUserId?: string; status?: string; group?: string; search?: string; page?: number; limit?: number; from?: string; to?: string;
   }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -188,6 +188,8 @@ export class DisputesService {
           .orWhere('d.issueType ILIKE :q', { q: `%${query.search}%` });
       }));
     }
+    if (query.from) qb.andWhere('d.createdAt >= :from', { from: `${query.from}T00:00:00.000Z` });
+    if (query.to) qb.andWhere('d.createdAt <= :to', { to: `${query.to}T23:59:59.999Z` });
 
     const { entities, raw } = await qb.getRawAndEntities();
     const total = await qb.getCount();

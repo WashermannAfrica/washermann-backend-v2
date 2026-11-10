@@ -20,7 +20,14 @@ import { RateOrderDto } from './dto/rate-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/roles.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  Length,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class CancelOrderDto {
@@ -31,15 +38,28 @@ class CancelOrderDto {
 }
 
 class ConfirmPaymentDto {
-  @ApiPropertyOptional({ description: 'Optional gift-card code to top up the wallet before charging' })
-  @IsOptional() @IsString() @MaxLength(64)
+  @ApiPropertyOptional({
+    description: 'Optional gift-card code to top up the wallet before charging',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
   giftCardCode?: string;
 }
 
 class FailedDeliveryDto {
   @ApiPropertyOptional()
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   note?: string;
+}
+
+export class VerifyPickupDto {
+  @IsString()
+  @Length(4, 4)
+  @Matches(/^[A-HJ-NP-Z2-9]{4}$/)
+  code: string;
 }
 
 class RecordDisposalDto {
@@ -47,8 +67,12 @@ class RecordDisposalDto {
   @IsIn(['store_at_cost', 'donated', 'sold', 'disposed'])
   method: string;
 
-  @ApiPropertyOptional({ description: 'Disposal notes incl. proceeds handling' })
-  @IsOptional() @IsString() @MaxLength(1000)
+  @ApiPropertyOptional({
+    description: 'Disposal notes incl. proceeds handling',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   note?: string;
 }
 
@@ -75,13 +99,18 @@ export class OrdersController {
   // ─── Customer: confirm payment for a draft order ──────────────────────────────
 
   @Post(':id/confirm-payment')
-  @ApiOperation({ summary: 'Confirm payment for a draft order — debits wallet, escrows, and starts assignment (customer)' })
+  @ApiOperation({
+    summary:
+      'Confirm payment for a draft order — debits wallet, escrows, and starts assignment (customer)',
+  })
   confirmPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ConfirmPaymentDto,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.confirmPayment(id, req.user.sub, { giftCardCode: dto.giftCardCode });
+    return this.ordersService.confirmPayment(id, req.user.sub, {
+      giftCardCode: dto.giftCardCode,
+    });
   }
 
   // ─── Admin: list all orders ───────────────────────────────────────────────────
@@ -89,33 +118,58 @@ export class OrdersController {
   @Get()
   @Roles(Role.ADMIN, Role.FINANCE, Role.DISPUTE_RESOLVER)
   @ApiOperation({ summary: 'List orders (admin)' })
-  @ApiQuery({ name: 'page',       required: false, type: Number })
-  @ApiQuery({ name: 'limit',      required: false, type: Number })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'customerId', required: false, type: String })
-  @ApiQuery({ name: 'repId',      required: false, type: String })
-  @ApiQuery({ name: 'vendorId',   required: false, type: String })
-  @ApiQuery({ name: 'status',     required: false, enum: OrderStatus })
-  @ApiQuery({ name: 'areaId',     required: false, type: String })
-  @ApiQuery({ name: 'serviceType', required: false, enum: ['wash_fold', 'wash_iron'] })
-  @ApiQuery({ name: 'flow', required: false, description: "Order flow, or 'logistics' for both logistics legs" })
-  @ApiQuery({ name: 'search',     required: false, type: String })
-  @ApiQuery({ name: 'sortBy',     required: false, type: String })
-  @ApiQuery({ name: 'sortDir',    required: false, enum: ['ASC', 'DESC'] })
+  @ApiQuery({ name: 'repId', required: false, type: String })
+  @ApiQuery({ name: 'vendorId', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: OrderStatus })
+  @ApiQuery({ name: 'areaId', required: false, type: String })
+  @ApiQuery({
+    name: 'serviceType',
+    required: false,
+    enum: ['wash_fold', 'wash_iron'],
+  })
+  @ApiQuery({
+    name: 'flow',
+    required: false,
+    description: "Order flow, or 'logistics' for both logistics legs",
+  })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['ASC', 'DESC'] })
   findAll(
-    @Query('page',       new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit',      new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('customerId') customerId?: string,
-    @Query('repId')      repId?: string,
-    @Query('vendorId')   vendorId?: string,
-    @Query('status')     status?: OrderStatus,
-    @Query('areaId')     areaId?: string,
+    @Query('repId') repId?: string,
+    @Query('vendorId') vendorId?: string,
+    @Query('status') status?: OrderStatus,
+    @Query('areaId') areaId?: string,
     @Query('serviceType') serviceType?: string,
-    @Query('flow')       flow?: string,
-    @Query('search')     search?: string,
-    @Query('sortBy')     sortBy?: string,
-    @Query('sortDir')    sortDir?: 'ASC' | 'DESC',
+    @Query('flow') flow?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'ASC' | 'DESC',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.ordersService.findAll({ page, limit, customerId, repId, vendorId, status, areaId, serviceType, flow, search, sortBy, sortDir });
+    return this.ordersService.findAll({
+      page,
+      limit,
+      customerId,
+      repId,
+      vendorId,
+      status,
+      areaId,
+      serviceType,
+      flow,
+      search,
+      sortBy,
+      sortDir,
+      from,
+      to,
+    });
   }
 
   // ─── Customer: my orders ──────────────────────────────────────────────────────
@@ -124,11 +178,17 @@ export class OrdersController {
   @ApiOperation({ summary: 'List own orders (customer)' })
   myOrders(
     @Request() req: { user: { sub: string } },
-    @Query('page',   new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: OrderStatus,
   ) {
-    return this.ordersService.findAll({ page, limit, customerId: req.user.sub, status });
+    return this.ordersService.findAll({
+      page,
+      limit,
+      customerId: req.user.sub,
+      status,
+      viewer: 'customer',
+    });
   }
 
   // ─── Rep: my assigned orders ──────────────────────────────────────────────────
@@ -138,12 +198,12 @@ export class OrdersController {
   @ApiOperation({ summary: 'List own assigned orders (rep)' })
   async repOrders(
     @Request() req: { user: { sub: string } },
-    @Query('page',   new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: OrderStatus,
   ) {
     const rep = await this.repsService.findByUserId(req.user.sub);
-    return this.ordersService.findAll({ page, limit, repId: rep.id, status });
+    return this.ordersService.findAll({ page, limit, repId: rep.id, status, viewer: 'rep' });
   }
 
   // ─── Vendor: my assigned orders ───────────────────────────────────────────────
@@ -153,20 +213,31 @@ export class OrdersController {
   @ApiOperation({ summary: 'List own assigned orders (vendor)' })
   async vendorOrders(
     @Request() req: { user: { sub: string } },
-    @Query('page',   new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit',  new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: OrderStatus,
   ) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
-    return this.ordersService.findAll({ page, limit, vendorId: vendor.id, status });
+    return this.ordersService.findAll({
+      page,
+      limit,
+      vendorId: vendor.id,
+      status,
+      viewer: 'vendor',
+    });
   }
 
   // ─── Get one order ────────────────────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get order by ID (enriched: customer/company/area names)' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.ordersService.getDetail(id);
+  @ApiOperation({
+    summary: 'Get order by ID (enriched; exchange codes scoped to the caller)',
+  })
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string; roles?: string[] } },
+  ) {
+    return this.ordersService.getDetail(id, { userId: req.user.sub, roles: req.user.roles });
   }
 
   // ─── Get status history ───────────────────────────────────────────────────────
@@ -199,39 +270,59 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.repTransition(id, OrderStatus.REP_EN_ROUTE_PICKUP, req.user.sub);
+    return this.ordersService.repTransition(
+      id,
+      OrderStatus.REP_EN_ROUTE_PICKUP,
+      req.user.sub,
+    );
   }
 
   @Post(':id/status/picked-up')
-  @Roles(Role.REP)
-  @ApiOperation({ summary: 'Rep marks order as picked up' })
+  @Roles(Role.USER)
+  @ApiOperation({
+    summary: 'Customer confirms order pickup using verification code',
+  })
   markPickedUp(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
+    @Body() dto: VerifyPickupDto,
   ) {
-    return this.ordersService.repTransition(id, OrderStatus.PICKED_UP, req.user.sub);
+    return this.ordersService.customerConfirmPickup(
+      id,
+      // OrderStatus.PICKED_UP,
+      req.user.sub,
+      dto.code,
+    );
   }
 
   @Post(':id/status/with-vendor')
   @Roles(Role.REP)
   @ApiOperation({
-    summary: 'Rep marks the order as handed to the vendor (requires garments logged first)',
+    summary:
+      'Rep marks the order as handed to the vendor (requires garments logged first)',
   })
   markWithVendor(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
+    @Body() dto: VerifyPickupDto,
   ) {
-    return this.ordersService.markWithVendor(id, req.user.sub);
+    return this.ordersService.markWithVendor(id, req.user.sub, dto.code);
   }
 
   @Post(':id/status/in-progress')
   @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Vendor marks order as in progress (washing started)' })
+  @ApiOperation({
+    summary: 'Vendor marks order as in progress (washing started)',
+  })
   markInProgress(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.vendorTransition(id, OrderStatus.IN_PROGRESS, req.user.sub);
+    return this.ordersService.vendorTransition(
+      id,
+      OrderStatus.IN_PROGRESS,
+      req.user.sub,
+    );
   }
 
   @Post(':id/status/ready-for-delivery')
@@ -241,17 +332,29 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.vendorTransition(id, OrderStatus.READY_FOR_DELIVERY, req.user.sub);
+    return this.ordersService.vendorTransition(
+      id,
+      OrderStatus.READY_FOR_DELIVERY,
+      req.user.sub,
+    );
   }
 
   @Post(':id/status/rep-collected')
-  @Roles(Role.REP)
-  @ApiOperation({ summary: 'Rep confirms pickup from vendor' })
+  @Roles(Role.VENDOR)
+  @ApiOperation({
+    summary: 'Vendor confirms rep collection using verification code',
+  })
   markRepCollected(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
+    @Body() dto: VerifyPickupDto,
   ) {
-    return this.ordersService.repTransition(id, OrderStatus.REP_COLLECTED, req.user.sub);
+    return this.ordersService.vendorTransition(
+      id,
+      OrderStatus.REP_COLLECTED,
+      req.user.sub,
+      dto.code,
+    );
   }
 
   @Post(':id/status/out-for-delivery')
@@ -261,7 +364,11 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.repTransition(id, OrderStatus.OUT_FOR_DELIVERY, req.user.sub);
+    return this.ordersService.repTransition(
+      id,
+      OrderStatus.OUT_FOR_DELIVERY,
+      req.user.sub,
+    );
   }
 
   @Post(':id/status/delivered')
@@ -270,15 +377,23 @@ export class OrdersController {
   markDelivered(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },
+    @Body() dto: VerifyPickupDto,
   ) {
-    return this.ordersService.repTransition(id, OrderStatus.DELIVERED, req.user.sub);
+    return this.ordersService.repTransition(
+      id,
+      OrderStatus.DELIVERED,
+      req.user.sub,
+      dto.code,
+    );
   }
 
   // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
 
   @Post(':id/status/failed-delivery')
   @Roles(Role.REP)
-  @ApiOperation({ summary: 'Rep records a failed delivery attempt (customer unavailable)' })
+  @ApiOperation({
+    summary: 'Rep records a failed delivery attempt (customer unavailable)',
+  })
   failedDelivery(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: FailedDeliveryDto,
@@ -289,19 +404,28 @@ export class OrdersController {
 
   @Post(':id/disposal')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Admin records the disposal outcome of an abandoned order' })
+  @ApiOperation({
+    summary: 'Admin records the disposal outcome of an abandoned order',
+  })
   recordDisposal(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RecordDisposalDto,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.ordersService.recordDisposal(id, req.user.sub, dto.method, dto.note);
+    return this.ordersService.recordDisposal(
+      id,
+      req.user.sub,
+      dto.method,
+      dto.note,
+    );
   }
 
   // ─── Customer: confirm delivery ───────────────────────────────────────────────
 
   @Post(':id/confirm-delivery')
-  @ApiOperation({ summary: 'Customer confirms delivery and triggers escrow release' })
+  @ApiOperation({
+    summary: 'Customer confirms delivery and triggers escrow release',
+  })
   confirmDelivery(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { sub: string } },

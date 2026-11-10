@@ -6,7 +6,10 @@ import { Rep } from './rep.entity';
 import { Vendor } from './vendor.entity';
 import { Area } from './area.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
-import { BigIntTransformer, DecimalTransformer } from '../../common/transformers/column.transformers';
+import {
+  BigIntTransformer,
+  DecimalTransformer,
+} from '../../common/transformers/column.transformers';
 
 /** Bag size options */
 export type BagSize = 'small' | 'medium' | 'large' | 'xl';
@@ -36,14 +39,17 @@ export interface LogisticsRecipient {
 }
 
 /** True for the rep-only logistics flows. */
-export const LOGISTICS_FLOWS: OrderFlow[] = ['logistics_delivery', 'logistics_collect'];
+export const LOGISTICS_FLOWS: OrderFlow[] = [
+  'logistics_delivery',
+  'logistics_collect',
+];
 export const isLogisticsFlow = (f: OrderFlow | null | undefined): boolean =>
   f === 'logistics_delivery' || f === 'logistics_collect';
 
 /** A selected catalogue item + quantity (wash_iron flow) */
 export interface OrderItemSelection {
   itemId: string;
-  qty:    number;
+  qty: number;
   /** Customer asked for this item to be dry-cleaned */
   dryClean?: boolean;
   /** Customer flagged this item for stain removal */
@@ -54,7 +60,7 @@ export interface OrderItemSelection {
 
 /** A single special item in the order */
 export interface SpecialItem {
-  type: string;  // e.g. 'suit', 'agbada', 'duvet'
+  type: string; // e.g. 'suit', 'agbada', 'duvet'
   qty: number;
 }
 
@@ -109,8 +115,14 @@ export type LegacyGarmentMap = Record<string, number>;
 export type GarmentLog = StructuredGarmentLog | LegacyGarmentMap;
 
 /** Narrow a stored garment log to the structured item-based shape. */
-export function isStructuredGarmentLog(log: GarmentLog | null | undefined): log is StructuredGarmentLog {
-  return !!log && typeof log === 'object' && Array.isArray((log as StructuredGarmentLog).lines);
+export function isStructuredGarmentLog(
+  log: GarmentLog | null | undefined,
+): log is StructuredGarmentLog {
+  return (
+    !!log &&
+    typeof log === 'object' &&
+    Array.isArray((log as StructuredGarmentLog).lines)
+  );
 }
 
 /**
@@ -131,7 +143,10 @@ export class Order extends BaseEntity {
   @Column({ name: 'customer_id', type: 'uuid' })
   customerId: string;
 
-  @ApiProperty({ nullable: true, description: 'Set when WP comes from a company benefit' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Set when WP comes from a company benefit',
+  })
   @Column({ name: 'company_id', type: 'uuid', nullable: true })
   companyId: string | null;
 
@@ -150,10 +165,19 @@ export class Order extends BaseEntity {
       "How the vendor is chosen: 'automatic' — platform allocates via broadcast at our prices; " +
       "'choose' — customer picked a specific vendor (chosenVendorId) and paid that vendor's prices.",
   })
-  @Column({ name: 'allocation_mode', type: 'varchar', length: 12, default: 'automatic' })
+  @Column({
+    name: 'allocation_mode',
+    type: 'varchar',
+    length: 12,
+    default: 'automatic',
+  })
   allocationMode: 'automatic' | 'choose';
 
-  @ApiProperty({ nullable: true, description: "The vendor the customer chose (choose mode). Pinned at VENDOR_ASSIGNED into vendorId." })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The vendor the customer chose (choose mode). Pinned at VENDOR_ASSIGNED into vendorId.',
+  })
   @Column({ name: 'chosen_vendor_id', type: 'uuid', nullable: true })
   chosenVendorId: string | null;
 
@@ -161,17 +185,28 @@ export class Order extends BaseEntity {
   @Column({ name: 'area_id', type: 'uuid' })
   areaId: string;
 
-  @ApiProperty({ nullable: true, description: 'Resolved town/location geofence the pickup point fell in (null = legacy or fallback-assigned)' })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Resolved town/location geofence the pickup point fell in (null = legacy or fallback-assigned)',
+  })
   @Column({ name: 'area_location_id', type: 'uuid', nullable: true })
   areaLocationId: string | null;
 
-  @ApiProperty({ default: true, description: 'False when the pickup point was outside all geofences and the order was routed to the nearest covered area' })
+  @ApiProperty({
+    default: true,
+    description:
+      'False when the pickup point was outside all geofences and the order was routed to the nearest covered area',
+  })
   @Column({ name: 'coverage_matched', type: 'boolean', default: true })
   coverageMatched: boolean;
 
   // ─── Service details ─────────────────────────────────────────────────────────
 
-  @ApiProperty({ enum: ['wash_fold', 'wash_iron', 'bundle'], description: 'Order flow (catalogue model)' })
+  @ApiProperty({
+    enum: ['wash_fold', 'wash_iron', 'bundle'],
+    description: 'Order flow (catalogue model)',
+  })
   @Column({ name: 'flow', type: 'varchar', length: 20, nullable: true })
   flow: OrderFlow | null;
 
@@ -179,7 +214,11 @@ export class Order extends BaseEntity {
   @Column({ name: 'bag_id', type: 'uuid', nullable: true })
   bagId: string | null;
 
-  @ApiProperty({ nullable: true, type: 'array', description: 'Selected catalogue items + qty (wash_iron flow)' })
+  @ApiProperty({
+    nullable: true,
+    type: 'array',
+    description: 'Selected catalogue items + qty (wash_iron flow)',
+  })
   @Column({ name: 'item_selections', type: 'jsonb', nullable: true })
   itemSelections: OrderItemSelection[] | null;
 
@@ -191,11 +230,18 @@ export class Order extends BaseEntity {
   @Column({ name: 'service_type', type: 'varchar', length: 20 })
   serviceType: ServiceType;
 
-  @ApiProperty({ enum: ['small', 'medium', 'large', 'xl'], nullable: true, description: 'Legacy bag size (pre-catalogue)' })
+  @ApiProperty({
+    enum: ['small', 'medium', 'large', 'xl'],
+    nullable: true,
+    description: 'Legacy bag size (pre-catalogue)',
+  })
   @Column({ name: 'bag_size', type: 'varchar', length: 10, nullable: true })
   bagSize: BagSize | null;
 
-  @ApiProperty({ type: 'array', description: 'Special items outside the bag (legacy)' })
+  @ApiProperty({
+    type: 'array',
+    description: 'Special items outside the bag (legacy)',
+  })
   @Column({ name: 'special_items', type: 'jsonb', default: '[]' })
   specialItems: SpecialItem[];
 
@@ -222,48 +268,100 @@ export class Order extends BaseEntity {
   scheduledPickupAt: Date;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'special_instructions', type: 'varchar', length: 1000, nullable: true })
+  @Column({
+    name: 'special_instructions',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
   specialInstructions: string | null;
 
   // ─── Logistics (mobility) legs ───────────────────────────────────────────────
   // Present only for logistics_* flows. A leg moves clothes A→B by rep, no washing.
 
-  @ApiProperty({ enum: ['customer', 'vendor'], default: 'customer', description: 'Who initiated the order' })
-  @Column({ name: 'requester_type', type: 'varchar', length: 12, default: 'customer' })
+  @ApiProperty({
+    enum: ['customer', 'vendor'],
+    default: 'customer',
+    description: 'Who initiated the order',
+  })
+  @Column({
+    name: 'requester_type',
+    type: 'varchar',
+    length: 12,
+    default: 'customer',
+  })
   requesterType: OrderRequesterType;
 
-  @ApiProperty({ nullable: true, description: 'Destination (B) latitude for a logistics leg' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Destination (B) latitude for a logistics leg',
+  })
   @Column({ name: 'dropoff_latitude', type: 'float', nullable: true })
   dropoffLatitude: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Destination (B) longitude for a logistics leg' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Destination (B) longitude for a logistics leg',
+  })
   @Column({ name: 'dropoff_longitude', type: 'float', nullable: true })
   dropoffLongitude: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Ad-hoc counterparty (vendor-initiated logistics)' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Ad-hoc counterparty (vendor-initiated logistics)',
+  })
   @Column({ name: 'recipient', type: 'jsonb', nullable: true })
   recipient: LogisticsRecipient | null;
 
-  @ApiProperty({ nullable: true, description: 'Platform mobility fee (WP) on a logistics leg' })
-  @Column({ name: 'mobility_fee_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @ApiProperty({
+    nullable: true,
+    description: 'Platform mobility fee (WP) on a logistics leg',
+  })
+  @Column({
+    name: 'mobility_fee_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   mobilityFeeWp: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Links the two legs of a combined round-trip (collect leg id)' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Links the two legs of a combined round-trip (collect leg id)',
+  })
   @Column({ name: 'parent_order_id', type: 'uuid', nullable: true })
   parentOrderId: string | null;
 
-  @ApiProperty({ nullable: true, description: 'Combined round-trip: set when the vendor taps “ready to deliver”' })
-  @Column({ name: 'ready_to_deliver_at', type: 'timestamp with time zone', nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Combined round-trip: set when the vendor taps “ready to deliver”',
+  })
+  @Column({
+    name: 'ready_to_deliver_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   readyToDeliverAt: Date | null;
 
-  @ApiProperty({ nullable: true, description: 'Public token for the recipient tracking link' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Public token for the recipient tracking link',
+  })
   @Index()
-  @Column({ name: 'tracking_token', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'tracking_token',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   trackingToken: string | null;
 
   // ─── Pricing (locked at placement) ───────────────────────────────────────────
 
-  @ApiProperty({ description: 'Full PricingEngine output, frozen at order placement' })
+  @ApiProperty({
+    description: 'Full PricingEngine output, frozen at order placement',
+  })
   @Column({ name: 'pricing_snapshot', type: 'jsonb' })
   pricingSnapshot: PricingSnapshot;
 
@@ -285,7 +383,9 @@ export class Order extends BaseEntity {
   })
   nairaEquivalentSnapshot: number;
 
-  @ApiProperty({ description: 'Conversion rate (WP/₦) snapshotted at placement' })
+  @ApiProperty({
+    description: 'Conversion rate (WP/₦) snapshotted at placement',
+  })
   @Column({
     name: 'conversion_rate_snapshot',
     type: 'decimal',
@@ -301,7 +401,10 @@ export class Order extends BaseEntity {
 
   // ─── Earnings split (locked at picked_up status) ─────────────────────────────
 
-  @ApiProperty({ nullable: true, description: 'Vendor share (WP) — locked when rep logs garment count' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Vendor share (WP) — locked when rep logs garment count',
+  })
   @Column({
     name: 'vendor_share_wp',
     type: 'bigint',
@@ -340,24 +443,61 @@ export class Order extends BaseEntity {
   platformShareWP: number | null;
 
   // ─── Transport (distance-based) ────────────────────────────────────────────────
-  @ApiProperty({ nullable: true, description: 'Transport charged to the customer (estimate over area vendors), in WP' })
-  @Column({ name: 'transport_estimate_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Transport charged to the customer (estimate over area vendors), in WP',
+  })
+  @Column({
+    name: 'transport_estimate_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   transportEstimateWp: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Actual transport for the assigned vendor (customer↔vendor round trip), in WP' })
-  @Column({ name: 'actual_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Actual transport for the assigned vendor (customer↔vendor round trip), in WP',
+  })
+  @Column({
+    name: 'actual_transport_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   actualTransportWp: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Transport credited to the rep = min(actual, estimate), in WP' })
-  @Column({ name: 'rep_transport_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @ApiProperty({
+    nullable: true,
+    description: 'Transport credited to the rep = min(actual, estimate), in WP',
+  })
+  @Column({
+    name: 'rep_transport_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   repTransportWp: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Garment count logged by rep at pickup' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Garment count logged by rep at pickup',
+  })
   @Column({ name: 'garment_log', type: 'jsonb', nullable: true })
   garmentLog: GarmentLog | null;
 
-  @ApiProperty({ nullable: true, description: 'SLA: deliver by this time (pickup + turnaround hours). Feeds rep on-time scoring.' })
-  @Column({ name: 'delivery_deadline', type: 'timestamp with time zone', nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'SLA: deliver by this time (pickup + turnaround hours). Feeds rep on-time scoring.',
+  })
+  @Column({
+    name: 'delivery_deadline',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   deliveryDeadline: Date | null;
 
   @ApiProperty({
@@ -379,20 +519,94 @@ export class Order extends BaseEntity {
   status: OrderStatus;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'cancelled_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'cancelled_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   cancelledAt: Date | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'cancellation_reason', type: 'varchar', length: 1000, nullable: true })
+  @Column({
+    name: 'cancellation_reason',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
   cancellationReason: string | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'completed_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'completed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   completedAt: Date | null;
 
-  @ApiProperty({ nullable: true, description: 'Timestamp after which auto-complete fires' })
-  @Column({ name: 'auto_complete_at', type: 'timestamp with time zone', nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description: 'Timestamp after which auto-complete fires',
+  })
+  @Column({
+    name: 'auto_complete_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   autoCompleteAt: Date | null;
+
+  // ─── Exchange verification codes (4 physical handoffs) ────────────────────────
+  // Each code is HELD/READ by one party and TYPED by the other to advance status.
+  //   1. firstLegCode  (pickup)     — held by REP,      typed by CUSTOMER → PICKED_UP
+  //   2. dropoffCode   (drop-off)   — held by VENDOR,   typed by REP      → WITH_VENDOR
+  //   3. collectionCode(collection) — held by REP,      typed by VENDOR   → REP_COLLECTED
+  //   4. secondLegCode (delivery)   — held by CUSTOMER, typed by REP      → DELIVERED
+  @ApiProperty({
+    nullable: true,
+    description: 'Pickup code — held by the rep, typed by the customer to confirm pickup (→ picked_up)',
+  })
+  @Column({
+    name: 'first_leg_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  firstLegCode: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Drop-off code — held by the vendor, typed by the rep at the facility (→ with_vendor)',
+  })
+  @Column({
+    name: 'dropoff_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  dropoffCode: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Collection code — held by the rep, typed by the vendor when the rep collects (→ rep_collected)',
+  })
+  @Column({
+    name: 'collection_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  collectionCode: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Delivery code — held by the customer, typed by the rep to confirm delivery (→ delivered)',
+  })
+  @Column({
+    name: 'second_leg_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  secondLegCode: string | null;
 
   // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
   @ApiProperty({ description: 'Number of failed delivery attempts' })
@@ -404,27 +618,63 @@ export class Order extends BaseEntity {
   uncollectedNoticeCount: number;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'first_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'first_uncollected_notice_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   firstUncollectedNoticeAt: Date | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'last_uncollected_notice_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'last_uncollected_notice_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   lastUncollectedNoticeAt: Date | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'abandoned_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'abandoned_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   abandonedAt: Date | null;
 
-  @ApiProperty({ nullable: true, description: 'Disposal outcome for abandoned garments (store_at_cost | donated | sold | disposed)' })
-  @Column({ name: 'disposal_method', type: 'varchar', length: 20, nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Disposal outcome for abandoned garments (store_at_cost | donated | sold | disposed)',
+  })
+  @Column({
+    name: 'disposal_method',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
   disposalMethod: string | null;
 
-  @ApiProperty({ nullable: true, description: 'Disposal notes incl. proceeds handling' })
-  @Column({ name: 'disposal_note', type: 'varchar', length: 1000, nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description: 'Disposal notes incl. proceeds handling',
+  })
+  @Column({
+    name: 'disposal_note',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
   disposalNote: string | null;
 
-  @ApiProperty({ nullable: true, description: 'Whether customer has submitted a rating' })
-  @Column({ name: 'rated_at', type: 'timestamp with time zone', nullable: true })
+  @ApiProperty({
+    nullable: true,
+    description: 'Whether customer has submitted a rating',
+  })
+  @Column({
+    name: 'rated_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   ratedAt: Date | null;
 
   // ─── Relations ───────────────────────────────────────────────────────────────

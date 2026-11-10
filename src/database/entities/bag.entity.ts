@@ -1,7 +1,10 @@
 import { Column, Entity } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from './base.entity';
-import { DecimalTransformer, BigIntTransformer } from '../../common/transformers/column.transformers';
+import {
+  DecimalTransformer,
+  BigIntTransformer,
+} from '../../common/transformers/column.transformers';
 
 /**
  * A Wash & Fold bag — the purchasable unit of the wash_fold flow.
@@ -25,28 +28,56 @@ export class Bag extends BaseEntity {
   @Column({ type: 'varchar', length: 1000, nullable: true })
   description: string | null;
 
-  @ApiProperty({ description: 'Number of items the bag holds — multiplies the everyday P70 base' })
+  @ApiProperty({
+    description:
+      'Number of items the bag holds — multiplies the everyday P70 base',
+  })
   @Column({ name: 'allowed_item_count', type: 'int' })
   allowedItemCount: number;
 
-  @ApiProperty({ description: 'Item UUIDs eligible for this bag (operational guidance)', type: [String] })
+  @ApiProperty({
+    description: 'Item UUIDs eligible for this bag (operational guidance)',
+    type: [String],
+  })
   @Column({ name: 'eligible_item_ids', type: 'jsonb', default: '[]' })
   eligibleItemIds: string[];
 
-  @ApiProperty({ description: 'Category UUIDs eligible for this bag (operational guidance)', type: [String] })
+  @ApiProperty({
+    description: 'Category UUIDs eligible for this bag (operational guidance)',
+    type: [String],
+  })
   @Column({ name: 'eligible_category_ids', type: 'jsonb', default: '[]' })
   eligibleCategoryIds: string[];
 
   @ApiProperty({ nullable: true, description: 'Cached derived price in Naira' })
-  @Column({ name: 'price_ngn', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: DecimalTransformer })
+  @Column({
+    name: 'price_ngn',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: DecimalTransformer,
+  })
   priceNgn: number | null;
 
-  @ApiProperty({ nullable: true, description: 'Cached derived price in WashPoints' })
-  @Column({ name: 'price_wp', type: 'bigint', nullable: true, transformer: BigIntTransformer })
+  @ApiProperty({
+    nullable: true,
+    description: 'Cached derived price in WashPoints',
+  })
+  @Column({
+    name: 'price_wp',
+    type: 'bigint',
+    nullable: true,
+    transformer: BigIntTransformer,
+  })
   priceWp: number | null;
 
   @ApiProperty({ nullable: true })
-  @Column({ name: 'price_computed_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'price_computed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   priceComputedAt: Date | null;
 
   @ApiProperty({ description: 'Enable/disable' })

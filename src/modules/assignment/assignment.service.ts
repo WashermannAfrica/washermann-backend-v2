@@ -1,4 +1,11 @@
-import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -79,10 +86,15 @@ export class AssignmentService {
       take: 100,
     });
     const orderIds = [...new Set(rows.map((r) => r.orderId))];
-    const orders = orderIds.length ? await this.orderRepository.find({ where: { id: In(orderIds) } }) : [];
+    const orders = orderIds.length
+      ? await this.orderRepository.find({ where: { id: In(orderIds) } })
+      : [];
     const byId = new Map(orders.map((o) => [o.id, o]));
     const now = Date.now();
-    const broadcastingStatus = targetType === 'rep' ? OrderStatus.BROADCASTING_REP : OrderStatus.BROADCASTING_VENDOR;
+    const broadcastingStatus =
+      targetType === 'rep'
+        ? OrderStatus.BROADCASTING_REP
+        : OrderStatus.BROADCASTING_VENDOR;
 
     const isLiveOffer = (b: AssignmentBroadcast) =>
       b.status === 'pending' &&
@@ -116,12 +128,22 @@ export class AssignmentService {
    * Rep declines an offer: mark it, and if that was the batch's LAST live offer,
    * immediately broadcast the next batch instead of waiting out the window.
    */
-  async repDeclines(orderId: string, repUserId: string): Promise<{ declined: boolean }> {
-    const rep = await this.repRepository.findOne({ where: { userId: repUserId } });
+  async repDeclines(
+    orderId: string,
+    repUserId: string,
+  ): Promise<{ declined: boolean }> {
+    const rep = await this.repRepository.findOne({
+      where: { userId: repUserId },
+    });
     if (!rep) return { declined: false };
 
     const broadcast = await this.broadcastRepository.findOne({
-      where: { orderId, targetId: rep.id, targetType: 'rep', status: 'pending' },
+      where: {
+        orderId,
+        targetId: rep.id,
+        targetType: 'rep',
+        status: 'pending',
+      },
     });
     if (!broadcast) return { declined: false };
 
@@ -134,12 +156,22 @@ export class AssignmentService {
   }
 
   /** Vendor declines an offer — same fast-forward semantics as repDeclines. */
-  async vendorDeclines(orderId: string, vendorUserId: string): Promise<{ declined: boolean }> {
-    const vendor = await this.vendorRepository.findOne({ where: { userId: vendorUserId } });
+  async vendorDeclines(
+    orderId: string,
+    vendorUserId: string,
+  ): Promise<{ declined: boolean }> {
+    const vendor = await this.vendorRepository.findOne({
+      where: { userId: vendorUserId },
+    });
     if (!vendor) return { declined: false };
 
     const broadcast = await this.broadcastRepository.findOne({
-      where: { orderId, targetId: vendor.id, targetType: 'vendor', status: 'pending' },
+      where: {
+        orderId,
+        targetId: vendor.id,
+        targetType: 'vendor',
+        status: 'pending',
+      },
     });
     if (!broadcast) return { declined: false };
 
@@ -147,22 +179,37 @@ export class AssignmentService {
     broadcast.respondedAt = new Date();
     await this.broadcastRepository.save(broadcast);
 
-    await this.advanceBatchIfExhausted(orderId, 'vendor', broadcast.batchNumber);
+    await this.advanceBatchIfExhausted(
+      orderId,
+      'vendor',
+      broadcast.batchNumber,
+    );
     return { declined: true };
   }
 
   /** When every offer in the current batch is resolved, move to the next batch now. */
-  private async advanceBatchIfExhausted(orderId: string, targetType: 'rep' | 'vendor', batchNumber: number) {
+  private async advanceBatchIfExhausted(
+    orderId: string,
+    targetType: 'rep' | 'vendor',
+    batchNumber: number,
+  ) {
     const stillPending = await this.broadcastRepository.count({
       where: { orderId, targetType, status: 'pending' },
     });
     if (stillPending > 0) return;
 
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
-    const expectedStatus = targetType === 'rep' ? OrderStatus.BROADCASTING_REP : OrderStatus.BROADCASTING_VENDOR;
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
+    const expectedStatus =
+      targetType === 'rep'
+        ? OrderStatus.BROADCASTING_REP
+        : OrderStatus.BROADCASTING_VENDOR;
     if (!order || order.status !== expectedStatus) return;
 
-    this.logger.log(`Order ${orderId}: batch ${batchNumber} fully declined — advancing ${targetType} broadcast`);
+    this.logger.log(
+      `Order ${orderId}: batch ${batchNumber} fully declined — advancing ${targetType} broadcast`,
+    );
     if (targetType === 'rep') {
       await this.broadcastReps(orderId, order.areaId, batchNumber + 1);
     } else {
@@ -182,17 +229,30 @@ export class AssignmentService {
   // ─── Start rep assignment for an order ───────────────────────────────────────
 
   async startRepAssignment(orderId: string): Promise<void> {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order || order.status !== OrderStatus.PAID) return;
 
-    await this.ordersService.transition(orderId, OrderStatus.BROADCASTING_REP, null, 'system');
+    await this.ordersService.transition(
+      orderId,
+      OrderStatus.BROADCASTING_REP,
+      null,
+      'system',
+    );
     await this.broadcastReps(orderId, order.areaId, 1);
   }
 
   // ─── Broadcast reps in a batch ────────────────────────────────────────────────
 
-  async broadcastReps(orderId: string, areaId: string, batchNumber: number): Promise<void> {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+  async broadcastReps(
+    orderId: string,
+    areaId: string,
+    batchNumber: number,
+  ): Promise<void> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order) return;
 
     // Get already-notified rep IDs
@@ -209,7 +269,11 @@ export class AssignmentService {
       // Try adjacent areas
       const area = await this.areasService.findOne(areaId);
       for (const adjacentId of area.adjacentAreaIds) {
-        const adjacentCandidates = await this.scoreReps(adjacentId, notifiedIds, orderId);
+        const adjacentCandidates = await this.scoreReps(
+          adjacentId,
+          notifiedIds,
+          orderId,
+        );
         if (adjacentCandidates.length > 0) {
           await this.broadcastReps(orderId, adjacentId, batchNumber);
           return;
@@ -217,12 +281,14 @@ export class AssignmentService {
       }
 
       // All areas exhausted — escalate to admin
-      this.logger.warn(`Order ${orderId}: No available reps found in any area — escalating`);
+      this.logger.warn(
+        `Order ${orderId}: No available reps found in any area — escalating`,
+      );
       await this.statusHistoryRepository.save(
         this.statusHistoryRepository.create({
           orderId,
           fromStatus: order.status,
-          toStatus:   order.status,
+          toStatus: order.status,
           triggeredBy: null,
           triggeredByRole: 'system',
           note: 'No available reps found in any area — requires manual admin assignment',
@@ -244,11 +310,11 @@ export class AssignmentService {
     for (const candidate of batch) {
       const record = this.broadcastRepository.create({
         orderId,
-        targetType:    'rep',
-        targetId:      candidate.id,
+        targetType: 'rep',
+        targetId: candidate.id,
         batchNumber,
         priorityScore: candidate.score,
-        status:        'pending',
+        status: 'pending',
         expiresAt,
       });
       await this.broadcastRepository.save(record);
@@ -260,13 +326,16 @@ export class AssignmentService {
 
     // Notify each rep
     const scheduledPickupAt = order.scheduledPickupAt
-      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })
+      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
       : '';
     for (const candidate of batch) {
       this.notificationsService.notifyAssignmentBroadcastRep({
-        repId:            candidate.id,
-        orderRef:         order.reference,
-        pickupAddress:    order.pickupAddress,
+        repId: candidate.id,
+        orderRef: order.reference,
+        pickupAddress: order.pickupAddress,
         scheduledPickupAt,
         orderId,
       });
@@ -277,7 +346,9 @@ export class AssignmentService {
 
   async repAccepts(orderId: string, repUserId: string): Promise<Order | null> {
     // Callers authenticate as the USER — resolve their rep profile first.
-    const rep = await this.repRepository.findOne({ where: { userId: repUserId } });
+    const rep = await this.repRepository.findOne({
+      where: { userId: repUserId },
+    });
     if (!rep) return null;
     const repId = rep.id;
     const broadcast = await this.broadcastRepository.findOne({
@@ -286,11 +357,13 @@ export class AssignmentService {
     if (!broadcast) return null;
     if (broadcast.expiresAt && broadcast.expiresAt < new Date()) return null;
 
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order || order.status !== OrderStatus.BROADCASTING_REP) return null;
 
     // Mark this broadcast as accepted
-    broadcast.status      = 'accepted';
+    broadcast.status = 'accepted';
     broadcast.respondedAt = new Date();
     await this.broadcastRepository.save(broadcast);
 
@@ -299,9 +372,15 @@ export class AssignmentService {
       .createQueryBuilder()
       .update(AssignmentBroadcast)
       .set({ status: 'cancelled' })
-      .where('orderId = :orderId AND targetType = :type AND status = :s AND id != :id', {
-        orderId, type: 'rep', s: 'pending', id: broadcast.id,
-      })
+      .where(
+        'orderId = :orderId AND targetType = :type AND status = :s AND id != :id',
+        {
+          orderId,
+          type: 'rep',
+          s: 'pending',
+          id: broadcast.id,
+        },
+      )
       .execute();
 
     // Assign rep to order
@@ -317,7 +396,7 @@ export class AssignmentService {
       this.statusHistoryRepository.create({
         orderId,
         fromStatus: OrderStatus.BROADCASTING_REP,
-        toStatus:   OrderStatus.REP_ASSIGNED,
+        toStatus: OrderStatus.REP_ASSIGNED,
         triggeredBy: repId,
         triggeredByRole: 'rep',
         note: 'Rep accepted assignment',
@@ -326,10 +405,10 @@ export class AssignmentService {
 
     // Notify rep of confirmed assignment
     this.notificationsService.notifyAssignmentConfirmedRep({
-      repId:         repId,
-      orderRef:      order.reference,
+      repId: repId,
+      orderRef: order.reference,
       pickupAddress: order.pickupAddress,
-      customerName:  '',    // will be looked up inside notifyAssignmentConfirmedRep via customer ID if needed
+      customerName: '', // will be looked up inside notifyAssignmentConfirmedRep via customer ID if needed
       orderId,
     });
 
@@ -342,7 +421,9 @@ export class AssignmentService {
   // ─── Start vendor assignment ──────────────────────────────────────────────────
 
   async startVendorAssignment(orderId: string): Promise<void> {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order) return;
 
     // Logistics legs have no washing vendor to match — the vendor (if any) is fixed
@@ -375,7 +456,12 @@ export class AssignmentService {
       );
     }
 
-    await this.ordersService.transition(orderId, OrderStatus.BROADCASTING_VENDOR, null, 'system');
+    await this.ordersService.transition(
+      orderId,
+      OrderStatus.BROADCASTING_VENDOR,
+      null,
+      'system',
+    );
     await this.broadcastVendors(orderId, order.areaId, 1);
   }
 
@@ -384,37 +470,63 @@ export class AssignmentService {
    * (without throwing) when the vendor can no longer take the order, so the caller
    * can fall back to a broadcast.
    */
-  private async assignChosenVendor(order: Order, vendorId: string): Promise<boolean> {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
-    if (!vendor || vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) return false;
-    if (!Array.isArray(vendor.areaIds) || !vendor.areaIds.includes(order.areaId)) return false;
+  private async assignChosenVendor(
+    order: Order,
+    vendorId: string,
+  ): Promise<boolean> {
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
+    if (
+      !vendor ||
+      vendor.verificationStatus !== VendorVerificationStatus.VERIFIED
+    )
+      return false;
+    if (
+      !Array.isArray(vendor.areaIds) ||
+      !vendor.areaIds.includes(order.areaId)
+    )
+      return false;
 
     const fromStatus = order.status;
     order.vendorId = vendorId;
-    order.status   = OrderStatus.VENDOR_ASSIGNED;
+    order.status = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
 
-    await this.vendorRepository.update(vendorId, { lastAssignedAt: new Date() });
+    await this.vendorRepository.update(vendorId, {
+      lastAssignedAt: new Date(),
+    });
 
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
-        orderId:     order.id,
+        orderId: order.id,
         fromStatus,
-        toStatus:    OrderStatus.VENDOR_ASSIGNED,
+        toStatus: OrderStatus.VENDOR_ASSIGNED,
         triggeredBy: vendorId,
         triggeredByRole: 'system',
         note: 'Vendor assigned — chosen by the customer',
       }),
     );
 
-    await this.ordersService.transition(order.id, OrderStatus.SCHEDULED, null, 'system');
+    const updatedOrder = await this.ordersService.transition(
+      order.id,
+      OrderStatus.SCHEDULED,
+      null,
+      'system',
+    );
     return true;
   }
 
   // ─── Broadcast vendors in a batch ────────────────────────────────────────────
 
-  async broadcastVendors(orderId: string, areaId: string, batchNumber: number): Promise<void> {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+  async broadcastVendors(
+    orderId: string,
+    areaId: string,
+    batchNumber: number,
+  ): Promise<void> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order) return;
 
     const notified = await this.broadcastRepository.find({
@@ -428,19 +540,25 @@ export class AssignmentService {
     if (candidates.length === 0) {
       const area = await this.areasService.findOne(areaId);
       for (const adjacentId of area.adjacentAreaIds) {
-        const adjacentCandidates = await this.scoreVendors(adjacentId, notifiedIds, orderId);
+        const adjacentCandidates = await this.scoreVendors(
+          adjacentId,
+          notifiedIds,
+          orderId,
+        );
         if (adjacentCandidates.length > 0) {
           await this.broadcastVendors(orderId, adjacentId, batchNumber);
           return;
         }
       }
       // All areas exhausted — escalate to admin (mirror the rep path).
-      this.logger.warn(`Order ${orderId}: No available vendors found in any area — escalating`);
+      this.logger.warn(
+        `Order ${orderId}: No available vendors found in any area — escalating`,
+      );
       await this.statusHistoryRepository.save(
         this.statusHistoryRepository.create({
           orderId,
           fromStatus: order.status,
-          toStatus:   order.status,
+          toStatus: order.status,
           triggeredBy: null,
           triggeredByRole: 'system',
           note: 'No available vendors found in any area — requires manual admin assignment',
@@ -454,17 +572,17 @@ export class AssignmentService {
       return;
     }
 
-    const batch     = candidates.slice(0, this.broadcastN);
+    const batch = candidates.slice(0, this.broadcastN);
     const expiresAt = new Date(Date.now() + this.windowSeconds * 1000);
 
     for (const candidate of batch) {
       const record = this.broadcastRepository.create({
         orderId,
-        targetType:    'vendor',
-        targetId:      candidate.id,
+        targetType: 'vendor',
+        targetId: candidate.id,
         batchNumber,
         priorityScore: candidate.score,
-        status:        'pending',
+        status: 'pending',
         expiresAt,
       });
       await this.broadcastRepository.save(record);
@@ -476,12 +594,15 @@ export class AssignmentService {
 
     // Notify each vendor
     const scheduledPickupAt = order.scheduledPickupAt
-      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })
+      ? new Date(order.scheduledPickupAt).toLocaleString('en-NG', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
       : '';
     for (const candidate of batch) {
       this.notificationsService.notifyAssignmentBroadcastVendor({
-        vendorId:          candidate.id,
-        orderRef:          order.reference,
+        vendorId: candidate.id,
+        orderRef: order.reference,
         scheduledPickupAt,
         orderId,
       });
@@ -490,21 +611,36 @@ export class AssignmentService {
 
   // ─── Vendor accepts assignment ────────────────────────────────────────────────
 
-  async vendorAccepts(orderId: string, vendorUserId: string): Promise<Order | null> {
+  async vendorAccepts(
+    orderId: string,
+    vendorUserId: string,
+  ): Promise<{
+    order: Order;
+    firstLegCode: string | null;
+  } | null> {
     // Callers authenticate as the USER — resolve their vendor profile first.
-    const vendor = await this.vendorRepository.findOne({ where: { userId: vendorUserId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { userId: vendorUserId },
+    });
     if (!vendor) return null;
     const vendorId = vendor.id;
     const broadcast = await this.broadcastRepository.findOne({
-      where: { orderId, targetId: vendorId, targetType: 'vendor', status: 'pending' },
+      where: {
+        orderId,
+        targetId: vendorId,
+        targetType: 'vendor',
+        status: 'pending',
+      },
     });
     if (!broadcast) return null;
     if (broadcast.expiresAt && broadcast.expiresAt < new Date()) return null;
 
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order || order.status !== OrderStatus.BROADCASTING_VENDOR) return null;
 
-    broadcast.status      = 'accepted';
+    broadcast.status = 'accepted';
     broadcast.respondedAt = new Date();
     await this.broadcastRepository.save(broadcast);
 
@@ -512,13 +648,19 @@ export class AssignmentService {
       .createQueryBuilder()
       .update(AssignmentBroadcast)
       .set({ status: 'cancelled' })
-      .where('orderId = :orderId AND targetType = :type AND status = :s AND id != :id', {
-        orderId, type: 'vendor', s: 'pending', id: broadcast.id,
-      })
+      .where(
+        'orderId = :orderId AND targetType = :type AND status = :s AND id != :id',
+        {
+          orderId,
+          type: 'vendor',
+          s: 'pending',
+          id: broadcast.id,
+        },
+      )
       .execute();
 
     order.vendorId = vendorId;
-    order.status   = OrderStatus.VENDOR_ASSIGNED;
+    order.status = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
 
     // Scoring signals: accept latency (broadcast→accept) + recency
@@ -529,7 +671,7 @@ export class AssignmentService {
       this.statusHistoryRepository.create({
         orderId,
         fromStatus: OrderStatus.BROADCASTING_VENDOR,
-        toStatus:   OrderStatus.VENDOR_ASSIGNED,
+        toStatus: OrderStatus.VENDOR_ASSIGNED,
         triggeredBy: vendorId,
         triggeredByRole: 'vendor',
         note: 'Vendor accepted assignment',
@@ -537,9 +679,21 @@ export class AssignmentService {
     );
 
     // Advance to scheduled
-    await this.ordersService.transition(orderId, OrderStatus.SCHEDULED, null, 'system');
+    await this.ordersService.transition(
+      orderId,
+      OrderStatus.SCHEDULED,
+      null,
+      'system',
+    );
 
-    return order;
+    const updatedOrder = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
+
+    return {
+      order: updatedOrder!,
+      firstLegCode: updatedOrder!.firstLegCode,
+    };
   }
 
   // ─── Admin manual assignment ──────────────────────────────────────────────────
@@ -552,7 +706,9 @@ export class AssignmentService {
   ];
 
   async adminAssignRep(orderId: string, repId: string, adminId: string) {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
     // The path param must be a reps.id (the rep PROFILE id), not the user id.
@@ -564,7 +720,9 @@ export class AssignmentService {
       );
     }
     if (rep.status !== RepStatus.ACTIVE) {
-      throw new BadRequestException(`Rep ${repId} is not active (status=${rep.status})`);
+      throw new BadRequestException(
+        `Rep ${repId} is not active (status=${rep.status})`,
+      );
     }
     if (!AssignmentService.REP_ASSIGNABLE_STATES.includes(order.status)) {
       throw new BadRequestException(
@@ -573,7 +731,7 @@ export class AssignmentService {
     }
 
     const fromStatus = order.status;
-    order.repId  = repId;
+    order.repId = repId;
     order.status = OrderStatus.REP_ASSIGNED;
     await this.orderRepository.save(order);
 
@@ -583,12 +741,28 @@ export class AssignmentService {
       this.statusHistoryRepository.create({
         orderId,
         fromStatus,
-        toStatus:   OrderStatus.REP_ASSIGNED,
+        toStatus: OrderStatus.REP_ASSIGNED,
         triggeredBy: adminId,
         triggeredByRole: 'admin',
         note: 'Manually assigned by admin',
       }),
     );
+
+    // Admin assignment skips the broadcast, so without these the rep (and the
+    // customer) would get no notification at all. Fire-and-forget like the
+    // broadcast path — a notification failure must not fail the assignment.
+    this.notificationsService.notifyAssignmentConfirmedRep({
+      repId,
+      orderRef: order.reference,
+      pickupAddress: order.pickupAddress,
+      customerName: '',
+      orderId,
+    });
+    this.notificationsService.notifyRepAssigned({
+      customerId: order.customerId,
+      repId,
+      orderRef: order.reference,
+    });
 
     return order;
   }
@@ -601,12 +775,16 @@ export class AssignmentService {
   ];
 
   async adminAssignVendor(orderId: string, vendorId: string, adminId: string) {
-    const order = await this.orderRepository.findOne({ where: { id: orderId } });
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
     // The path param must be a vendors.id (vendor PROFILE id), not the user id —
     // otherwise a bad id hits the orders.vendor_id FK and surfaces as a raw 500.
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId } });
+    const vendor = await this.vendorRepository.findOne({
+      where: { id: vendorId },
+    });
     if (!vendor) {
       throw new NotFoundException(
         `Vendor ${vendorId} not found — pass the vendors.id (vendor profile id), not the user id`,
@@ -625,23 +803,38 @@ export class AssignmentService {
 
     const fromStatus = order.status;
     order.vendorId = vendorId;
-    order.status   = OrderStatus.VENDOR_ASSIGNED;
+    order.status = OrderStatus.VENDOR_ASSIGNED;
     await this.orderRepository.save(order);
 
-    await this.vendorRepository.update(vendorId, { lastAssignedAt: new Date() });
+    await this.vendorRepository.update(vendorId, {
+      lastAssignedAt: new Date(),
+    });
 
     await this.statusHistoryRepository.save(
       this.statusHistoryRepository.create({
         orderId,
         fromStatus,
-        toStatus:   OrderStatus.VENDOR_ASSIGNED,
+        toStatus: OrderStatus.VENDOR_ASSIGNED,
         triggeredBy: adminId,
         triggeredByRole: 'admin',
         note: 'Vendor manually assigned by admin',
       }),
     );
 
-    await this.ordersService.transition(orderId, OrderStatus.SCHEDULED, null, 'system');
+    await this.ordersService.transition(
+      orderId,
+      OrderStatus.SCHEDULED,
+      null,
+      'system',
+    );
+
+    // Admin assignment skips the vendor broadcast — notify the assigned vendor
+    // directly (fire-and-forget; a notification failure must not fail the assignment).
+    this.notificationsService.notifyVendorAssigned({
+      vendorId,
+      orderRef: order.reference,
+    });
+
     return order;
   }
 
@@ -665,7 +858,9 @@ export class AssignmentService {
       .createQueryBuilder('r')
       .where('r.is_available = true')
       .andWhere('r.status = :status', { status: RepStatus.ACTIVE })
-      .andWhere(`r.area_ids::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
+      .andWhere(`r.area_ids::jsonb @> :areaId::jsonb`, {
+        areaId: JSON.stringify([areaId]),
+      });
 
     if (excludeIds.length > 0) {
       qb.andWhere('r.id NOT IN (:...excludeIds)', { excludeIds });
@@ -673,7 +868,10 @@ export class AssignmentService {
 
     const reps = await qb.getMany();
     const cfg = await this.scoringConfig();
-    const openLoad = await this.openOrderCounts('rep_id', reps.map((r) => r.id));
+    const openLoad = await this.openOrderCounts(
+      'rep_id',
+      reps.map((r) => r.id),
+    );
 
     const scored = reps
       .filter((rep) => (openLoad.get(rep.id) ?? 0) < cfg.loadCap) // hard load cap
@@ -691,8 +889,12 @@ export class AssignmentService {
     const qb = this.vendorRepository
       .createQueryBuilder('v')
       .where('v.is_available = true')
-      .andWhere('v.verification_status = :vs', { vs: VendorVerificationStatus.VERIFIED })
-      .andWhere(`v.area_ids::jsonb @> :areaId::jsonb`, { areaId: JSON.stringify([areaId]) });
+      .andWhere('v.verification_status = :vs', {
+        vs: VendorVerificationStatus.VERIFIED,
+      })
+      .andWhere(`v.area_ids::jsonb @> :areaId::jsonb`, {
+        areaId: JSON.stringify([areaId]),
+      });
 
     if (excludeIds.length > 0) {
       qb.andWhere('v.id NOT IN (:...excludeIds)', { excludeIds });
@@ -700,7 +902,10 @@ export class AssignmentService {
 
     const vendors = await qb.getMany();
     const cfg = await this.scoringConfig();
-    const openLoad = await this.openOrderCounts('vendor_id', vendors.map((v) => v.id));
+    const openLoad = await this.openOrderCounts(
+      'vendor_id',
+      vendors.map((v) => v.id),
+    );
 
     const scored = vendors
       .filter((v) => (openLoad.get(v.id) ?? 0) < cfg.loadCap) // hard load cap
@@ -723,18 +928,26 @@ export class AssignmentService {
 
   private async scoringConfig(): Promise<AssignmentScoringConfig> {
     const config = await this.platformConfigService.getConfig();
-    return { ...DEFAULT_ASSIGNMENT_SCORING, ...(config.assignmentScoring ?? {}) };
+    return {
+      ...DEFAULT_ASSIGNMENT_SCORING,
+      ...(config.assignmentScoring ?? {}),
+    };
   }
 
   /** Open (non-terminal) order count per candidate, one grouped query. */
-  private async openOrderCounts(column: 'rep_id' | 'vendor_id', ids: string[]): Promise<Map<string, number>> {
+  private async openOrderCounts(
+    column: 'rep_id' | 'vendor_id',
+    ids: string[],
+  ): Promise<Map<string, number>> {
     if (!ids.length) return new Map();
     const rows = await this.orderRepository
       .createQueryBuilder('o')
       .select(`o.${column}`, 'pid')
       .addSelect('COUNT(*)', 'n')
       .where(`o.${column} IN (:...ids)`, { ids })
-      .andWhere('o.status NOT IN (:...terminal)', { terminal: OPEN_LOAD_TERMINAL })
+      .andWhere('o.status NOT IN (:...terminal)', {
+        terminal: OPEN_LOAD_TERMINAL,
+      })
       .groupBy(`o.${column}`)
       .getRawMany<{ pid: string; n: string }>();
     return new Map(rows.map((r) => [r.pid, Number(r.n)]));
@@ -748,7 +961,8 @@ export class AssignmentService {
     openOrders: number,
     completedJobs: number,
   ): number {
-    const sinceMs = Date.now() - new Date(lastAssignedAt ?? createdAt).getTime();
+    const sinceMs =
+      Date.now() - new Date(lastAssignedAt ?? createdAt).getTime();
     const recency = clamp01(sinceMs / (cfg.recencyCapH * 3600_000));
     const loadRoom = clamp01(1 - openOrders / cfg.loadCap);
     const newbie = completedJobs < cfg.newbieN ? 1 : 0;
@@ -756,40 +970,78 @@ export class AssignmentService {
   }
 
   /** Reserve one of the top-N slots for the most-starved (highest fairness) candidate. */
-  private applyFairnessSlot(sorted: ScoredCandidate[], cfg: AssignmentScoringConfig): ScoredCandidate[] {
+  private applyFairnessSlot(
+    sorted: ScoredCandidate[],
+    cfg: AssignmentScoringConfig,
+  ): ScoredCandidate[] {
     if (!cfg.fairnessSlot || sorted.length <= this.broadcastN) return sorted;
     const topN = sorted.slice(0, this.broadcastN);
-    const maxFair = sorted.reduce((best, c) => (c.fairness > best.fairness ? c : best), sorted[0]);
+    const maxFair = sorted.reduce(
+      (best, c) => (c.fairness > best.fairness ? c : best),
+      sorted[0],
+    );
     if (topN.some((c) => c.id === maxFair.id)) return sorted;
     // Swap the most-starved candidate into the last slot of the first batch.
     const rest = sorted.filter((c) => c.id !== maxFair.id);
-    return [...rest.slice(0, this.broadcastN - 1), maxFair, ...rest.slice(this.broadcastN - 1)];
+    return [
+      ...rest.slice(0, this.broadcastN - 1),
+      maxFair,
+      ...rest.slice(this.broadcastN - 1),
+    ];
   }
 
-  private computeRepScore(rep: Rep, cfg: AssignmentScoringConfig, openOrders: number): ScoredCandidate {
+  private computeRepScore(
+    rep: Rep,
+    cfg: AssignmentScoringConfig,
+    openOrders: number,
+  ): ScoredCandidate {
     const windowSec = this.windowSeconds;
 
     // Performance
-    const rating01   = clamp01((rep.rating ?? 0) / 5);
-    const onTime01   = rep.totalDeliveries > 0 ? clamp01(rep.onTimeDeliveries / rep.totalDeliveries) : 0.5;
-    const latency01  = rep.avgAcceptLatencySec != null ? clamp01(1 - rep.avgAcceptLatencySec / windowSec) : 0.5;
-    const complete01 = rep.acceptCount > 0 ? clamp01(rep.totalDeliveries / rep.acceptCount) : 0.5;
-    const P = 0.4 * rating01 + 0.25 * onTime01 + 0.2 * latency01 + 0.15 * complete01;
+    const rating01 = clamp01((rep.rating ?? 0) / 5);
+    const onTime01 =
+      rep.totalDeliveries > 0
+        ? clamp01(rep.onTimeDeliveries / rep.totalDeliveries)
+        : 0.5;
+    const latency01 =
+      rep.avgAcceptLatencySec != null
+        ? clamp01(1 - rep.avgAcceptLatencySec / windowSec)
+        : 0.5;
+    const complete01 =
+      rep.acceptCount > 0
+        ? clamp01(rep.totalDeliveries / rep.acceptCount)
+        : 0.5;
+    const P =
+      0.4 * rating01 + 0.25 * onTime01 + 0.2 * latency01 + 0.15 * complete01;
 
     // Loyalty (loyalty-points ledger lands here later as a third term)
     const profile01 = (rep.phone ? 0.5 : 0) + (rep.contractUrl ? 0.5 : 0);
-    const tenure01  = clamp01(Math.log(1 + rep.totalDeliveries) / Math.log(1 + cfg.satOrders));
+    const tenure01 = clamp01(
+      Math.log(1 + rep.totalDeliveries) / Math.log(1 + cfg.satOrders),
+    );
     const L = 0.5 * profile01 + 0.5 * tenure01;
 
     // Fairness
-    const F = this.fairnessScore(cfg, rep.lastAssignedAt, rep.createdAt, openOrders, rep.totalDeliveries);
+    const F = this.fairnessScore(
+      cfg,
+      rep.lastAssignedAt,
+      rep.createdAt,
+      openOrders,
+      rep.totalDeliveries,
+    );
 
     // Admin nudge retained: assignmentPriority (lower = preferred) adds up to +5 points.
-    const priorityBonus = Math.max(0, 100 - (rep.assignmentPriority ?? 100)) / 20;
+    const priorityBonus =
+      Math.max(0, 100 - (rep.assignmentPriority ?? 100)) / 20;
 
     return {
       id: rep.id,
-      score: Math.round((100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) + priorityBonus) * 100) / 100,
+      score:
+        Math.round(
+          (100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) +
+            priorityBonus) *
+            100,
+        ) / 100,
       fairness: F,
     };
   }
@@ -798,26 +1050,46 @@ export class AssignmentService {
    * Vendor priority score formula:
    *  base = rating × 20 (0–100 points)
    */
-  private computeVendorScore(vendor: Vendor, cfg: AssignmentScoringConfig, openOrders: number): ScoredCandidate {
+  private computeVendorScore(
+    vendor: Vendor,
+    cfg: AssignmentScoringConfig,
+    openOrders: number,
+  ): ScoredCandidate {
     const windowSec = this.windowSeconds;
 
     // Performance (vendors have no delivery counters — rating leads, latency assists)
-    const rating01  = clamp01((vendor.rating ?? 0) / 5);
-    const latency01 = vendor.avgAcceptLatencySec != null ? clamp01(1 - vendor.avgAcceptLatencySec / windowSec) : 0.5;
+    const rating01 = clamp01((vendor.rating ?? 0) / 5);
+    const latency01 =
+      vendor.avgAcceptLatencySec != null
+        ? clamp01(1 - vendor.avgAcceptLatencySec / windowSec)
+        : 0.5;
     const P = 0.7 * rating01 + 0.3 * latency01;
 
     // Loyalty
     const profile01 =
-      (vendor.businessName ? 0.4 : 0) + (vendor.logoUrl ? 0.3 : 0) + (vendor.phone ? 0.3 : 0);
-    const tenure01 = clamp01(Math.log(1 + vendor.acceptCount) / Math.log(1 + cfg.satOrders));
+      (vendor.businessName ? 0.4 : 0) +
+      (vendor.logoUrl ? 0.3 : 0) +
+      (vendor.phone ? 0.3 : 0);
+    const tenure01 = clamp01(
+      Math.log(1 + vendor.acceptCount) / Math.log(1 + cfg.satOrders),
+    );
     const L = 0.5 * profile01 + 0.5 * tenure01;
 
     // Fairness
-    const F = this.fairnessScore(cfg, vendor.lastAssignedAt, vendor.createdAt, openOrders, vendor.acceptCount);
+    const F = this.fairnessScore(
+      cfg,
+      vendor.lastAssignedAt,
+      vendor.createdAt,
+      openOrders,
+      vendor.acceptCount,
+    );
 
     return {
       id: vendor.id,
-      score: Math.round(100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) * 100) / 100,
+      score:
+        Math.round(
+          100 * (cfg.wPerf * P + cfg.wLoyalty * L + cfg.wFair * F) * 100,
+        ) / 100,
       fairness: F,
     };
   }
@@ -827,12 +1099,16 @@ export class AssignmentService {
     current: { avgAcceptLatencySec: number | null; acceptCount: number },
     broadcastCreatedAt: Date,
   ) {
-    const latencySec = Math.max(0, (Date.now() - new Date(broadcastCreatedAt).getTime()) / 1000);
+    const latencySec = Math.max(
+      0,
+      (Date.now() - new Date(broadcastCreatedAt).getTime()) / 1000,
+    );
     const n = current.acceptCount ?? 0;
     const newAvg =
       current.avgAcceptLatencySec == null
         ? latencySec
-        : current.avgAcceptLatencySec + (latencySec - current.avgAcceptLatencySec) / (n + 1);
+        : current.avgAcceptLatencySec +
+          (latencySec - current.avgAcceptLatencySec) / (n + 1);
     return {
       avgAcceptLatencySec: Math.round(newAvg * 100) / 100,
       acceptCount: n + 1,

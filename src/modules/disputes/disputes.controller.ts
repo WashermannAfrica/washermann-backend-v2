@@ -72,14 +72,18 @@ export class DisputesController {
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'from', required: false, description: 'YYYY-MM-DD (createdAt >=)' })
+  @ApiQuery({ name: 'to', required: false, description: 'YYYY-MM-DD (createdAt <=, inclusive)' })
   adminList(
     @Query('status') status?: string,
     @Query('group') group?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.disputes.adminList({ status, group, search, page: page ? +page : 1, limit: limit ? +limit : 20 });
+    return this.disputes.adminList({ status, group, search, page: page ? +page : 1, limit: limit ? +limit : 20, from, to });
   }
 
   @Patch(':id/status')
