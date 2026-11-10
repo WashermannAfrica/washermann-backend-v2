@@ -53,6 +53,9 @@ import { User } from '@database/entities/user.entity';
  * not through transition(). REP_EN_ROUTE_PICKUP is optional — a rep may go straight
  * SCHEDULED → PICKED_UP since there's no en-route endpoint yet.
  */
+/** Who is looking at an order — determines which exchange codes are exposed. */
+type OrderViewer = 'admin' | 'customer' | 'rep' | 'vendor' | 'none';
+
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.PENDING_PAYMENT]: [OrderStatus.PAID, OrderStatus.CANCELLED],
   [OrderStatus.PAID]: [OrderStatus.BROADCASTING_REP, OrderStatus.CANCELLED],
@@ -489,8 +492,12 @@ export class OrdersService {
       );
 
       order.status = OrderStatus.PAID;
-      // Generate first-leg collection verification code.
-      order.firstLegCode = this.generateVerificationCode();
+      // Generate all four exchange verification codes up front — one per physical
+      // handoff. Each is persisted and later exposed only to the party that HOLDS it.
+      order.firstLegCode = this.generateVerificationCode();   // pickup:     rep holds, customer types
+      order.dropoffCode = this.generateVerificationCode();    // drop-off:   vendor holds, rep types
+      order.collectionCode = this.generateVerificationCode(); // collection: rep holds, vendor types
+      order.secondLegCode = this.generateVerificationCode();  // delivery:   customer holds, rep types
       await manager.save(order);
 
       await manager.save(
@@ -548,6 +555,8 @@ export class OrdersService {
     flow?: string;
     from?: string;
     to?: string;
+    /** Scopes which exchange codes are returned (default 'admin' = all). */
+    viewer?: OrderViewer;
   }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
@@ -597,15 +606,57 @@ export class OrdersService {
     if (query.to) qb.andWhere('o.createdAt <= :to', { to: `${query.to}T23:59:59.999Z` });
 
     const [rows, total] = await qb.getManyAndCount();
-    const data = rows.map((o) => this.decorate(o));
+    const data = rows.map((o) => this.decorate(o, query.viewer ?? 'admin'));
     return {
       data,
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
 
-  /** Flatten the joined customer/company/area onto the order for the UI. */
-  private decorate(o: Order) {
+  /**
+   * The exchange codes a viewer may see — only the one(s) they physically HOLD
+   * and read aloud. Exposed under clear names for the mobile apps. A party never
+   * sees a code they are meant to type (that is what prevents faking a handoff).
+   */
+  private scopedCodes(o: Order, viewer: OrderViewer) {
+    switch (viewer) {
+      case 'admin':
+        return {
+          pickupCode: o.firstLegCode,
+          dropoffCode: o.dropoffCode,
+          collectionCode: o.collectionCode,
+          deliveryCode: o.secondLegCode,
+        };
+      case 'rep':
+        return { pickupCode: o.firstLegCode, collectionCode: o.collectionCode };
+      case 'vendor':
+        return { dropoffCode: o.dropoffCode };
+      case 'customer':
+        return { deliveryCode: o.secondLegCode };
+      default:
+        return {};
+    }
+  }
+
+  /** Decide which codes a caller may see on an order (admin > owner/assignee). */
+  private viewerFor(o: Order, caller?: { userId: string; roles?: string[] }): OrderViewer {
+    if (!caller) return 'admin';
+    const roles = caller.roles ?? [];
+    if (roles.includes('admin') || roles.includes('finance') || roles.includes('dispute_resolver')) {
+      return 'admin';
+    }
+    if (o.customerId === caller.userId) return 'customer';
+    const anyO = o as Order & {
+      rep?: { user?: { id?: string } };
+      vendor?: { user?: { id?: string } };
+    };
+    if (anyO.rep?.user?.id === caller.userId) return 'rep';
+    if (anyO.vendor?.user?.id === caller.userId) return 'vendor';
+    return 'none';
+  }
+
+  /** Flatten the joins onto the order and expose only the viewer's own codes. */
+  private decorate(o: Order, viewer: OrderViewer = 'admin') {
     const anyO = o as Order & {
       customer?: { fullName?: string; email?: string };
       company?: { name?: string };
@@ -613,7 +664,7 @@ export class OrdersService {
       vendor?: { businessName?: string | null; user?: { fullName?: string; phone?: string } };
       rep?: { user?: { fullName?: string; phone?: string } };
     };
-    return {
+    const base: Record<string, unknown> = {
       ...o,
       customerName: anyO.customer?.fullName ?? null,
       customerEmail: anyO.customer?.email ?? null,
@@ -624,6 +675,13 @@ export class OrdersService {
       repName: anyO.rep?.user?.fullName ?? null,
       repPhone: anyO.rep?.user?.phone ?? null,
     };
+    // Never leak the raw code columns; expose only the scoped, clearly-named codes.
+    delete base.firstLegCode;
+    delete base.secondLegCode;
+    delete base.dropoffCode;
+    delete base.collectionCode;
+    Object.assign(base, this.scopedCodes(o, viewer));
+    return base;
   }
 
   // ─── Get one order ────────────────────────────────────────────────────────────
@@ -634,8 +692,12 @@ export class OrdersService {
     return order;
   }
 
-  /** Admin order detail — enriched with customer/company/area names for the drawer. */
-  async getDetail(id: string) {
+  /**
+   * Order detail — enriched with customer/company/area/vendor/rep names. Codes are
+   * scoped to the caller: admin/finance see all; the owner, assigned rep and
+   * assigned vendor each see only the code(s) they hold. Omit `caller` for admin.
+   */
+  async getDetail(id: string, caller?: { userId: string; roles?: string[] }) {
     const order = await this.orderRepository
       .createQueryBuilder('o')
       .leftJoin('o.customer', 'cust')
@@ -656,7 +718,7 @@ export class OrdersService {
       .where('o.id = :id', { id })
       .getOne();
     if (!order) throw new NotFoundException('Order not found');
-    return this.decorate(order);
+    return this.decorate(order, this.viewerFor(order, caller));
   }
 
   async findByReference(ref: string) {
@@ -785,12 +847,13 @@ export class OrdersService {
       throw new BadRequestException('Invalid pickup verification code');
     }
 
-    return this.transition(
+    const updated = await this.transition(
       orderId,
       OrderStatus.PICKED_UP,
       customerUserId,
       'customer',
     );
+    return this.decorate(updated, 'customer');
   }
 
   // ─── Rep-driven status transitions (ownership-checked) ───────────────────────
@@ -843,17 +906,10 @@ export class OrdersService {
       }
     }
 
-    const updatedOrder = this.transition(orderId, toStatus, repUserId, 'rep');
-
-    // Return first-leg code when rep is en route for customer pickup.
-    if (toStatus === OrderStatus.REP_EN_ROUTE_PICKUP) {
-      return {
-        order: updatedOrder,
-        firstLegCode: order.firstLegCode,
-      };
-    }
-
-    return updatedOrder;
+    const updatedOrder = await this.transition(orderId, toStatus, repUserId, 'rep');
+    // Scope the response to the rep (pickup + collection codes only). The rep's
+    // pickup code is now read from the order itself (no special one-off payload).
+    return this.decorate(updatedOrder, 'rep');
   }
 
   /** Only the vendor assigned to this order may act on it. */
@@ -888,25 +944,17 @@ export class OrdersService {
     const order = await this.findOne(orderId);
     await this.assertVendorAssigned(order, vendorUserId);
 
-    // Generate the second-leg verification code when the vendor marks the order ready for delivery.
-    if (
-      toStatus === OrderStatus.READY_FOR_DELIVERY &&
-      order.status !== OrderStatus.READY_FOR_DELIVERY
-    ) {
-      order.secondLegCode = this.generateVerificationCode();
-      await this.orderRepository.save(order);
-    }
-
-    // Verify the second-leg code when the vendor confirms rep collection.
+    // Collection code is held/read by the REP and typed by the vendor here to
+    // confirm the rep collected the finished laundry. (All codes are generated
+    // up front at payment, so there is nothing to generate at ready-for-delivery.)
     if (toStatus === OrderStatus.REP_COLLECTED) {
-      if (!code || order.secondLegCode !== code.toUpperCase()) {
-        throw new BadRequestException(
-          'Invalid rep collection verification code',
-        );
+      if (!code || !order.collectionCode || order.collectionCode !== code.toUpperCase()) {
+        throw new BadRequestException('Invalid collection verification code');
       }
     }
 
-    return this.transition(orderId, toStatus, vendorUserId, 'vendor');
+    const updated = await this.transition(orderId, toStatus, vendorUserId, 'vendor');
+    return this.decorate(updated, 'vendor');
   }
 
   // ─── Uncollected / abandonment (WS4 1.6) ───────────────────────────────────────
@@ -1198,8 +1246,8 @@ export class OrdersService {
     // logged at one location and physically handed to the vendor elsewhere —
     // the rep marks the handover separately via markWithVendor().
     return {
-      ...order,
-      // Surface the unpriced items to the caller (rep app / admin) in the response.
+      // Scope codes to the rep; surface the unpriced items alongside.
+      ...this.decorate(order, 'rep'),
       unpricedItems: unpriced,
     };
   }
@@ -1222,12 +1270,14 @@ export class OrdersService {
       );
     }
 
-    if (order.firstLegCode !== code.toUpperCase()) {
-      throw new BadRequestException('Invalid pickup verification code');
+    // Drop-off code is held/read by the VENDOR and typed by the rep here.
+    if (!order.dropoffCode || order.dropoffCode !== code.toUpperCase()) {
+      throw new BadRequestException('Invalid drop-off verification code');
     }
 
     // The state-machine guard allows this only from PICKED_UP → WITH_VENDOR.
-    return this.transition(orderId, OrderStatus.WITH_VENDOR, repUserId, 'rep');
+    const updated = await this.transition(orderId, OrderStatus.WITH_VENDOR, repUserId, 'rep');
+    return this.decorate(updated, 'rep');
   }
 
   // ─── Complete order & release escrow ─────────────────────────────────────────

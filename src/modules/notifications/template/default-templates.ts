@@ -371,39 +371,39 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     key: 'assignment.confirmed.vendor',
     channel: 'sms',
     name: 'Assignment Confirmed — Vendor SMS',
-    variables: ['vendorName', 'orderRef', 'firstLegCode', 'scheduledPickupAt'],
-    body: 'Hi {{vendorName}}, order {{orderRef}} has been confirmed for your facility. Rep pickup is scheduled for {{scheduledPickupAt}}. Your handover verification code is {{firstLegCode}}. Provide this code when receiving the laundry from the rep.',
+    variables: ['vendorName', 'orderRef', 'dropoffCode', 'scheduledPickupAt'],
+    body: 'Hi {{vendorName}}, order {{orderRef}} has been confirmed for your facility. Rep pickup is scheduled for {{scheduledPickupAt}}. Your drop-off code is {{dropoffCode}} — read it to the rep when they deliver the laundry to confirm the hand-off. (Always available in the app.)',
   },
   {
     key: 'assignment.confirmed.vendor',
     channel: 'push',
     name: 'Assignment Confirmed — Vendor Push',
-    variables: ['orderRef', 'scheduledPickupAt'],
+    variables: ['orderRef', 'dropoffCode', 'scheduledPickupAt'],
     subject: 'Order Confirmed ✅',
-    body: 'Order {{orderRef}} has been confirmed for your facility. Rep pickup is scheduled for {{scheduledPickupAt}}. Check the app for handover details.',
+    body: 'Order {{orderRef}} confirmed. Your drop-off code is {{dropoffCode}} — read it to the rep at hand-off. Rep pickup: {{scheduledPickupAt}}.',
   },
   {
     key: 'assignment.confirmed.vendor',
     channel: 'in_app',
     name: 'Assignment Confirmed — Vendor In-App',
-    variables: ['orderRef', 'firstLegCode', 'scheduledPickupAt'],
+    variables: ['orderRef', 'dropoffCode', 'scheduledPickupAt'],
     subject: 'Order Confirmed',
-    body: 'Order {{orderRef}} is confirmed for your facility. Rep pickup: {{scheduledPickupAt}}. Handover verification code: {{firstLegCode}}. Enter this code when the rep delivers the laundry to you.',
+    body: 'Order {{orderRef}} is confirmed for your facility. Rep pickup: {{scheduledPickupAt}}. Your drop-off code is {{dropoffCode}} — read it to the rep when they deliver the laundry to confirm the hand-off.',
   },
   {
     key: 'assignment.confirmed.vendor',
     channel: 'whatsapp',
     name: 'Assignment Confirmed — Vendor WhatsApp',
-    variables: ['vendorName', 'orderRef', 'firstLegCode', 'scheduledPickupAt'],
+    variables: ['vendorName', 'orderRef', 'dropoffCode', 'scheduledPickupAt'],
     body: `📋 *Order Confirmed!*
 
 Hi {{vendorName}}, order *{{orderRef}}* has been confirmed for your facility.
 
 ⏰ Rep Pickup: {{scheduledPickupAt}}
 
-🔐 *Handover Verification Code: {{firstLegCode}}*
+🔐 *Your Drop-off Code: {{dropoffCode}}*
 
-Please enter this code when receiving the laundry from the rep to confirm the handover.
+Read this code to the rep when they deliver the laundry to confirm the hand-off. It stays available in your app.
 
 Thank you for partnering with Washermann!`,
   },

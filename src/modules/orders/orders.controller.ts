@@ -187,6 +187,7 @@ export class OrdersController {
       limit,
       customerId: req.user.sub,
       status,
+      viewer: 'customer',
     });
   }
 
@@ -202,7 +203,7 @@ export class OrdersController {
     @Query('status') status?: OrderStatus,
   ) {
     const rep = await this.repsService.findByUserId(req.user.sub);
-    return this.ordersService.findAll({ page, limit, repId: rep.id, status });
+    return this.ordersService.findAll({ page, limit, repId: rep.id, status, viewer: 'rep' });
   }
 
   // ─── Vendor: my assigned orders ───────────────────────────────────────────────
@@ -222,6 +223,7 @@ export class OrdersController {
       limit,
       vendorId: vendor.id,
       status,
+      viewer: 'vendor',
     });
   }
 
@@ -229,10 +231,13 @@ export class OrdersController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Get order by ID (enriched: customer/company/area names)',
+    summary: 'Get order by ID (enriched; exchange codes scoped to the caller)',
   })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.ordersService.getDetail(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: { user: { sub: string; roles?: string[] } },
+  ) {
+    return this.ordersService.getDetail(id, { userId: req.user.sub, roles: req.user.roles });
   }
 
   // ─── Get status history ───────────────────────────────────────────────────────

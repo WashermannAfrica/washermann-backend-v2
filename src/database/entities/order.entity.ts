@@ -554,9 +554,15 @@ export class Order extends BaseEntity {
   })
   autoCompleteAt: Date | null;
 
+  // ─── Exchange verification codes (4 physical handoffs) ────────────────────────
+  // Each code is HELD/READ by one party and TYPED by the other to advance status.
+  //   1. firstLegCode  (pickup)     — held by REP,      typed by CUSTOMER → PICKED_UP
+  //   2. dropoffCode   (drop-off)   — held by VENDOR,   typed by REP      → WITH_VENDOR
+  //   3. collectionCode(collection) — held by REP,      typed by VENDOR   → REP_COLLECTED
+  //   4. secondLegCode (delivery)   — held by CUSTOMER, typed by REP      → DELIVERED
   @ApiProperty({
     nullable: true,
-    description: 'Confirmation code checked by the customer at pickup',
+    description: 'Pickup code — held by the rep, typed by the customer to confirm pickup (→ picked_up)',
   })
   @Column({
     name: 'first_leg_code',
@@ -568,7 +574,31 @@ export class Order extends BaseEntity {
 
   @ApiProperty({
     nullable: true,
-    description: 'Confirmation code checked by the rep at delivery',
+    description: 'Drop-off code — held by the vendor, typed by the rep at the facility (→ with_vendor)',
+  })
+  @Column({
+    name: 'dropoff_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  dropoffCode: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Collection code — held by the rep, typed by the vendor when the rep collects (→ rep_collected)',
+  })
+  @Column({
+    name: 'collection_code',
+    type: 'varchar',
+    length: 4,
+    nullable: true,
+  })
+  collectionCode: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Delivery code — held by the customer, typed by the rep to confirm delivery (→ delivered)',
   })
   @Column({
     name: 'second_leg_code',
