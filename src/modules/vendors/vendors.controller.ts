@@ -17,7 +17,11 @@ import { RegisterVendorDto } from './dto/register-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UpdateVendorLocationDto } from './dto/update-location.dto';
 import { ProposePricingDto } from './dto/propose-pricing.dto';
-import { ApprovePricingDto, RejectPricingDto, DecidePricingItemDto } from './dto/approve-pricing.dto';
+import {
+  ApprovePricingDto,
+  RejectPricingDto,
+  DecidePricingItemDto,
+} from './dto/approve-pricing.dto';
 import { VerifyVendorDto } from './dto/verify-vendor.dto';
 import { SuspendVendorDto } from './dto/suspend-vendor.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -34,7 +38,10 @@ export class VendorsController {
   @Post()
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Create a new vendor account (admin)' })
-  create(@Body() dto: RegisterVendorDto, @Request() req: { user: { sub: string } }) {
+  create(
+    @Body() dto: RegisterVendorDto,
+    @Request() req: { user: { sub: string } },
+  ) {
     return this.vendorsService.adminCreate(dto, req.user.sub);
   }
 
@@ -43,25 +50,39 @@ export class VendorsController {
   @Get()
   @Roles(Role.ADMIN, Role.FINANCE)
   @ApiOperation({ summary: 'List vendors (admin/finance)' })
-  @ApiQuery({ name: 'page',               required: false, type: Number })
-  @ApiQuery({ name: 'limit',              required: false, type: Number })
-  @ApiQuery({ name: 'search',             required: false, type: String })
-  @ApiQuery({ name: 'verificationStatus', required: false, enum: VendorVerificationStatus })
-  @ApiQuery({ name: 'isAvailable',        required: false, type: Boolean })
-  @ApiQuery({ name: 'sortBy',             required: false, type: String })
-  @ApiQuery({ name: 'sortDir',            required: false, enum: ['ASC', 'DESC'] })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'verificationStatus',
+    required: false,
+    enum: VendorVerificationStatus,
+  })
+  @ApiQuery({ name: 'isAvailable', required: false, type: Boolean })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['ASC', 'DESC'] })
   findAll(
-    @Query('page',               new DefaultValuePipe(1),  ParseIntPipe) page: number,
-    @Query('limit',              new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('search')             search?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
     @Query('verificationStatus') verificationStatus?: VendorVerificationStatus,
-    @Query('isAvailable')        isAvailable?: string,
-    @Query('sortBy')             sortBy?: string,
-    @Query('sortDir')            sortDir?: 'ASC' | 'DESC',
+    @Query('isAvailable') isAvailable?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'ASC' | 'DESC',
   ) {
     return this.vendorsService.findAll({
-      page, limit, search, verificationStatus, sortBy, sortDir,
-      isAvailable: isAvailable === 'true' ? true : isAvailable === 'false' ? false : undefined,
+      page,
+      limit,
+      search,
+      verificationStatus,
+      sortBy,
+      sortDir,
+      isAvailable:
+        isAvailable === 'true'
+          ? true
+          : isAvailable === 'false'
+            ? false
+            : undefined,
     });
   }
 
@@ -69,19 +90,17 @@ export class VendorsController {
 
   @Get('browse')
   @ApiOperation({
-    summary: 'Browse verified washermen serving a pickup point (customer, Choose-Washerman)',
+    summary:
+      'Browse verified washermen serving a pickup point (customer, Choose-Washerman)',
     description:
       'Returns verified, available washermen who serve the area the given coordinates resolve to, ' +
       'each with a straight-line distance (km) and rating, nearest first. Use a returned vendor id as ' +
-      '`vendorId` on POST /quote/wash-iron (to preview that vendor\'s price) and on POST /orders with ' +
+      "`vendorId` on POST /quote/wash-iron (to preview that vendor's price) and on POST /orders with " +
       "allocationMode 'choose'.",
   })
   @ApiQuery({ name: 'lat', required: true, type: Number })
   @ApiQuery({ name: 'lng', required: true, type: Number })
-  browse(
-    @Query('lat') lat: string,
-    @Query('lng') lng: string,
-  ) {
+  browse(@Query('lat') lat: string, @Query('lng') lng: string) {
     return this.vendorsService.browseForCustomer(Number(lat), Number(lng));
   }
 
@@ -118,17 +137,26 @@ export class VendorsController {
 
   @Patch('me/location')
   @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Update own shop coordinates (from Google Places on the client)' })
+  @ApiOperation({
+    summary: 'Update own shop coordinates (from Google Places on the client)',
+  })
   updateMyLocation(
     @Body() dto: UpdateVendorLocationDto,
     @Request() req: { user: { sub: string } },
   ) {
-    return this.vendorsService.updateMyLocation(req.user.sub, dto.latitude, dto.longitude);
+    return this.vendorsService.updateMyLocation(
+      req.user.sub,
+      dto.latitude,
+      dto.longitude,
+    );
   }
 
   @Get('me/pricing')
   @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Own latest pricing proposal (vendor) — for pre-filling the editor' })
+  @ApiOperation({
+    summary:
+      'Own latest pricing proposal (vendor) — for pre-filling the editor',
+  })
   async getMyPricing(@Request() req: { user: { sub: string } }) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
     return this.vendorsService.getLatestPricing(vendor.id);
@@ -136,7 +164,10 @@ export class VendorsController {
 
   @Get('me/documents')
   @Roles(Role.VENDOR)
-  @ApiOperation({ summary: 'Own uploaded KYC documents (vendor) — for the onboarding checklist' })
+  @ApiOperation({
+    summary:
+      'Own uploaded KYC documents (vendor) — for the onboarding checklist',
+  })
   async getMyDocuments(@Request() req: { user: { sub: string } }) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
     return this.vendorsService.getDocuments(vendor.id);
@@ -174,7 +205,10 @@ export class VendorsController {
       'Deactivates the vendor and sets them unavailable. Emails/SMSes the vendor to tell ' +
       'them their account was deactivated, including the reason if one is supplied.',
   })
-  suspend(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SuspendVendorDto) {
+  suspend(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SuspendVendorDto,
+  ) {
     return this.vendorsService.updateVerificationStatus(
       id,
       VendorVerificationStatus.SUSPENDED,
@@ -211,7 +245,10 @@ export class VendorsController {
 
   @Get('pricing/pending')
   @Roles(Role.ADMIN, Role.FINANCE)
-  @ApiOperation({ summary: 'List all pending vendor pricing proposals across vendors (review queue)' })
+  @ApiOperation({
+    summary:
+      'List all pending vendor pricing proposals across vendors (review queue)',
+  })
   listPendingPricing() {
     return this.vendorsService.listPendingPricing();
   }
@@ -247,7 +284,10 @@ export class VendorsController {
 
   @Post('pricing/:pricingId/item-decision')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Approve/reject a single price line in a proposal — immediate, no email (admin)' })
+  @ApiOperation({
+    summary:
+      'Approve/reject a single price line in a proposal — immediate, no email (admin)',
+  })
   decidePricingItem(
     @Param('pricingId', ParseUUIDPipe) pricingId: string,
     @Body() dto: DecidePricingItemDto,
@@ -260,7 +300,10 @@ export class VendorsController {
 
   @Post('pricing/:pricingId/approve')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Finalize: approve all remaining lines + email vendor summary (admin)' })
+  @ApiOperation({
+    summary:
+      'Finalize: approve all remaining lines + email vendor summary (admin)',
+  })
   approvePricing(
     @Param('pricingId', ParseUUIDPipe) pricingId: string,
     @Body() dto: ApprovePricingDto,
@@ -289,7 +332,7 @@ export class VendorsController {
   @ApiOperation({
     summary: 'Get own vendor wallet, naira-first (vendor)',
     description:
-      'Returns the wallet with naira values computed at the vendor\'s effective payout rate ' +
+      "Returns the wallet with naira values computed at the vendor's effective payout rate " +
       '(the ₦/WP snapshot locked on their active pricing sheet, or the global payout rate for ' +
       'legacy sheets): balanceNaira, totalEarnedNaira, payoutRateNairaPerWP alongside the raw WP ' +
       'fields. Clients should display ₦ as the primary figure and WP as secondary.',
@@ -304,7 +347,7 @@ export class VendorsController {
   @ApiOperation({ summary: 'Get own vendor ledger (vendor)' })
   async getMyLedger(
     @Request() req: { user: { sub: string } },
-    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     const vendor = await this.vendorsService.findByUserId(req.user.sub);
@@ -313,7 +356,9 @@ export class VendorsController {
 
   @Get(':id/wallet')
   @Roles(Role.ADMIN, Role.FINANCE)
-  @ApiOperation({ summary: 'Get vendor earnings wallet, naira-first (admin/finance)' })
+  @ApiOperation({
+    summary: 'Get vendor earnings wallet, naira-first (admin/finance)',
+  })
   getWallet(@Param('id', ParseUUIDPipe) id: string) {
     return this.vendorsService.getWalletView(id);
   }
@@ -323,11 +368,9 @@ export class VendorsController {
   @ApiOperation({ summary: 'Get vendor earnings ledger (admin/finance)' })
   getLedger(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.vendorsService.getLedger(id, page, limit);
   }
-
-
 }
