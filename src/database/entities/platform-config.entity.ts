@@ -204,21 +204,24 @@ export class PlatformConfig {
   suspensionNoticeDays: number;
 
   // ─── Distance-based transport pricing ──────────────────────────────────────────
-  @ApiProperty({ description: 'Fixed transport base fare in WP (added to the per-km amount)', example: 100 })
-  @Column({ name: 'transport_base_fare_wp', type: 'int', default: 0 })
-  transportBaseFareWp: number;
+  // Authored in Naira (₦) — the platform's real economic unit. The engine computes
+  // the fare in ₦ from these knobs, then converts to WashPoints at the live rate for
+  // the WP-denominated ledger. See TransportService.
+  @ApiProperty({ description: 'Fixed transport base fare in Naira (added to the per-km amount)', example: 350 })
+  @Column({ name: 'transport_base_fare_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  transportBaseFareNgn: number;
 
-  @ApiProperty({ description: 'Transport cost per km in WP (applied to the round-trip distance)', example: 20 })
-  @Column({ name: 'transport_per_km_wp', type: 'decimal', precision: 12, scale: 4, default: 0, transformer: DecimalTransformer })
-  transportPerKmWp: number;
+  @ApiProperty({ description: 'Transport cost per km in Naira (applied to the round-trip distance)', example: 150 })
+  @Column({ name: 'transport_per_km_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  transportPerKmNgn: number;
 
-  @ApiProperty({ description: 'Minimum transport fee in WP', example: 0 })
-  @Column({ name: 'transport_min_wp', type: 'int', default: 0 })
-  transportMinWp: number;
+  @ApiProperty({ description: 'Minimum transport fee in Naira', example: 0 })
+  @Column({ name: 'transport_min_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  transportMinNgn: number;
 
-  @ApiProperty({ description: 'Maximum transport fee in WP (0 = no cap)', example: 0 })
-  @Column({ name: 'transport_max_wp', type: 'int', default: 0 })
-  transportMaxWp: number;
+  @ApiProperty({ description: 'Maximum transport fee in Naira (0 = no cap)', example: 0 })
+  @Column({ name: 'transport_max_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  transportMaxNgn: number;
 
   @ApiProperty({ description: 'Which statistic to use for the checkout estimate over area vendors', enum: ['average', 'p75'], example: 'average' })
   @Column({ name: 'transport_estimate_basis', type: 'varchar', length: 12, default: 'average' })
@@ -229,9 +232,9 @@ export class PlatformConfig {
   transportDistanceProvider: 'haversine' | 'google';
 
   // ─── Logistics / mobility (rep-only jobs) ──────────────────────────────────────
-  @ApiProperty({ description: 'Flat platform mobility fee (WP) charged per logistics leg on top of transport', example: 0 })
-  @Column({ name: 'logistics_mobility_fee_wp', type: 'int', default: 0 })
-  logisticsMobilityFeeWp: number;
+  @ApiProperty({ description: 'Flat platform mobility fee in Naira charged per logistics leg on top of transport', example: 0 })
+  @Column({ name: 'logistics_mobility_fee_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  logisticsMobilityFeeNgn: number;
 
   @ApiProperty({ description: 'Platform mobility fee as a % of the leg transport (added to the flat fee)', example: 0 })
   @Column({ name: 'logistics_mobility_fee_percent', type: 'decimal', precision: 6, scale: 2, default: 0, transformer: DecimalTransformer })

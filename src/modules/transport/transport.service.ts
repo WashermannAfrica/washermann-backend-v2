@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vendor } from '../../database/entities/vendor.entity';
+import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { VendorVerificationStatus } from '../../common/enums/vendor-verification-status.enum';
 import { PlatformConfigService } from '../platform-config/platform-config.service';
 import { DistanceService, Coord } from './distance.service';
@@ -18,9 +19,12 @@ const percentile = (xs: number[], p: number) => {
 };
 
 /**
- * Distance-based transport pricing (customer ⇄ vendor, round trip). The customer
- * is charged an ESTIMATE at checkout (over the located vendors in their area); the
- * rep is later credited the ACTUAL for the assigned vendor, capped at the estimate.
+ * Distance-based transport pricing (customer ⇄ vendor, round trip). The fare is
+ * authored and computed in NAIRA (₦) — the platform's real economic unit — then
+ * converted to WashPoints at the live rate for the WP-denominated ledger. The
+ * customer is charged an ESTIMATE at checkout (over the located vendors in their
+ * area); the rep is later credited the ACTUAL for the assigned vendor, capped at
+ * the estimate. Every public result carries both the ₦ figure and its WP equivalent.
  */
 @Injectable()
 export class TransportService {
@@ -28,36 +32,63 @@ export class TransportService {
     private readonly platformConfig: PlatformConfigService,
     private readonly distance: DistanceService,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(ConversionRate)
+    private readonly rates: Repository<ConversionRate>,
   ) {}
 
-  private clamp(rawWp: number, minWp: number, maxWp: number): number {
-    let v = Math.max(minWp, Math.round(rawWp));
-    if (maxWp > 0) v = Math.min(v, maxWp);
+  /** Current active WashPoints-per-₦1 rate (same source the quote engine uses). */
+  private async pointsPerNaira(): Promise<number> {
+    const rate = await this.rates
+      .createQueryBuilder('r')
+      .where('r.currency = :c', { c: 'NGN' })
+      .andWhere('r.effectiveFrom <= NOW()')
+      .orderBy('r.effectiveFrom', 'DESC')
+      .getOne();
+    const ppu = rate ? Number(rate.pointsPerUnit) : 1;
+    return ppu > 0 ? ppu : 1;
+  }
+
+  private ngnToWp(ngn: number, pointsPerNaira: number): number {
+    return Math.round(ngn * pointsPerNaira);
+  }
+
+  private clampNgn(rawNgn: number, minNgn: number, maxNgn: number): number {
+    let v = Math.max(minNgn, Math.round(rawNgn));
+    if (maxNgn > 0) v = Math.min(v, maxNgn);
     return v;
   }
 
-  private feeFromOneWayKm(
+  /** Round-trip transport fare in ₦ for a wash order (customer → vendor and back). */
+  private feeNgnFromOneWayKm(
     oneWayKm: number,
     cfg: {
-      transportBaseFareWp: number;
-      transportPerKmWp: number;
-      transportMinWp: number;
-      transportMaxWp: number;
+      transportBaseFareNgn: number;
+      transportPerKmNgn: number;
+      transportMinNgn: number;
+      transportMaxNgn: number;
     },
   ): number {
     const roundTripKm = oneWayKm * 2; // customer → vendor and back
     const raw =
-      Number(cfg.transportBaseFareWp) +
-      Number(cfg.transportPerKmWp) * roundTripKm;
-    return this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp);
+      Number(cfg.transportBaseFareNgn) +
+      Number(cfg.transportPerKmNgn) * roundTripKm;
+    return this.clampNgn(raw, cfg.transportMinNgn, cfg.transportMaxNgn);
   }
 
   /** Checkout estimate: the chosen statistic over distances to the area's located vendors. */
   async estimateForArea(
     pickup: Coord,
     areaId: string,
-  ): Promise<{ transportWp: number; distanceKm: number; vendorCount: number }> {
-    const cfg = await this.platformConfig.getConfig();
+  ): Promise<{
+    transportWp: number;
+    transportNgn: number;
+    distanceKm: number;
+    vendorCount: number;
+  }> {
+    const [cfg, ppu] = await Promise.all([
+      this.platformConfig.getConfig(),
+      this.pointsPerNaira(),
+    ]);
     const vendors = await this.vendors
       .createQueryBuilder('v')
       .where('v.area_ids @> :area', { area: JSON.stringify([areaId]) })
@@ -88,8 +119,10 @@ export class TransportService {
       cfg.transportEstimateBasis === 'p75'
         ? percentile(dists, 75)
         : average(dists);
+    const transportNgn = this.feeNgnFromOneWayKm(km, cfg);
     return {
-      transportWp: this.feeFromOneWayKm(km, cfg),
+      transportWp: this.ngnToWp(transportNgn, ppu),
+      transportNgn,
       distanceKm: km,
       vendorCount: vendors.length,
     };
@@ -99,14 +132,22 @@ export class TransportService {
   async actualForVendor(
     pickup: Coord,
     vendor: Coord,
-  ): Promise<{ transportWp: number; distanceKm: number }> {
-    const cfg = await this.platformConfig.getConfig();
+  ): Promise<{ transportWp: number; transportNgn: number; distanceKm: number }> {
+    const [cfg, ppu] = await Promise.all([
+      this.platformConfig.getConfig(),
+      this.pointsPerNaira(),
+    ]);
     const km = await this.distance.distanceKm(
       pickup,
       vendor,
       cfg.transportDistanceProvider,
     );
-    return { transportWp: this.feeFromOneWayKm(km, cfg), distanceKm: km };
+    const transportNgn = this.feeNgnFromOneWayKm(km, cfg);
+    return {
+      transportWp: this.ngnToWp(transportNgn, ppu),
+      transportNgn,
+      distanceKm: km,
+    };
   }
 
   /** What the rep is credited: the actual, capped at what the customer was charged. */
@@ -115,23 +156,32 @@ export class TransportService {
   }
 
   /**
-   * One-way transport fee for a single logistics leg (A→B), plus its distance.
+   * One-way transport fee for a single logistics leg (A→B), in ₦ and WP.
    * Unlike a wash order (round trip), a leg is a single directional trip.
    */
   async legFee(
     a: Coord,
     b: Coord,
-  ): Promise<{ transportWp: number; distanceKm: number }> {
-    const cfg = await this.platformConfig.getConfig();
+  ): Promise<{ transportWp: number; transportNgn: number; distanceKm: number }> {
+    const [cfg, ppu] = await Promise.all([
+      this.platformConfig.getConfig(),
+      this.pointsPerNaira(),
+    ]);
     const km = await this.distance.distanceKm(
       a,
       b,
       cfg.transportDistanceProvider,
     );
     const raw =
-      Number(cfg.transportBaseFareWp) + Number(cfg.transportPerKmWp) * km;
+      Number(cfg.transportBaseFareNgn) + Number(cfg.transportPerKmNgn) * km;
+    const transportNgn = this.clampNgn(
+      raw,
+      cfg.transportMinNgn,
+      cfg.transportMaxNgn,
+    );
     return {
-      transportWp: this.clamp(raw, cfg.transportMinWp, cfg.transportMaxWp),
+      transportWp: this.ngnToWp(transportNgn, ppu),
+      transportNgn,
       distanceKm: km,
     };
   }

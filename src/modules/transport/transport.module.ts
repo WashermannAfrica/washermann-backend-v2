@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Vendor } from '../../database/entities/vendor.entity';
+import { ConversionRate } from '../../database/entities/conversion-rate.entity';
 import { PlatformConfigModule } from '../platform-config/platform-config.module';
 import { DistanceService } from './distance.service';
 import { TransportService } from './transport.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Vendor]), PlatformConfigModule],
+  imports: [TypeOrmModule.forFeature([Vendor, ConversionRate]), PlatformConfigModule],
   providers: [DistanceService, TransportService],
   exports: [TransportService, DistanceService],
 })

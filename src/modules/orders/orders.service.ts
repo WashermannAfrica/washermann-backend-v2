@@ -47,8 +47,9 @@ import { randomInt } from 'crypto';
 import { User } from '@database/entities/user.entity';
 
 /**
- * The order state machine. `transition()` only allows a move that appears here
- * (plus same-state no-ops). REP_ASSIGNED / VENDOR_ASSIGNED / COMPLETED / CANCELLED
+ * The order state machine. `transition()` only allows a move that appears here;
+ * a same-status re-call is refused with a 400 (not a no-op), so retries/double-taps
+ * can't double-apply side effects. REP_ASSIGNED / VENDOR_ASSIGNED / COMPLETED / CANCELLED
  * are set by their own guarded methods (assignment.accept, completeOrder, cancelOrder),
  * not through transition(). REP_EN_ROUTE_PICKUP is optional — a rep may go straight
  * SCHEDULED → PICKED_UP since there's no en-route endpoint yet.
@@ -742,8 +743,20 @@ export class OrdersService {
 
     const prev = order.status;
 
-    // State-machine guard: only legal moves (or an idempotent same-state re-call).
-    if (prev !== toStatus && !ALLOWED_TRANSITIONS[prev]?.includes(toStatus)) {
+    // Refuse a redundant same-status re-update outright. transition() re-runs its
+    // side effects every call (a duplicate status-history row, re-fired
+    // notifications, and for DELIVERED a double-counted rep delivery stat +
+    // pushed-forward auto-complete). rep/vendorTransition don't pre-check the
+    // prior status, so a mobile double-tap or a network retry would otherwise
+    // land here — it must fail cleanly instead of silently double-applying.
+    if (prev === toStatus) {
+      throw new BadRequestException(
+        `Order is already in status "${toStatus}"`,
+      );
+    }
+
+    // State-machine guard: only legal moves.
+    if (!ALLOWED_TRANSITIONS[prev]?.includes(toStatus)) {
       throw new BadRequestException(
         `Illegal order transition: ${prev} → ${toStatus}`,
       );
