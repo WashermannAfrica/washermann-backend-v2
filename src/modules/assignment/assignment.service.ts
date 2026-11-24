@@ -764,6 +764,17 @@ export class AssignmentService {
       orderRef: order.reference,
     });
 
+    // A logistics leg has no vendor-assignment step — once a rep is on it, it is
+    // ready to run. The broadcast-accept path advances it to SCHEDULED via
+    // startVendorAssignment; the manual path must do the same, or the leg would be
+    // stuck at REP_ASSIGNED and repPickedUp (which requires SCHEDULED) could never fire.
+    if (isLogisticsFlow(order.flow)) {
+      await this.startVendorAssignment(order.id);
+      return (
+        (await this.orderRepository.findOne({ where: { id: orderId } })) ?? order
+      );
+    }
+
     return order;
   }
 
