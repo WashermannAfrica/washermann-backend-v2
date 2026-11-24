@@ -236,9 +236,13 @@ export class LogisticsService {
     ]);
 
     const transportWp = leg.transportWp;
-    const mobilityFeeWp = Math.round(
-      Number(cfg.logisticsMobilityFeeWp ?? 0) + (transportWp * Number(cfg.logisticsMobilityFeePercent ?? 0)) / 100,
-    );
+    // Mobility fee is authored in ₦ (flat + % of the leg transport ₦), then converted
+    // to WP for the ledger at the same rate the leg is priced on.
+    const mobilityFeeNgn =
+      Number(cfg.logisticsMobilityFeeNgn ?? 0) +
+      (leg.transportNgn * Number(cfg.logisticsMobilityFeePercent ?? 0)) / 100;
+    const mobilityFeeWp =
+      rate.pointsPerUnit > 0 ? Math.round(mobilityFeeNgn * rate.pointsPerUnit) : 0;
     const totalWP = transportWp + mobilityFeeWp;
     const nairaEquivalent = rate.pointsPerUnit > 0 ? Math.round(totalWP / rate.pointsPerUnit) : 0;
 

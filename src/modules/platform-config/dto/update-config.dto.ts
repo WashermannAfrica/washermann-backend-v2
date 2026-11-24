@@ -48,9 +48,9 @@ export class UpdatePlatformConfigDto {
   @Max(168)
   orderAutoCompleteHours?: number;
 
-  @ApiPropertyOptional({ description: 'Flat platform mobility fee (WP) per logistics leg', example: 0, minimum: 0 })
-  @IsOptional() @IsInt() @Min(0)
-  logisticsMobilityFeeWp?: number;
+  @ApiPropertyOptional({ description: 'Flat platform mobility fee in Naira per logistics leg', example: 0, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  logisticsMobilityFeeNgn?: number;
 
   @ApiPropertyOptional({ description: 'Platform mobility fee as a % of leg transport', example: 0, minimum: 0, maximum: 100 })
   @IsOptional() @IsNumber() @Min(0) @Max(100)
@@ -98,21 +98,21 @@ export class UpdatePlatformConfigDto {
   @Max(60)
   suspensionNoticeDays?: number;
 
-  @ApiPropertyOptional({ description: 'Transport base fare (WP)', example: 100, minimum: 0 })
-  @IsOptional() @IsInt() @Min(0)
-  transportBaseFareWp?: number;
-
-  @ApiPropertyOptional({ description: 'Transport cost per km (WP), applied to round-trip distance', example: 20, minimum: 0 })
+  @ApiPropertyOptional({ description: 'Transport base fare in Naira', example: 350, minimum: 0 })
   @IsOptional() @IsNumber() @Min(0)
-  transportPerKmWp?: number;
+  transportBaseFareNgn?: number;
 
-  @ApiPropertyOptional({ description: 'Minimum transport fee (WP)', example: 0, minimum: 0 })
-  @IsOptional() @IsInt() @Min(0)
-  transportMinWp?: number;
+  @ApiPropertyOptional({ description: 'Transport cost per km in Naira, applied to round-trip distance', example: 150, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  transportPerKmNgn?: number;
 
-  @ApiPropertyOptional({ description: 'Maximum transport fee (WP); 0 = no cap', example: 0, minimum: 0 })
-  @IsOptional() @IsInt() @Min(0)
-  transportMaxWp?: number;
+  @ApiPropertyOptional({ description: 'Minimum transport fee in Naira', example: 0, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  transportMinNgn?: number;
+
+  @ApiPropertyOptional({ description: 'Maximum transport fee in Naira; 0 = no cap', example: 0, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  transportMaxNgn?: number;
 
   @ApiPropertyOptional({ enum: ['average', 'p75'] })
   @IsOptional() @IsIn(['average', 'p75'])

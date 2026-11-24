@@ -45,13 +45,13 @@ export class PlatformConfigService {
       rewardClawbackDays: 60,
       abandonmentDays: 30,
       suspensionNoticeDays: 7,
-      transportBaseFareWp: 0,
-      transportPerKmWp: 0,
-      transportMinWp: 0,
-      transportMaxWp: 0,
+      transportBaseFareNgn: 0,
+      transportPerKmNgn: 0,
+      transportMinNgn: 0,
+      transportMaxNgn: 0,
       transportEstimateBasis: 'average',
       transportDistanceProvider: 'haversine',
-      logisticsMobilityFeeWp: 0,
+      logisticsMobilityFeeNgn: 0,
       logisticsMobilityFeePercent: 0,
       assignmentScoring: DEFAULT_ASSIGNMENT_SCORING,
       vatPercent: 0,
@@ -84,13 +84,13 @@ export class PlatformConfigService {
     if (dto.rewardClawbackDays         != null) config.rewardClawbackDays         = dto.rewardClawbackDays;
     if (dto.abandonmentDays            != null) config.abandonmentDays            = dto.abandonmentDays;
     if (dto.suspensionNoticeDays       != null) config.suspensionNoticeDays       = dto.suspensionNoticeDays;
-    if (dto.transportBaseFareWp        != null) config.transportBaseFareWp        = dto.transportBaseFareWp;
-    if (dto.transportPerKmWp           != null) config.transportPerKmWp           = dto.transportPerKmWp;
-    if (dto.transportMinWp             != null) config.transportMinWp             = dto.transportMinWp;
-    if (dto.transportMaxWp             != null) config.transportMaxWp             = dto.transportMaxWp;
+    if (dto.transportBaseFareNgn       != null) config.transportBaseFareNgn       = dto.transportBaseFareNgn;
+    if (dto.transportPerKmNgn          != null) config.transportPerKmNgn          = dto.transportPerKmNgn;
+    if (dto.transportMinNgn            != null) config.transportMinNgn            = dto.transportMinNgn;
+    if (dto.transportMaxNgn            != null) config.transportMaxNgn            = dto.transportMaxNgn;
     if (dto.transportEstimateBasis     != null) config.transportEstimateBasis     = dto.transportEstimateBasis;
     if (dto.transportDistanceProvider  != null) config.transportDistanceProvider  = dto.transportDistanceProvider;
-    if (dto.logisticsMobilityFeeWp     != null) config.logisticsMobilityFeeWp     = dto.logisticsMobilityFeeWp;
+    if (dto.logisticsMobilityFeeNgn    != null) config.logisticsMobilityFeeNgn    = dto.logisticsMobilityFeeNgn;
     if (dto.logisticsMobilityFeePercent!= null) config.logisticsMobilityFeePercent= dto.logisticsMobilityFeePercent;
     if (dto.vatPercent                 != null) config.vatPercent                 = dto.vatPercent;
     if (dto.priceSuggestionPercentile  != null) config.priceSuggestionPercentile  = dto.priceSuggestionPercentile;
