@@ -157,7 +157,9 @@ export class TransportService {
 
   /**
    * One-way transport fee for a single logistics leg (A→B), in ₦ and WP.
-   * Unlike a wash order (round trip), a leg is a single directional trip.
+   * Unlike a wash order (round trip), a leg is a single directional trip priced on
+   * its own knobs: a flat base fare covers the first `logisticsIncludedKm`, then each
+   * extra km (rounded up) adds the per-km rate. The base fare is the natural floor.
    */
   async legFee(
     a: Coord,
@@ -172,12 +174,12 @@ export class TransportService {
       b,
       cfg.transportDistanceProvider,
     );
-    const raw =
-      Number(cfg.transportBaseFareNgn) + Number(cfg.transportPerKmNgn) * km;
-    const transportNgn = this.clampNgn(
-      raw,
-      cfg.transportMinNgn,
-      cfg.transportMaxNgn,
+    const extraKm = Math.ceil(
+      Math.max(0, km - Number(cfg.logisticsIncludedKm ?? 0)),
+    );
+    const transportNgn = Math.round(
+      Number(cfg.logisticsBaseFareNgn) +
+        Number(cfg.logisticsPerKmNgn) * extraKm,
     );
     return {
       transportWp: this.ngnToWp(transportNgn, ppu),

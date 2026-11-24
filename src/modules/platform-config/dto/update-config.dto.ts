@@ -56,6 +56,18 @@ export class UpdatePlatformConfigDto {
   @IsOptional() @IsNumber() @Min(0) @Max(100)
   logisticsMobilityFeePercent?: number;
 
+  @ApiPropertyOptional({ description: 'Flat logistics leg fare in Naira (covers the first includedKm)', example: 1600, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  logisticsBaseFareNgn?: number;
+
+  @ApiPropertyOptional({ description: 'Logistics cost per extra km in Naira (beyond includedKm)', example: 300, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  logisticsPerKmNgn?: number;
+
+  @ApiPropertyOptional({ description: 'Km covered by the flat logistics base fare before per-km applies', example: 3, minimum: 0 })
+  @IsOptional() @IsNumber() @Min(0)
+  logisticsIncludedKm?: number;
+
   @ApiPropertyOptional({ description: 'Hours an unpaid draft order is kept before auto-cancel', example: 24, minimum: 1, maximum: 168 })
   @IsOptional()
   @IsInt()

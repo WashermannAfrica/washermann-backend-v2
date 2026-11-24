@@ -238,6 +238,23 @@ export class PlatformConfig {
   @Column({ name: 'logistics_mobility_fee_percent', type: 'decimal', precision: 6, scale: 2, default: 0, transformer: DecimalTransformer })
   logisticsMobilityFeePercent: number;
 
+  // ─── Logistics leg transport pricing (vendor pickup/delivery) ──────────────────
+  // A logistics leg is one-way and priced on its own knobs (separate from wash-order
+  // transport): a flat base fare covers the first `includedKm`, then each extra km
+  // (rounded up) adds the per-km rate. Authored in Naira; converted to WP at the live
+  // rate. See TransportService.legFee.
+  @ApiProperty({ description: 'Flat logistics leg fare in Naira (covers the first includedKm)', example: 1600 })
+  @Column({ name: 'logistics_base_fare_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  logisticsBaseFareNgn: number;
+
+  @ApiProperty({ description: 'Logistics cost per extra km in Naira (beyond includedKm, rounded up)', example: 300 })
+  @Column({ name: 'logistics_per_km_ngn', type: 'decimal', precision: 12, scale: 2, default: 0, transformer: DecimalTransformer })
+  logisticsPerKmNgn: number;
+
+  @ApiProperty({ description: 'Kilometres covered by the flat logistics base fare before per-km applies', example: 3 })
+  @Column({ name: 'logistics_included_km', type: 'decimal', precision: 6, scale: 2, default: 0, transformer: DecimalTransformer })
+  logisticsIncludedKm: number;
+
   @ApiProperty({
     description: 'Assignment scoring weights & constants (Performance/Loyalty/Fairness composite) — admin-tunable',
   })
