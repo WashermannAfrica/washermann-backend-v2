@@ -77,6 +77,14 @@ export class OrderFundingService {
 
     // Reuse an existing active, unexpired link for this order+purpose.
     const purpose = opts.purpose ?? 'sponsor';
+
+    // Pay-on-arrival legs are the requester's own responsibility — a shared
+    // "pay for me" (sponsor) link is only offered when paying at booking.
+    if (purpose === 'sponsor' && order.paymentTiming === 'on_arrival') {
+      throw new BadRequestException(
+        'A shared payment link is only available when paying at booking. A pay-on-arrival leg must be paid by you.',
+      );
+    }
     const existing = await this.linkRepo.findOne({
       where: { orderId, purpose, status: 'active' },
       order: { createdAt: 'DESC' },

@@ -724,6 +724,43 @@ export class AssignmentService {
         `Rep ${repId} is not active (status=${rep.status})`,
       );
     }
+    // Pay-on-arrival logistics: a rep is dispatched while the leg is still unpaid.
+    // Record the rep but keep the leg PENDING_PAYMENT — paying on arrival funds
+    // escrow and advances it to SCHEDULED (confirmPayment). It cannot be picked up
+    // until then, so the money invariant (escrow funded before settlement) holds.
+    if (
+      isLogisticsFlow(order.flow) &&
+      order.paymentTiming === 'on_arrival' &&
+      order.status === OrderStatus.PENDING_PAYMENT
+    ) {
+      order.repId = repId;
+      await this.orderRepository.save(order);
+      await this.repRepository.update(repId, { lastAssignedAt: new Date() });
+      await this.statusHistoryRepository.save(
+        this.statusHistoryRepository.create({
+          orderId,
+          fromStatus: order.status,
+          toStatus: order.status,
+          triggeredBy: adminId,
+          triggeredByRole: 'admin',
+          note: 'Rep pre-assigned (pay on arrival) — awaiting payment before pickup',
+        }),
+      );
+      this.notificationsService.notifyAssignmentConfirmedRep({
+        repId,
+        orderRef: order.reference,
+        pickupAddress: order.pickupAddress,
+        customerName: '',
+        orderId,
+      });
+      this.notificationsService.notifyRepAssigned({
+        customerId: order.customerId,
+        repId,
+        orderRef: order.reference,
+      });
+      return order;
+    }
+
     if (!AssignmentService.REP_ASSIGNABLE_STATES.includes(order.status)) {
       throw new BadRequestException(
         `Order ${order.reference} cannot have a rep assigned from status '${order.status}'`,
@@ -763,6 +800,17 @@ export class AssignmentService {
       repId,
       orderRef: order.reference,
     });
+
+    // A logistics leg has no vendor-assignment step — once a rep is on it, it is
+    // ready to run. The broadcast-accept path advances it to SCHEDULED via
+    // startVendorAssignment; the manual path must do the same, or the leg would be
+    // stuck at REP_ASSIGNED and repPickedUp (which requires SCHEDULED) could never fire.
+    if (isLogisticsFlow(order.flow)) {
+      await this.startVendorAssignment(order.id);
+      return (
+        (await this.orderRepository.findOne({ where: { id: orderId } })) ?? order
+      );
+    }
 
     return order;
   }

@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
-import { Order, OrderFlow, LogisticsRecipient, isLogisticsFlow } from '../../database/entities/order.entity';
+import { Order, OrderFlow, OrderPaymentTiming, LogisticsRecipient, isLogisticsFlow } from '../../database/entities/order.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
@@ -29,6 +29,7 @@ export interface CreateLogisticsInput {
   scheduledPickupAt?: string;
   note?: string;
   roundTrip?: boolean;              // vendor-initiated: this collect leg is half of a round trip
+  paymentTiming?: OrderPaymentTiming; // 'on_creation' (default) or 'on_arrival'
 }
 
 @Injectable()
@@ -65,6 +66,7 @@ export class LogisticsService {
       recipient,
       scheduledPickupAt: input.scheduledPickupAt,
       note: input.note,
+      paymentTiming: input.paymentTiming,
     });
   }
 
@@ -84,6 +86,7 @@ export class LogisticsService {
       scheduledPickupAt: input.scheduledPickupAt,
       note: input.note,
       roundTrip: input.roundTrip,
+      paymentTiming: input.paymentTiming,
     });
   }
 
@@ -214,6 +217,7 @@ export class LogisticsService {
     note?: string;
     roundTrip?: boolean;
     parentOrderId?: string;
+    paymentTiming?: OrderPaymentTiming;
   }) {
     // Area is derived from the pickup (A) point so the rep broadcast targets the right area.
     const resolution = await this.areasService.resolveAreaForPoint(p.from.latitude, p.from.longitude, {
@@ -266,6 +270,7 @@ export class LogisticsService {
         repId:                    null,
         vendorId:                 p.vendor.id,
         requesterType:            p.requesterType,
+        paymentTiming:            p.paymentTiming ?? 'on_creation',
         allocationMode:           'automatic',
         chosenVendorId:           null,
         areaId,
@@ -327,6 +332,7 @@ export class LogisticsService {
       reference: order.reference,
       flow: order.flow,
       requesterType: order.requesterType,
+      paymentTiming: order.paymentTiming ?? 'on_creation',
       status: order.status,
       vendorId: order.vendorId,
       recipient: order.recipient,

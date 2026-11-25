@@ -527,14 +527,28 @@ export class OrdersService {
         : '',
     });
 
-    // Auto-start the rep broadcast the moment payment lands (fire-and-forget).
-    this.assignmentService
-      .startRepAssignment(order.id)
-      .catch((err) =>
-        this.logger.warn(
-          `Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`,
-        ),
-      );
+    // A pay-on-arrival logistics leg already has its rep (pre-assigned by admin
+    // before payment). Paying now funds escrow, so skip the broadcast and advance
+    // it straight to SCHEDULED (the logistics branch of startVendorAssignment).
+    // Everything else auto-starts the rep broadcast the moment payment lands.
+    // Fire-and-forget: an assignment hiccup must not fail a settled payment.
+    if (isLogisticsFlow(order.flow) && order.repId) {
+      this.assignmentService
+        .startVendorAssignment(order.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Auto-schedule failed for ${order.reference}: ${(err as Error).message}`,
+          ),
+        );
+    } else {
+      this.assignmentService
+        .startRepAssignment(order.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Auto-start assignment failed for ${order.reference}: ${(err as Error).message}`,
+          ),
+        );
+    }
 
     return { order, alreadyPaid: false };
   }
