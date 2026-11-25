@@ -29,6 +29,15 @@ export type OrderFlow =
 /** Who initiated an order. Washing orders are always 'customer'. */
 export type OrderRequesterType = 'customer' | 'vendor';
 
+/**
+ * When a logistics leg is paid. `on_creation` (default) = paid up front before a
+ * rep is dispatched (the normal pay-to-dispatch flow). `on_arrival` = a rep may be
+ * dispatched while the leg is still unpaid; the requester pays (self only) when the
+ * rep arrives, which funds escrow and advances the leg to SCHEDULED. Non-logistics
+ * orders leave this null (treated as on_creation).
+ */
+export type OrderPaymentTiming = 'on_creation' | 'on_arrival';
+
 /** The non-app counterparty on a logistics leg (a vendor's own customer). */
 export interface LogisticsRecipient {
   name: string;
@@ -291,6 +300,20 @@ export class Order extends BaseEntity {
     default: 'customer',
   })
   requesterType: OrderRequesterType;
+
+  @ApiProperty({
+    nullable: true,
+    enum: ['on_creation', 'on_arrival'],
+    description:
+      'Logistics leg: when it is paid — on_creation (pay to dispatch) or on_arrival (dispatch unpaid, pay on arrival)',
+  })
+  @Column({
+    name: 'payment_timing',
+    type: 'varchar',
+    length: 12,
+    nullable: true,
+  })
+  paymentTiming: OrderPaymentTiming | null;
 
   @ApiProperty({
     nullable: true,

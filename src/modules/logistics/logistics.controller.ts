@@ -27,6 +27,14 @@ class VendorLogisticsDto {
 
   @ApiPropertyOptional() @IsOptional() @IsDateString() scheduledPickupAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) note?: string;
+
+  @ApiPropertyOptional({
+    enum: ['on_creation', 'on_arrival'],
+    description:
+      "When the leg is paid: 'on_creation' (pay to dispatch, default) or 'on_arrival' (dispatch unpaid, vendor pays self on arrival). 'on_arrival' cannot use a shared 'sponsor' payment link.",
+  })
+  @IsOptional() @IsIn(['on_creation', 'on_arrival'])
+  paymentTiming?: 'on_creation' | 'on_arrival';
 }
 
 class CustomerCollectDto {
