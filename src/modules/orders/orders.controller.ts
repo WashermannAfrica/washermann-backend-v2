@@ -176,17 +176,28 @@ export class OrdersController {
 
   @Get('me')
   @ApiOperation({ summary: 'List own orders (customer)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, enum: OrderStatus })
+  @ApiQuery({
+    name: 'flow',
+    required: false,
+    description:
+      "Filter by order flow, or 'logistics' for both logistics legs (vendor pickup/delivery bookings)",
+  })
   myOrders(
     @Request() req: { user: { sub: string } },
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: OrderStatus,
+    @Query('flow') flow?: string,
   ) {
     return this.ordersService.findAll({
       page,
       limit,
       customerId: req.user.sub,
       status,
+      flow,
       viewer: 'customer',
     });
   }
