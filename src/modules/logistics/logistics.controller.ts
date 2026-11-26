@@ -53,6 +53,11 @@ class PaymentLinkDto {
   @IsOptional() @IsIn(['self', 'sponsor']) purpose?: 'self' | 'sponsor';
 }
 
+class AdminCancelDto {
+  @ApiPropertyOptional({ description: 'Reason recorded on the leg and shown in its timeline' })
+  @IsOptional() @IsString() @MaxLength(500) reason?: string;
+}
+
 type Req = { user: { sub: string } };
 
 @ApiTags('Logistics')
@@ -131,6 +136,29 @@ export class LogisticsController {
   async delivered(@Param('id', ParseUUIDPipe) id: string, @Request() req: Req) {
     const rep = await this.repsService.findByUserId(req.user.sub);
     return this.logisticsService.repDelivered(id, rep.id);
+  }
+
+  // ─── Admin leg lifecycle (ops console) ───────────────────────────────────────
+
+  @Post(':id/admin/picked-up')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: mark a scheduled leg picked up at origin' })
+  adminPickedUp(@Param('id', ParseUUIDPipe) id: string, @Request() req: Req) {
+    return this.logisticsService.adminMarkPickedUp(id, req.user.sub);
+  }
+
+  @Post(':id/admin/delivered')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: mark a picked-up leg delivered (settles the leg)' })
+  adminDelivered(@Param('id', ParseUUIDPipe) id: string, @Request() req: Req) {
+    return this.logisticsService.adminMarkDelivered(id, req.user.sub);
+  }
+
+  @Post(':id/admin/cancel')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Admin: cancel a logistics leg before pickup (refunds the payer if already paid)' })
+  adminCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminCancelDto, @Request() req: Req) {
+    return this.logisticsService.adminCancel(id, req.user.sub, dto.reason ?? '');
   }
 
   // ─── Public tracking ──────────────────────────────────────────────────────────

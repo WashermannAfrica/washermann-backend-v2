@@ -1596,15 +1596,49 @@ export class OrdersService {
       throw new BadRequestException('Order cannot be cancelled at this stage');
     }
 
+    return this.applyCancellation(order, customerId, 'customer', reason);
+  }
+
+  /**
+   * Admin-initiated cancellation (logistics ops). Same money semantics as a customer
+   * cancel — the payer (order.customerId) is refunded and escrow released when the leg
+   * was already paid — but it bypasses the ownership check and is attributed to the
+   * admin in the status history for audit. Callers must restrict this to the flows and
+   * stages they intend (e.g. logistics legs before pickup).
+   */
+  async adminCancelOrder(orderId: string, adminId: string, reason: string) {
+    const order = await this.findOne(orderId);
+    if (!CANCELLABLE_STATUSES.includes(order.status)) {
+      throw new BadRequestException('Order cannot be cancelled at this stage');
+    }
+    return this.applyCancellation(order, adminId, 'admin', reason);
+  }
+
+  /**
+   * Shared cancellation body. Refunds the payer's wallet and releases escrow when the
+   * order was paid (funds were held), marks the order cancelled, kills live broadcasts,
+   * and records an audit entry attributed to the actor. The refund always goes to the
+   * order's payer (order.customerId), never to whoever triggered the cancel.
+   */
+  private async applyCancellation(
+    order: Order,
+    actorId: string,
+    actorRole: 'customer' | 'admin',
+    reason: string,
+  ) {
+    const orderId = order.id;
+    const payerUserId = order.customerId;
+    const fromStatus = order.status;
+
     // A draft (PENDING_PAYMENT) order was never debited — cancelling it must not
     // refund anything. Only a paid order (funds held in escrow) gets refunded.
-    const wasPaid = order.status !== OrderStatus.PENDING_PAYMENT;
+    const wasPaid = fromStatus !== OrderStatus.PENDING_PAYMENT;
 
     return this.dataSource.transaction(async (manager) => {
       if (wasPaid) {
-        // Refund user wallet
+        // Refund the payer's wallet
         const wallet = await this.walletRepository.findOne({
-          where: { userId: customerId },
+          where: { userId: payerUserId },
         });
         if (wallet) {
           const balanceBefore = wallet.balance;
@@ -1614,7 +1648,7 @@ export class OrdersService {
           await manager.save(
             manager.create(LedgerEntry, {
               walletId: wallet.id,
-              userId: customerId,
+              userId: payerUserId,
               type: 'credit',
               amount: order.totalWP,
               balanceBefore,
@@ -1661,17 +1695,17 @@ export class OrdersService {
       await manager.save(
         manager.create(OrderStatusHistory, {
           orderId,
-          fromStatus: order.status,
+          fromStatus,
           toStatus: OrderStatus.CANCELLED,
-          triggeredBy: customerId,
-          triggeredByRole: 'customer',
+          triggeredBy: actorId,
+          triggeredByRole: actorRole,
           note: reason,
         }),
       );
 
       // Fire cancellation notification (fire-and-forget)
       this.notificationsService.notifyOrderCancelled({
-        customerId: customerId,
+        customerId: payerUserId,
         orderRef: order.reference,
         totalWP: order.totalWP,
       });
