@@ -187,6 +187,42 @@ export class LogisticsService {
     return this.ordersService.completeOrder(order.id, repUserId, 'admin');
   }
 
+  // ─── Admin leg lifecycle (ops console) ───────────────────────────────────────
+  // Mirror the rep leg actions for operators coordinating riders off-app. These stay
+  // on the same guarded path (scheduled → picked_up → delivered → completed) so the
+  // escrow/settlement invariants hold; they never skip or reverse steps. Each change
+  // is attributed to the acting admin in the status history for audit.
+
+  /** Admin: mark a scheduled leg picked up at origin. */
+  async adminMarkPickedUp(orderId: string, adminUserId: string) {
+    const order = await this.loadLeg(orderId);
+    if (order.status !== OrderStatus.SCHEDULED) {
+      throw new BadRequestException('Leg must be scheduled before pickup');
+    }
+    return this.setStatus(order, OrderStatus.PICKED_UP, adminUserId, 'Picked up at origin (admin)', 'admin');
+  }
+
+  /** Admin: mark a picked-up leg delivered — settles the leg (releases escrow, pays the rep + platform). */
+  async adminMarkDelivered(orderId: string, adminUserId: string) {
+    const order = await this.loadLeg(orderId);
+    if (order.status !== OrderStatus.PICKED_UP) {
+      throw new BadRequestException('Leg must be picked up before delivery');
+    }
+    await this.setStatus(order, OrderStatus.DELIVERED, adminUserId, 'Delivered at destination (admin)', 'admin');
+    // Settlement (rep transport + platform mobility fee) runs via the logistics branch.
+    return this.ordersService.completeOrder(order.id, adminUserId, 'admin');
+  }
+
+  /**
+   * Admin: cancel a logistics leg before pickup. Refunds the payer and releases escrow
+   * when the leg was already paid (handled by the orders service); refuses once the leg
+   * has been picked up (enforced by the shared cancellable-state guard).
+   */
+  async adminCancel(orderId: string, adminUserId: string, reason: string) {
+    await this.loadLeg(orderId); // 404 unless this is a logistics leg
+    return this.ordersService.adminCancelOrder(orderId, adminUserId, reason?.trim() || 'Cancelled by admin');
+  }
+
   // ─── Public tracking (recipient) ─────────────────────────────────────────────
 
   async trackByToken(token: string) {
@@ -359,14 +395,20 @@ export class LogisticsService {
     if (order.repId !== repUserId) throw new ForbiddenException('You are not assigned to this leg');
   }
 
-  private async setStatus(order: Order, to: OrderStatus, repId: string, note: string) {
+  private async setStatus(
+    order: Order,
+    to: OrderStatus,
+    actorId: string,
+    note: string,
+    role: 'rep' | 'admin' = 'rep',
+  ) {
     const from = order.status;
     order.status = to;
     await this.orderRepo.save(order);
     await this.orderRepo.manager.save(
       this.orderRepo.manager.create(OrderStatusHistory, {
         orderId: order.id, fromStatus: from, toStatus: to,
-        triggeredBy: repId, triggeredByRole: 'rep', note,
+        triggeredBy: actorId, triggeredByRole: role, note,
       }),
     );
     return order;
