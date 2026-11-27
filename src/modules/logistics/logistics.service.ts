@@ -280,7 +280,9 @@ export class LogisticsService {
       reference: order.reference,
       flow: order.flow,
       status: order.status,
-      recipientName: order.recipient?.name ?? null,
+      // First name only — this endpoint is public and the code is short/typeable,
+      // so the payload stays low-sensitivity (no full name, phone or address).
+      recipientFirstName: order.recipient?.name?.trim().split(/\s+/)[0] ?? null,
       scheduledPickupAt: order.scheduledPickupAt,
     };
   }
