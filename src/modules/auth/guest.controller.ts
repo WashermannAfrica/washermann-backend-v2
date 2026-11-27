@@ -18,6 +18,19 @@ type ReqCtx = {
 };
 
 /**
+ * Real client IP for rate-limiting. The guest endpoints are normally reached
+ * through the landing app's server-side proxy, so the socket IP is the proxy's;
+ * the proxy forwards the caller's IP in `x-forwarded-for`. Take the first hop
+ * and fall back to the socket IP for direct calls.
+ */
+function clientIp(req: ReqCtx): string | null {
+  const xff = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(xff) ? xff[0] : xff;
+  if (raw) return raw.split(',')[0].trim() || null;
+  return req.ip ?? null;
+}
+
+/**
  * Account-less guest flow for the public (landing-page) logistics funnel. A guest
  * proves phone ownership by SMS OTP and receives a session bound to a passwordless
  * user. If the phone already belongs to a password account, verify returns
@@ -35,7 +48,7 @@ export class GuestController {
     summary: 'Request an SMS OTP for the account-less logistics flow',
   })
   start(@Body() dto: GuestStartDto, @Req() req: ReqCtx) {
-    return this.authService.guestStart(dto.phone, { ip: req.ip ?? null });
+    return this.authService.guestStart(dto.phone, { ip: clientIp(req) });
   }
 
   @Public()
@@ -43,7 +56,7 @@ export class GuestController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend the SMS OTP (same rate limits as start)' })
   resend(@Body() dto: GuestStartDto, @Req() req: ReqCtx) {
-    return this.authService.guestStart(dto.phone, { ip: req.ip ?? null });
+    return this.authService.guestStart(dto.phone, { ip: clientIp(req) });
   }
 
   @Public()
@@ -61,7 +74,7 @@ export class GuestController {
     const userAgent = (req.headers['user-agent'] as string) ?? null;
     return this.authService.guestVerify(
       { phone: dto.phone, otp: dto.otp, name: dto.name },
-      { ip: req.ip ?? null, userAgent },
+      { ip: clientIp(req), userAgent },
     );
   }
 }
