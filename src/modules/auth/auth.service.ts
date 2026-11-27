@@ -28,6 +28,7 @@ import { CompanyStatus } from '../../common/enums/company-status.enum';
 import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { ConsentService } from '../policies/consent.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ActivateDto } from './dto/activate.dto';
@@ -49,6 +50,15 @@ const OTP_RESET_PREFIX = 'otp:reset:';
 const OTP_RESEND_COOLDOWN_PREFIX = 'otp:cooldown:';
 const OTP_RESEND_COOLDOWN_SECONDS = 60; // 1 minute between resends
 
+// ─── Guest (passwordless, OTP-first) ──────────────────────────────────────────
+// Guest OTPs are keyed by phone (not user id) so no user row is created until a
+// code is actually verified — unverified numbers never pollute the users table.
+const OTP_GUEST_PHONE_PREFIX = 'otp:guest:phone:';
+const GUEST_PHONE_COOLDOWN_PREFIX = 'otp:guest:cooldown:phone:';
+const GUEST_IP_COOLDOWN_PREFIX = 'otp:guest:cooldown:ip:';
+const GUEST_PHONE_COOLDOWN_SECONDS = 60; // per-phone: primary anti-spam gate
+const GUEST_IP_COOLDOWN_SECONDS = 8;     // per-IP: coarse burst/enumeration guard
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -65,6 +75,7 @@ export class AuthService {
     private redisService: RedisService,
     private notificationsService: NotificationsService,
     private referralsService: ReferralsService,
+    private consentService: ConsentService,
     private dataSource: DataSource,
   ) {}
 
@@ -354,6 +365,177 @@ export class AuthService {
       data: null,
       message: 'If an account exists, a new OTP has been sent.',
     };
+  }
+
+  // ─── Guest (passwordless, OTP-first) ─────────────────────────────────────────
+
+  /**
+   * Send a login/booking OTP to a phone for the account-less guest flow. The OTP
+   * is keyed by phone; no user row is created until the code is verified. Always
+   * returns a generic message so it never reveals whether the number has an
+   * account. Rate-limited per phone (hard) and per IP (coarse).
+   */
+  async guestStart(phoneRaw: string, ctx: { ip?: string | null } = {}) {
+    const phone = this.normalizePhone(phoneRaw);
+    if (!/^\+?[0-9]{10,15}$/.test(phone)) {
+      throw new BadRequestException('Enter a valid phone number');
+    }
+
+    const phoneCooldownKey = `${GUEST_PHONE_COOLDOWN_PREFIX}${phone}`;
+    if (await this.redisService.exists(phoneCooldownKey)) {
+      throw new BadRequestException('Please wait a minute before requesting another code.');
+    }
+    if (ctx.ip) {
+      const ipCooldownKey = `${GUEST_IP_COOLDOWN_PREFIX}${ctx.ip}`;
+      if (await this.redisService.exists(ipCooldownKey)) {
+        throw new BadRequestException('Too many requests. Please wait a few seconds and try again.');
+      }
+      await this.redisService.setEx(ipCooldownKey, GUEST_IP_COOLDOWN_SECONDS, '1');
+    }
+
+    const otp = this.generateOtp();
+    await this.redisService.setEx(`${OTP_GUEST_PHONE_PREFIX}${phone}`, OTP_TTL_SECONDS, otp);
+    await this.redisService.setEx(phoneCooldownKey, GUEST_PHONE_COOLDOWN_SECONDS, '1');
+
+    // Delivery failures must not change the response (no enumeration signal).
+    await this.notificationsService
+      .sendPhoneVerificationOtp({ phone, otp })
+      .catch((err) => this.logger.error(`Guest OTP send failed: ${err.message}`));
+
+    return {
+      data: { cooldownSeconds: GUEST_PHONE_COOLDOWN_SECONDS, expiresInMinutes: OTP_EXPIRY_MINUTES },
+      message: 'If the number can receive SMS, a code has been sent.',
+    };
+  }
+
+  /**
+   * Verify a guest OTP and hand back a session. Resolves the phone to a user:
+   *  - already has a password  → do NOT issue a session (that would bypass the
+   *    password); tell them to log in.
+   *  - passwordless (returning guest) → reuse the row, issue a session.
+   *  - unknown phone → create a passwordless, phone-verified user, issue a session.
+   * Consent (NDPA/privacy) is captured here against the current published policies.
+   */
+  async guestVerify(
+    input: { phone: string; otp: string; name?: string },
+    ctx: { ip?: string | null; userAgent?: string | null } = {},
+  ) {
+    const phone = this.normalizePhone(input.phone);
+    const key = `${OTP_GUEST_PHONE_PREFIX}${phone}`;
+    const stored = await this.redisService.get(key);
+    if (!stored || stored !== input.otp) {
+      throw new BadRequestException('Invalid or expired code');
+    }
+    await this.redisService.del(key);
+
+    // Need passwordHash (select:false) to tell a full account from a guest row.
+    const existing = await this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.phone = :phone', { phone })
+      .getOne();
+
+    if (existing) {
+      if (
+        existing.status === UserStatus.SUSPENDED ||
+        existing.status === UserStatus.DEACTIVATED
+      ) {
+        throw new UnauthorizedException('This account is not available. Please contact support.');
+      }
+      if (existing.passwordHash) {
+        // Real (password) account — never hand out an OTP-only session for it.
+        return {
+          data: { accountExists: true },
+          message: 'You already have an account. Please log in to continue.',
+        };
+      }
+      // Returning passwordless guest.
+      if (!existing.phoneVerified) {
+        existing.phoneVerified = true;
+        await this.userRepository.save(existing);
+      }
+      return this.issueGuestSession(existing, ctx, false);
+    }
+
+    // Brand-new guest. Guard against a double-submit / concurrent create racing
+    // on the unique phone column: on a unique violation, re-resolve and reuse.
+    try {
+      const user = this.userRepository.create({
+        fullName: (input.name ?? '').trim() || 'Guest',
+        email: null,
+        phone,
+        passwordHash: null,
+        roles: [Role.USER],
+        status: UserStatus.ACTIVE,
+        emailVerified: false,
+        phoneVerified: true,
+      });
+      await this.userRepository.save(user);
+      this.logger.log(`Guest user created via OTP: ${user.id}`);
+      return this.issueGuestSession(user, ctx, true);
+    } catch (err) {
+      if (!this.isUniqueViolation(err)) throw err;
+      const raced = await this.userRepository
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .where('u.phone = :phone', { phone })
+        .getOne();
+      if (!raced) throw err;
+      if (raced.passwordHash) {
+        return {
+          data: { accountExists: true },
+          message: 'You already have an account. Please log in to continue.',
+        };
+      }
+      return this.issueGuestSession(raced, ctx, false);
+    }
+  }
+
+  private async issueGuestSession(
+    user: User,
+    ctx: { ip?: string | null; userAgent?: string | null },
+    isNew: boolean,
+  ) {
+    await this.afterGuestIdentified(user, ctx);
+    const tokens = await this.generateTokenPair(user);
+    return {
+      data: { user: this.sanitizeUser(user), ...tokens, isNew },
+      message: 'Verified',
+    };
+  }
+
+  private isUniqueViolation(err: unknown): boolean {
+    return (err as { code?: string })?.code === '23505'; // Postgres unique_violation
+  }
+
+  /** Shared post-identification side-effects for a guest: wallet + consent. Best-effort. */
+  private async afterGuestIdentified(
+    user: User,
+    ctx: { ip?: string | null; userAgent?: string | null },
+  ): Promise<void> {
+    await this.ensureUserWallet(user.id).catch((err) =>
+      this.logger.warn(`Guest wallet provisioning skipped: ${err.message}`),
+    );
+    try {
+      // Accepts whatever privacy/terms policies are currently pending for the
+      // 'user' audience; idempotent and a no-op when none are published yet.
+      await this.consentService.accept(user.id, ['user'], undefined, 'explicit', {
+        ip: ctx.ip ?? null,
+        userAgent: ctx.userAgent ?? null,
+      });
+    } catch (err) {
+      this.logger.warn(`Guest consent capture skipped: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Light phone canonicalisation consistent with how the platform already stores
+   * phones (strip spaces/dashes/parens + trim). Deliberately NOT full E.164 —
+   * matching stays an exact string compare, mirroring assertIdentifierNotTaken
+   * and findByIdentifier, so this adds no new dependency and no format drift.
+   */
+  private normalizePhone(raw: string): string {
+    return (raw ?? '').replace(/[\s()-]/g, '').trim();
   }
 
   // ─── Forgot Password ─────────────────────────────────────────────────────────

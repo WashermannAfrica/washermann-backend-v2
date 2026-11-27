@@ -8,7 +8,9 @@ import { CompanyAdmin } from '../../database/entities/company-admin.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
 import { VendorEarningsWallet } from '../../database/entities/vendor-earnings-wallet.entity';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { PoliciesModule } from '../policies/policies.module';
 import { AuthController } from './auth.controller';
+import { GuestController } from './guest.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
@@ -28,8 +30,9 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
       }),
     }),
     ReferralsModule,
+    PoliciesModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, GuestController],
   providers: [AuthService, JwtStrategy, JwtRefreshStrategy],
   exports: [AuthService],
 })

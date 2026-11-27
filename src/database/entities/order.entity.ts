@@ -27,7 +27,7 @@ export type OrderFlow =
   | 'logistics_collect'; // origin = recipient, destination = vendor shop
 
 /** Who initiated an order. Washing orders are always 'customer'. */
-export type OrderRequesterType = 'customer' | 'vendor';
+export type OrderRequesterType = 'customer' | 'vendor' | 'guest';
 
 /**
  * When a logistics leg is paid. `on_creation` (default) = paid up front before a
@@ -289,9 +289,9 @@ export class Order extends BaseEntity {
   // Present only for logistics_* flows. A leg moves clothes A→B by rep, no washing.
 
   @ApiProperty({
-    enum: ['customer', 'vendor'],
+    enum: ['customer', 'vendor', 'guest'],
     default: 'customer',
-    description: 'Who initiated the order',
+    description: 'Who initiated the order (guest = account-less logistics operator)',
   })
   @Column({
     name: 'requester_type',

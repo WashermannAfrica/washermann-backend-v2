@@ -48,6 +48,26 @@ class CustomerCollectDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) note?: string;
 }
 
+class GuestLogisticsDto {
+  @ApiProperty({
+    enum: ['logistics_delivery', 'logistics_collect'],
+    description: "'logistics_delivery' = shop → customer, 'logistics_collect' = customer → shop",
+  })
+  @IsIn(['logistics_delivery', 'logistics_collect'])
+  flow: 'logistics_delivery' | 'logistics_collect';
+
+  @ApiProperty({ description: "The guest operator's shop/laundry address (origin or destination per flow)" })
+  @IsNotEmpty() @IsString() @MaxLength(1000) shopAddress: string;
+  @ApiProperty() @IsLatitude() shopLatitude: number;
+  @ApiProperty() @IsLongitude() shopLongitude: number;
+
+  @ApiProperty({ type: RecipientDto, description: 'The customer end of the trip (name, phone, address, coordinates)' })
+  @ValidateNested() @Type(() => RecipientDto) recipient: RecipientDto;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString() scheduledPickupAt?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) note?: string;
+}
+
 class PaymentLinkDto {
   @ApiPropertyOptional({ enum: ['self', 'sponsor'], description: "'self' = the requester pays, 'sponsor' = shareable recipient link" })
   @IsOptional() @IsIn(['self', 'sponsor']) purpose?: 'self' | 'sponsor';
@@ -104,6 +124,16 @@ export class LogisticsController {
   @ApiOperation({ summary: 'Customer: collect clothes you handed to a platform vendor off-app' })
   customerCollect(@Body() dto: CustomerCollectDto, @Request() req: Req) {
     return this.logisticsService.createCustomerCollect(req.user.sub, dto);
+  }
+
+  // ─── Guest (account-less operator) ────────────────────────────────────────────
+  // Requires a session (global JwtAuthGuard) but no role — a phone-verified guest
+  // user issued a token at /guest/verify qualifies. Both endpoints are typed in.
+
+  @Post('guest')
+  @ApiOperation({ summary: 'Guest operator: book a pickup/delivery (both endpoints supplied; vendor_id null)' })
+  guest(@Body() dto: GuestLogisticsDto, @Request() req: Req) {
+    return this.logisticsService.createGuestLeg(req.user.sub, dto);
   }
 
   // ─── Payment ──────────────────────────────────────────────────────────────────

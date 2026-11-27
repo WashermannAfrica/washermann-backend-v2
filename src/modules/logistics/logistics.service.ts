@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { randomBytes } from 'crypto';
+import { makeTrackingCode, isTrackingCodeShaped } from './tracking-code.util';
 import { Order, OrderFlow, OrderPaymentTiming, LogisticsRecipient, isLogisticsFlow } from '../../database/entities/order.entity';
 import { OrderStatusHistory } from '../../database/entities/order-status-history.entity';
 import { Vendor } from '../../database/entities/vendor.entity';
@@ -124,6 +124,46 @@ export class LogisticsService {
   }
 
   /**
+   * Account-less guest operator (a laundry operator with no vendor account):
+   * both endpoints are supplied explicitly — their shop (typed in, since there
+   * is no saved Vendor record) and the customer (`recipient`). The guest's own
+   * user is the owner/payer, the leg carries `vendor_id = null` and
+   * `requester_type = 'guest'`, and it is always pay-on-creation (a rep is never
+   * dispatched for a guest before payment). Geometry mirrors the vendor flows:
+   * delivery = shop → customer, collect = customer → shop.
+   */
+  async createGuestLeg(
+    ownerUserId: string,
+    input: {
+      flow: 'logistics_delivery' | 'logistics_collect';
+      shopAddress: string;
+      shopLatitude: number;
+      shopLongitude: number;
+      recipient: LogisticsRecipient;
+      scheduledPickupAt?: string;
+      note?: string;
+    },
+  ) {
+    const recipient = this.requireRecipient(input.recipient);
+    const shop: Coord = { latitude: input.shopLatitude, longitude: input.shopLongitude };
+    const customer: Coord = { latitude: recipient.latitude, longitude: recipient.longitude };
+    const isDelivery = input.flow === 'logistics_delivery';
+    return this.createLeg({
+      flow: input.flow,
+      requesterType: 'guest',
+      ownerUserId,
+      vendor: null,
+      from: isDelivery ? shop : customer,
+      fromAddress: isDelivery ? input.shopAddress : recipient.address,
+      to: isDelivery ? customer : shop,
+      recipient,
+      scheduledPickupAt: input.scheduledPickupAt,
+      note: input.note,
+      paymentTiming: 'on_creation',
+    });
+  }
+
+  /**
    * Round-trip: once the vendor has finished washing (off-app) they mark the collect
    * leg ready; this spawns the delivery leg (vendor → the same recipient) as a draft
    * to be paid and run.
@@ -137,7 +177,9 @@ export class LogisticsService {
     const existing = await this.orderRepo.findOne({ where: { parentOrderId: collect.id } });
     if (existing) return this.present(existing);
 
-    const vendor = await this.requireLocatedVendor(collect.vendorId!);
+    // The collect leg's owner is already proven (customerId check above); this is
+    // their own round-trip continuation, so verification is not required here.
+    const vendor = await this.loadVendorWithLocation(collect.vendorId!, false);
     await this.orderRepo.update(collect.id, { readyToDeliverAt: new Date() });
 
     return this.createLeg({
@@ -226,13 +268,21 @@ export class LogisticsService {
   // ─── Public tracking (recipient) ─────────────────────────────────────────────
 
   async trackByToken(token: string) {
-    const order = await this.orderRepo.findOne({ where: { trackingToken: token } });
+    const raw = (token ?? '').trim();
+    // New codes are short + uppercase (unambiguous charset), so let users type
+    // them in any case. Legacy long base64url tokens stay case-sensitive.
+    let order = await this.orderRepo.findOne({ where: { trackingToken: raw } });
+    if (!order && isTrackingCodeShaped(raw) && raw !== raw.toUpperCase()) {
+      order = await this.orderRepo.findOne({ where: { trackingToken: raw.toUpperCase() } });
+    }
     if (!order || !isLogisticsFlow(order.flow)) throw new NotFoundException('Tracking link not found');
     return {
       reference: order.reference,
       flow: order.flow,
       status: order.status,
-      recipientName: order.recipient?.name ?? null,
+      // First name only — this endpoint is public and the code is short/typeable,
+      // so the payload stays low-sensitivity (no full name, phone or address).
+      recipientFirstName: order.recipient?.name?.trim().split(/\s+/)[0] ?? null,
       scheduledPickupAt: order.scheduledPickupAt,
     };
   }
@@ -241,9 +291,9 @@ export class LogisticsService {
 
   private async createLeg(p: {
     flow: OrderFlow;
-    requesterType: 'customer' | 'vendor';
+    requesterType: 'customer' | 'vendor' | 'guest';
     ownerUserId: string;
-    vendor: Vendor;
+    vendor: Vendor | null; // null for guest (account-less operator) legs
     from: Coord;
     fromAddress: string;
     to: Coord;
@@ -298,13 +348,14 @@ export class LogisticsService {
     };
 
     const ref = this.generateReference();
+    const trackingToken = await this.generateTrackingToken();
     const order = await this.dataSource.transaction(async (manager) => {
       const o = manager.create(Order, {
         reference:                ref,
         customerId:               p.ownerUserId,
         companyId:                null,
         repId:                    null,
-        vendorId:                 p.vendor.id,
+        vendorId:                 p.vendor?.id ?? null,
         requesterType:            p.requesterType,
         paymentTiming:            p.paymentTiming ?? 'on_creation',
         allocationMode:           'automatic',
@@ -341,7 +392,7 @@ export class LogisticsService {
         transportEstimateWp:      transportWp,
         mobilityFeeWp,
         parentOrderId:            p.parentOrderId ?? null,
-        trackingToken:            this.token(),
+        trackingToken,
         garmentLog:               null,
         status:                   OrderStatus.PENDING_PAYMENT,
         autoCompleteAt:           null,
@@ -421,10 +472,17 @@ export class LogisticsService {
     return r;
   }
 
-  private async requireLocatedVendor(vendorId: string): Promise<Vendor> {
+  /**
+   * Load a vendor that has a saved shop location. Verification is required only
+   * when the vendor is a *counterparty* (someone else's shop the rep interacts
+   * with); a vendor booking their *own* leg does not need to be verified yet —
+   * verification/pricing are non-blocking onboarding tasks, but a shop location
+   * is always required because it anchors the pickup/delivery geometry.
+   */
+  private async loadVendorWithLocation(vendorId: string, requireVerified: boolean): Promise<Vendor> {
     const vendor = await this.vendorRepo.findOne({ where: { id: vendorId } });
     if (!vendor) throw new BadRequestException('Vendor not found');
-    if (vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
+    if (requireVerified && vendor.verificationStatus !== VendorVerificationStatus.VERIFIED) {
       throw new BadRequestException('Vendor is not available');
     }
     if (vendor.latitude == null || vendor.longitude == null) {
@@ -433,8 +491,14 @@ export class LogisticsService {
     return vendor;
   }
 
+  /** Counterparty vendor (not the requester) — must be verified. */
+  private requireLocatedVendor(vendorId: string): Promise<Vendor> {
+    return this.loadVendorWithLocation(vendorId, true);
+  }
+
+  /** The requester's own vendor — located, ownership-checked, verification not required. */
   private async requireLocatedVendorOwnedBy(vendorId: string, userId: string): Promise<Vendor> {
-    const vendor = await this.requireLocatedVendor(vendorId);
+    const vendor = await this.loadVendorWithLocation(vendorId, false);
     if (vendor.userId !== userId) throw new ForbiddenException('You can only create logistics for your own vendor account');
     return vendor;
   }
@@ -443,7 +507,20 @@ export class LogisticsService {
     return `WM-LOG-${Date.now().toString(36).toUpperCase().slice(-6)}${Math.floor(Math.random() * 36).toString(36).toUpperCase()}`;
   }
 
-  private token(): string {
-    return randomBytes(24).toString('base64url');
+  /**
+   * A short, human-typeable tracking code, unique across orders. Retries on the
+   * (rare) collision against the unique `tracking_token` column rather than
+   * relying on probability alone, since 6 chars is small enough to matter.
+   */
+  private async generateTrackingToken(): Promise<string> {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const code = makeTrackingCode();
+      const clash = await this.orderRepo.findOne({
+        where: { trackingToken: code },
+        select: { id: true },
+      });
+      if (!clash) return code;
+    }
+    throw new BadRequestException('Could not allocate a tracking code, please retry');
   }
 }
