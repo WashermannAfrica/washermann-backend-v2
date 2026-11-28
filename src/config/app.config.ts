@@ -53,4 +53,11 @@ export default registerAs('app', () => ({
   // Public base for shareable order-sponsor links (defaults to <landingUrl>/sponsor)
   sponsorLinkBase: process.env.SPONSOR_LINK_BASE || null,
   landingRevalidateSecret: process.env.LANDING_REVALIDATE_SECRET || '',
+  // Guest phone verification. When false (OTP_VERIFICATION_ENABLED=false), the
+  // account-less funnel skips the SMS OTP entirely and issues a session on phone
+  // claim alone — a deliberate stop-gap for when the SMS provider is unavailable.
+  // Default is ON (secure); only the literal string "false" disables it.
+  // NOTE: while off, phone ownership is NOT proven, so the phone-gated booking
+  // history is no longer ownership-protected. Re-enable as soon as SMS is back.
+  otpVerificationEnabled: process.env.OTP_VERIFICATION_ENABLED !== 'false',
 }));
