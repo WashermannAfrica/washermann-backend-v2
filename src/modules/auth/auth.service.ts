@@ -12,7 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHmac } from 'crypto';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
@@ -29,6 +29,7 @@ import { RedisService } from '../redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { ConsentService } from '../policies/consent.service';
+import { canonicalizePhone } from '../../common/utils/phone.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ActivateDto } from './dto/activate.dto';
@@ -528,14 +529,36 @@ export class AuthService {
     }
   }
 
-  /**
-   * Light phone canonicalisation consistent with how the platform already stores
-   * phones (strip spaces/dashes/parens + trim). Deliberately NOT full E.164 —
-   * matching stays an exact string compare, mirroring assertIdentifierNotTaken
-   * and findByIdentifier, so this adds no new dependency and no format drift.
-   */
+  /** Create a vendor profile + earnings wallet for a user (within a transaction). */
+  private async createVendorProfile(
+    manager: EntityManager,
+    userId: string,
+    phone: string,
+  ): Promise<void> {
+    const vendor = manager.create(Vendor, {
+      userId,
+      businessName: null,
+      phone,
+      areaIds: [],
+      verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
+      isAvailable: false,
+      rating: 0,
+      ratingCount: 0,
+    });
+    await manager.save(vendor);
+
+    const wallet = manager.create(VendorEarningsWallet, {
+      vendorId: vendor.id,
+      balance: 0,
+      totalEarned: 0,
+      status: 'active',
+    });
+    await manager.save(wallet);
+  }
+
+  /** Canonical phone form shared by the guest and vendor-signup flows (see util). */
   private normalizePhone(raw: string): string {
-    return (raw ?? '').replace(/[\s()-]/g, '').trim();
+    return canonicalizePhone(raw);
   }
 
   // ─── Forgot Password ─────────────────────────────────────────────────────────
@@ -781,48 +804,79 @@ export class AuthService {
    * available / receive orders until an admin verifies it.
    */
   async registerVendor(dto: VendorSignupDto) {
-    const phone = dto.phone.trim();
-    await this.assertIdentifierNotTaken(dto.email, phone);
-
+    const phone = this.normalizePhone(dto.phone);
+    const email = dto.email.toLowerCase().trim();
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
-    const user = await this.dataSource.transaction(async (manager) => {
-      const newUser = manager.create(User, {
-        fullName: dto.fullName.trim(),
-        email: dto.email.toLowerCase().trim(),
-        phone,
-        passwordHash,
-        roles: [Role.VENDOR],
-        status: UserStatus.ACTIVE,
-        emailVerified: false,
-        phoneVerified: false,
+    // A phone that already booked as a guest is a passwordless user row. Upgrade
+    // THAT row (set a password, add the VENDOR role, attach a vendor profile)
+    // rather than inserting a second user — the phone column is unique, so a
+    // plain insert would 409 and the guest's booking history would be orphaned.
+    const existing = await this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.phone = :phone OR u.email = :email', { phone, email })
+      .getOne();
+
+    // A phone/email that already belongs to a real (password) account conflicts,
+    // exactly as before.
+    if (existing?.passwordHash) {
+      throw new ConflictException(
+        existing.email === email
+          ? 'An account with this email already exists'
+          : 'An account with this phone number already exists',
+      );
+    }
+
+    let user: User;
+    let upgraded = false;
+
+    if (existing && existing.phone === phone) {
+      // Passwordless guest on this phone → upgrade in place. Guard the email: it
+      // must not belong to a different user.
+      const emailOwner = await this.userRepository.findOne({ where: { email } });
+      if (emailOwner && emailOwner.id !== existing.id) {
+        throw new ConflictException('An account with this email already exists');
+      }
+      user = await this.dataSource.transaction(async (manager) => {
+        existing.fullName = dto.fullName.trim();
+        existing.email = existing.email ?? email;
+        existing.passwordHash = passwordHash;
+        existing.status = UserStatus.ACTIVE;
+        if (!existing.roles.includes(Role.VENDOR)) {
+          existing.roles = [...existing.roles, Role.VENDOR];
+        }
+        await manager.save(existing);
+        await this.createVendorProfile(manager, existing.id, phone);
+        return existing;
       });
-      await manager.save(newUser);
-
-      const vendor = manager.create(Vendor, {
-        userId: newUser.id,
-        businessName: null,
-        phone,
-        areaIds: [],
-        verificationStatus: VendorVerificationStatus.PENDING_REVIEW,
-        isAvailable: false,
-        rating: 0,
-        ratingCount: 0,
+      upgraded = true;
+    } else if (existing) {
+      // Passwordless row matched by EMAIL only (e.g. an invited/pending user) —
+      // not a guest on this phone. Treat the email as taken.
+      throw new ConflictException('An account with this email already exists');
+    } else {
+      // Brand-new vendor.
+      user = await this.dataSource.transaction(async (manager) => {
+        const newUser = manager.create(User, {
+          fullName: dto.fullName.trim(),
+          email,
+          phone,
+          passwordHash,
+          roles: [Role.VENDOR],
+          status: UserStatus.ACTIVE,
+          emailVerified: false,
+          phoneVerified: false,
+        });
+        await manager.save(newUser);
+        await this.createVendorProfile(manager, newUser.id, phone);
+        return newUser;
       });
-      await manager.save(vendor);
+    }
 
-      const wallet = manager.create(VendorEarningsWallet, {
-        vendorId: vendor.id,
-        balance: 0,
-        totalEarned: 0,
-        status: 'active',
-      });
-      await manager.save(wallet);
-
-      return newUser;
-    });
-
-    this.logger.log(`Vendor self-registered: ${user.id}`);
+    this.logger.log(
+      `Vendor ${upgraded ? 'upgraded from guest' : 'self-registered'}: ${user.id}`,
+    );
 
     // Referral: issue this vendor's own code + record any code they signed up with.
     try {
