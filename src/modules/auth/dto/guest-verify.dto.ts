@@ -16,10 +16,15 @@ export class GuestVerifyDto {
   @MaxLength(20)
   phone: string;
 
-  @ApiProperty({ example: '123456', description: '6-digit code sent by SMS' })
+  @ApiPropertyOptional({
+    example: '123456',
+    description:
+      'Code sent by SMS. Required when phone verification is enabled; omit it when it is switched off (SMS provider outage).',
+  })
+  @IsOptional()
   @IsString()
   @Length(4, 8)
-  otp: string;
+  otp?: string;
 
   @ApiProperty({
     example: true,

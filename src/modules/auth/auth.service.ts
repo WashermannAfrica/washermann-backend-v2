@@ -376,10 +376,26 @@ export class AuthService {
    * returns a generic message so it never reveals whether the number has an
    * account. Rate-limited per phone (hard) and per IP (coarse).
    */
+  /** Whether the guest funnel enforces SMS OTP. Off is a deliberate stop-gap. */
+  private get otpVerificationEnabled(): boolean {
+    return this.configService.get<boolean>('app.otpVerificationEnabled') ?? true;
+  }
+
   async guestStart(phoneRaw: string, ctx: { ip?: string | null } = {}) {
     const phone = this.normalizePhone(phoneRaw);
     if (!/^\+?[0-9]{10,15}$/.test(phone)) {
       throw new BadRequestException('Enter a valid phone number');
+    }
+
+    if (!this.otpVerificationEnabled) {
+      // Verification switched off (SMS provider outage): send no code. The client
+      // sees verificationRequired=false and proceeds straight to /guest/verify,
+      // which issues a session on phone claim alone.
+      this.logger.warn(`Guest OTP skipped (verification disabled) for ${phone}`);
+      return {
+        data: { cooldownSeconds: 0, expiresInMinutes: 0, verificationRequired: false },
+        message: 'Continue to proceed.',
+      };
     }
 
     const phoneCooldownKey = `${GUEST_PHONE_COOLDOWN_PREFIX}${phone}`;
@@ -404,7 +420,11 @@ export class AuthService {
       .catch((err) => this.logger.error(`Guest OTP send failed: ${err.message}`));
 
     return {
-      data: { cooldownSeconds: GUEST_PHONE_COOLDOWN_SECONDS, expiresInMinutes: OTP_EXPIRY_MINUTES },
+      data: {
+        cooldownSeconds: GUEST_PHONE_COOLDOWN_SECONDS,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
+        verificationRequired: true,
+      },
       message: 'If the number can receive SMS, a code has been sent.',
     };
   }
@@ -418,16 +438,23 @@ export class AuthService {
    * Consent (NDPA/privacy) is captured here against the current published policies.
    */
   async guestVerify(
-    input: { phone: string; otp: string; name?: string },
+    input: { phone: string; otp?: string; name?: string },
     ctx: { ip?: string | null; userAgent?: string | null } = {},
   ) {
     const phone = this.normalizePhone(input.phone);
-    const key = `${OTP_GUEST_PHONE_PREFIX}${phone}`;
-    const stored = await this.redisService.get(key);
-    if (!stored || stored !== input.otp) {
-      throw new BadRequestException('Invalid or expired code');
+    // `verified` records whether we actually proved phone ownership this call —
+    // it gates the stored user's phoneVerified flag below. When verification is
+    // switched off, we skip the OTP check and leave phoneVerified false, so the
+    // row is correctly marked unverified until a real code is checked later.
+    const verified = this.otpVerificationEnabled;
+    if (verified) {
+      const key = `${OTP_GUEST_PHONE_PREFIX}${phone}`;
+      const stored = await this.redisService.get(key);
+      if (!input.otp || !stored || stored !== input.otp) {
+        throw new BadRequestException('Invalid or expired code');
+      }
+      await this.redisService.del(key);
     }
-    await this.redisService.del(key);
 
     // Need passwordHash (select:false) to tell a full account from a guest row.
     const existing = await this.userRepository
@@ -451,7 +478,7 @@ export class AuthService {
         };
       }
       // Returning passwordless guest.
-      if (!existing.phoneVerified) {
+      if (!existing.phoneVerified && verified) {
         existing.phoneVerified = true;
         await this.userRepository.save(existing);
       }
@@ -469,10 +496,12 @@ export class AuthService {
         roles: [Role.USER],
         status: UserStatus.ACTIVE,
         emailVerified: false,
-        phoneVerified: true,
+        phoneVerified: verified,
       });
       await this.userRepository.save(user);
-      this.logger.log(`Guest user created via OTP: ${user.id}`);
+      this.logger.log(
+        `Guest user created (${verified ? 'OTP-verified' : 'unverified'}): ${user.id}`,
+      );
       return this.issueGuestSession(user, ctx, true);
     } catch (err) {
       if (!this.isUniqueViolation(err)) throw err;
