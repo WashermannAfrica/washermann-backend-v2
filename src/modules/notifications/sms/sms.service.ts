@@ -50,7 +50,13 @@ export class SmsService {
       );
       return false;
     } catch (err) {
-      this.logger.error(`SMS service error: ${err.message}`);
+      // Surface Termii's response body — a 422 carries the real reason (invalid
+      // sender id, insufficient balance, bad number, etc.) that err.message hides.
+      const e = err as { message?: string; response?: { status?: number; data?: unknown } };
+      this.logger.error(
+        `SMS service error: ${e.message}` +
+          (e.response ? ` — ${e.response.status} ${JSON.stringify(e.response.data)}` : ''),
+      );
       return false;
     }
   }
