@@ -66,6 +66,7 @@ import { DisputesModule } from './modules/disputes/disputes.module';
 import { SupportModule } from './modules/support/support.module';
 import { PoliciesModule } from './modules/policies/policies.module';
 import { SuspensionsModule } from './modules/suspensions/suspensions.module';
+import { PlacesModule } from './modules/places/places.module';
 
 @Module({
   imports: [
@@ -129,6 +130,7 @@ import { SuspensionsModule } from './modules/suspensions/suspensions.module';
     SupportModule,
     PoliciesModule,
     SuspensionsModule,
+    PlacesModule,
   ],
 
   providers: [
